@@ -1,10 +1,7 @@
 import uuid
-
 from datetime import datetime
 
-from services.audio_service import (
-    AudioRecorder
-)
+from services.audio_service import AudioRecorder
 
 from services.s3_service import (
     upload_file
@@ -21,6 +18,10 @@ from services.processing_service import (
 from database.mongodb import (
     save_audio_metadata,
     update_llm_result
+)
+
+from reminders.reminder_service import (
+    process_reminders
 )
 
 from config.settings import (
@@ -103,7 +104,9 @@ def main():
         "\n✅ Transcript Generated:"
     )
 
-    print(transcript)
+    print(
+        transcript
+    )
 
     print(
         "\n🧠 Starting LLM Processing..."
@@ -127,18 +130,11 @@ def main():
         structured_data,
         ACTIVE_MODEL
     )
-    
-    from reminders.reminder_service import (
-    process_reminders)
-    
-    process_reminders(
-    audio_id,
-    transcript,
-    structured_data
-    )
 
-    print(
-        "\n✅ MongoDB LLM Data Updated"
+    process_reminders(
+        audio_id,
+        transcript,
+        structured_data
     )
 
     print(

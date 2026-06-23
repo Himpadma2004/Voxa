@@ -13,18 +13,21 @@ try:
 
     client = MongoClient(
         MONGO_URI,
-        serverSelectionTimeoutMS=10000,
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000
+        serverSelectionTimeoutMS=10000
     )
 
     client.admin.command("ping")
 
-    print("✅ MongoDB Connected")
+    print(
+        "✅ MongoDB Connected"
+    )
 
 except Exception as e:
 
-    print(f"❌ MongoDB Connection Error: {e}")
+    print(
+        f"❌ MongoDB Connection Error: {e}"
+    )
+
     raise
 
 
@@ -158,8 +161,7 @@ def get_audio_by_id(
 
     return collection.find_one(
         {
-            "audio_id":
-                audio_id
+            "audio_id": audio_id
         }
     )
 
