@@ -137,6 +137,17 @@ def update_llm_result(
                         "questions",
                         []
                     ),
+                "thoughts":
+                    llm_data.get(
+                        "thoughts",
+                        []
+                    ),
+
+                "notes":
+                    llm_data.get(
+                        "notes",
+                        []
+                    ),
 
                 "priority":
                     llm_data.get(

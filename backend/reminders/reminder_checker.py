@@ -24,37 +24,40 @@ def check_reminders():
         "🔔 Reminder Checker Started"
     )
 
-    while True:
+    reminders = reminders_collection.find(
+        {
+            "status": "pending"
+        }
+    )
 
-        now = datetime.utcnow()
+    count = 0
 
-        reminders = reminders_collection.find(
-            {
-                "status": "pending"
-            }
+    for reminder in reminders:
+
+        title = reminder.get(
+            "title",
+            "Unknown"
         )
 
-        count = 0
+        reminder_time = reminder.get(
+            "reminder_time"
+        )
 
-        for reminder in reminders:
-            title = reminder.get(
-                "title",
-                "Unknown"
-            )
+        print(
+            f"Title: {title}"
+        )
 
-            reminder_time = reminder.get(
-                "reminder_time"
-            )
+        print(
+            f"Time: {reminder_time}"
+        )
 
-            print(
-                f"Title: {title}"
-            )
+        print("-" * 40)
 
-            print(
-                f"Time: {reminder_time}"
-            )
+        count += 1
 
-            count += 1
+    print(
+        f"Checked {count} reminders"
+    )
 
 
 if __name__ == "__main__":

@@ -16,7 +16,14 @@ from vector_db.search_service import (
 )
 
 results = search_memories(
-    "YouTube"
+
+    "Bokshar ideas"
 )
 
-print(results)
+print(
+    "\n===== SEARCH RESULTS =====\n"
+)
+
+print(
+    results
+)

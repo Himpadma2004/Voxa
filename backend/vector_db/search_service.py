@@ -1,42 +1,20 @@
 from vector_db.chroma_client import (
-    get_collection
+    collection
 )
 
-from sentence_transformers import (
-    SentenceTransformer
-)
 
-print("🔄 Loading Search Embedding Model...")
-
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
-
-print("✅ Search Model Loaded")
-
-
-def semantic_search(
+def search_memories(
     query,
-    limit=5
+    n_results=5
 ):
 
-    print("🔄 Creating Query Embedding...")
-
-    collection = get_collection()
-
-    query_embedding = model.encode(
-        query
-    ).tolist()
-
-    print("🔄 Searching ChromaDB...")
-
     results = collection.query(
-        query_embeddings=[
-            query_embedding
-        ],
-        n_results=limit
-    )
 
-    print("✅ Search Completed")
+        query_texts=[
+            query
+        ],
+
+        n_results=n_results
+    )
 
     return results

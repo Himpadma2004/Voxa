@@ -11,12 +11,8 @@ sys.path.append(
     )
 )
 
-from vector_db.search_service import (
-    search_memories
+from vector_db.chroma_client import (
+    show_memory_count
 )
 
-results = search_memories(
-    "YouTube"
-)
-
-print(results)
+show_memory_count()

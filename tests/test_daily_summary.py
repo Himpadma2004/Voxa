@@ -11,12 +11,14 @@ sys.path.append(
     )
 )
 
-from vector_db.search_service import (
-    search_memories
+from summaries.daily_summary_service import (
+    generate_daily_summary
 )
 
-results = search_memories(
-    "YouTube"
+result = generate_daily_summary()
+
+print(
+    "\n===== DAILY SUMMARY =====\n"
 )
 
-print(results)
+print(result)

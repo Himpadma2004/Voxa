@@ -26,23 +26,28 @@ def analyze_transcript(
 
             {
                 "role": "system",
-                "content": VOXA_SYSTEM_PROMPT
+                "content":
+                    VOXA_SYSTEM_PROMPT
             },
 
             {
                 "role": "user",
-                "content": transcript
+                "content":
+                    transcript
             }
         ],
 
-        "temperature": 0.1,
+        "temperature": 0,
 
         "max_tokens": 300
     }
 
     response = requests.post(
+
         LM_STUDIO_URL,
+
         json=payload,
+
         timeout=120
     )
 
@@ -57,16 +62,16 @@ def analyze_transcript(
         )
 
         print(
-            "===========================\n"
+            "==========================="
         )
 
         raise Exception(
             f"LM Studio Error {response.status_code}"
         )
 
-    result = response.json()
+    data = response.json()
 
-    content = result[
+    content = data[
         "choices"
     ][0][
         "message"
@@ -78,7 +83,9 @@ def analyze_transcript(
         "\n===== RAW LLM RESPONSE ====="
     )
 
-    print(content)
+    print(
+        content
+    )
 
     print(
         "============================\n"

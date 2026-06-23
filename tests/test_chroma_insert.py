@@ -11,12 +11,19 @@ sys.path.append(
     )
 )
 
-from vector_db.search_service import (
-    search_memories
+from vector_db.chroma_client import (
+    add_memory
 )
 
-results = search_memories(
-    "YouTube"
+add_memory(
+
+    "test123",
+
+    "Integrate YouTube into Bokshar",
+
+    {
+        "category": "Idea"
+    }
 )
 
-print(results)
+print("SUCCESS")

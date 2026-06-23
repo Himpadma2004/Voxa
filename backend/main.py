@@ -1,7 +1,10 @@
 import uuid
+
 from datetime import datetime
 
-from services.audio_service import AudioRecorder
+from services.audio_service import (
+    AudioRecorder
+)
 
 from services.s3_service import (
     upload_file
@@ -24,6 +27,14 @@ from reminders.reminder_service import (
     process_reminders
 )
 
+from vector_db.chroma_client import (
+    add_memory
+)
+
+from vector_db.memory_formatter import (
+    build_memory_text
+)
+
 from config.settings import (
     ACTIVE_MODEL
 )
@@ -31,7 +42,9 @@ from config.settings import (
 
 def main():
 
-    print("\n🚀 Voxa Started")
+    print(
+        "\n🚀 Voxa Started"
+    )
 
     recorder = AudioRecorder()
 
@@ -65,7 +78,8 @@ def main():
 
     document = {
 
-        "audio_id": audio_id,
+        "audio_id":
+            audio_id,
 
         "filename":
             file_path.split("\\")[-1],
@@ -96,8 +110,12 @@ def main():
     )
 
     transcript = process_audio(
+
         audio_id,
-        upload_result["s3_key"]
+
+        upload_result[
+            "s3_key"
+        ]
     )
 
     print(
@@ -113,7 +131,9 @@ def main():
     )
 
     structured_data = process_transcript(
+
         transcript,
+
         ACTIVE_MODEL
     )
 
@@ -126,15 +146,59 @@ def main():
     )
 
     update_llm_result(
+
         audio_id,
+
         structured_data,
+
         ACTIVE_MODEL
     )
 
     process_reminders(
+
         audio_id,
+
         transcript,
+
         structured_data
+    )
+
+    memory_text = build_memory_text(
+
+        transcript,
+
+        structured_data
+    )
+
+    print(
+        "\n===== MEMORY TEXT ====="
+    )
+
+    print(
+        memory_text
+    )
+
+    print(
+        "=======================\n"
+    )
+
+    add_memory(
+
+        audio_id,
+
+        memory_text,
+
+        {
+            "category":
+                structured_data.get(
+                    "category",
+                    "Other"
+                )
+        }
+    )
+
+    print(
+        "\n🧠 Memory saved to vector database"
     )
 
     print(
@@ -143,4 +207,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
