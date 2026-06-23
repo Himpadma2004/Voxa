@@ -2,17 +2,20 @@ import whisper
 
 print("🔄 Loading Whisper model...")
 
-model = whisper.load_model("small")
+model = whisper.load_model("medium")
 
 print("✅ Whisper model loaded")
 
 
 def transcribe_audio(audio_path):
 
-    print("🔄 Starting transcription...")
+    result = model.transcribe(
+        audio_path,
+        fp16=False
+    )
 
-    result = model.transcribe(audio_path)
-
-    print("✅ Transcription completed")
+    print(
+        f"Detected Language: {result['language']}"
+    )
 
     return result["text"]
