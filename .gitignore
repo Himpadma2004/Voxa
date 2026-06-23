@@ -1,0 +1,9 @@
+.env
+
+__pycache__/
+*.pyc
+
+recordings/
+chroma_db/
+
+.vscode/
