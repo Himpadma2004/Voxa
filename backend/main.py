@@ -41,9 +41,8 @@ from config.settings import (
 
 
 def main():
-
     print(
-        "\n🚀 Voxa Started"
+        "\nVoxa Started"
     )
 
     recorder = AudioRecorder()
@@ -61,7 +60,7 @@ def main():
     file_path = recorder.stop_recording()
 
     print(
-        "\n📤 Uploading to S3..."
+        "\nUploading to S3..."
     )
 
     upload_result = upload_file(
@@ -69,7 +68,7 @@ def main():
     )
 
     print(
-        "✅ Uploaded to S3"
+        "Uploaded to S3"
     )
 
     audio_id = str(
@@ -77,22 +76,16 @@ def main():
     )
 
     document = {
-
         "audio_id":
             audio_id,
-
         "filename":
             file_path.split("\\")[-1],
-
         "s3_key":
             upload_result["s3_key"],
-
         "audio_url":
             upload_result["audio_url"],
-
         "status":
             "uploaded",
-
         "created_at":
             datetime.utcnow()
     }
@@ -102,24 +95,22 @@ def main():
     )
 
     print(
-        "✅ MongoDB document created"
+        "MongoDB document created"
     )
 
     print(
-        "\n🔄 Starting Transcription..."
+        "\nStarting Transcription..."
     )
 
     transcript = process_audio(
-
         audio_id,
-
         upload_result[
             "s3_key"
         ]
     )
 
     print(
-        "\n✅ Transcript Generated:"
+        "\nTranscript Generated:"
     )
 
     print(
@@ -127,18 +118,16 @@ def main():
     )
 
     print(
-        "\n🧠 Starting LLM Processing..."
+        "\nStarting LLM Processing..."
     )
 
     structured_data = process_transcript(
-
         transcript,
-
         ACTIVE_MODEL
     )
 
     print(
-        "\n✅ Structured Output:"
+        "\nStructured Output:"
     )
 
     print(
@@ -146,27 +135,19 @@ def main():
     )
 
     update_llm_result(
-
         audio_id,
-
         structured_data,
-
         ACTIVE_MODEL
     )
 
     process_reminders(
-
         audio_id,
-
         transcript,
-
         structured_data
     )
 
     memory_text = build_memory_text(
-
         transcript,
-
         structured_data
     )
 
@@ -183,11 +164,8 @@ def main():
     )
 
     add_memory(
-
         audio_id,
-
         memory_text,
-
         {
             "category":
                 structured_data.get(
@@ -198,14 +176,13 @@ def main():
     )
 
     print(
-        "\n🧠 Memory saved to vector database"
+        "\nMemory saved to vector database"
     )
 
     print(
-        "\n🎉 Voxa Pipeline Completed"
+        "\nVoxa Pipeline Completed"
     )
 
 
 if __name__ == "__main__":
-
     main()
