@@ -1,0 +1,10 @@
+^C:\USERS\HIMPADMA\DESKTOP\DOKUMEN\VS CODE\PYTHON 2.0\DL PROJECT\VOXA\SIMULATOR\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/HIMPADMA/Desktop/Dokumen/VS code/python 2.0/DL Project/Voxa/simulator" "-BC:/Users/HIMPADMA/Desktop/Dokumen/VS code/python 2.0/DL Project/Voxa/simulator/build" --check-stamp-file "C:/Users/HIMPADMA/Desktop/Dokumen/VS code/python 2.0/DL Project/Voxa/simulator/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

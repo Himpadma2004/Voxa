@@ -1,0 +1,3 @@
+C:/Users/HIMPADMA/Desktop/Dokumen/VS code/python 2.0/DL Project/Voxa/simulator/build/CMakeFiles/VOXA.dir
+C:/Users/HIMPADMA/Desktop/Dokumen/VS code/python 2.0/DL Project/Voxa/simulator/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/HIMPADMA/Desktop/Dokumen/VS code/python 2.0/DL Project/Voxa/simulator/build/CMakeFiles/ZERO_CHECK.dir
