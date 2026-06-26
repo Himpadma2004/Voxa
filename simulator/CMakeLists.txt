@@ -47,6 +47,28 @@ add_executable(VOXA
     src/screens/SearchScreen.cpp
     src/screens/SettingsScreen.cpp
     src/screens/SyncStatusScreen.cpp
+    # ── Models (header-only, no .cpp needed) ──────────────────────────────
+
+    # ── Storage layer ─────────────────────────────────────────────────────
+    src/core/storage/JsonStorage.cpp
+
+    # ── Platform layer ────────────────────────────────────────────────────
+    src/core/platform/SimulatorPlatform.cpp
+
+    # ── Service layer ─────────────────────────────────────────────────────
+    src/core/services/BatteryService.cpp
+    src/core/services/TimeService.cpp
+    src/core/services/StorageService.cpp
+    src/core/services/ReminderService.cpp
+    src/core/services/SearchService.cpp
+
+    # ── Navigation layer ──────────────────────────────────────────────────
+    src/core/navigation/ScreenManager.cpp
+
+    # ── App orchestrator ──────────────────────────────────────────────────
+    src/core/app/Application.cpp
+
+    # ── Widgets ───────────────────────────────────────────────────────────
     src/widgets/Button.cpp
     src/widgets/Card.cpp
     src/widgets/CircleButton.CPP
