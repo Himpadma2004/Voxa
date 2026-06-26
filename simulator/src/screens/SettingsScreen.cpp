@@ -1,0 +1,73 @@
+#include "SettingsScreen.h"
+
+#include <array>
+
+#include "../core/Application.h"
+#include "../graphics/Colors.h"
+#include "../graphics/Renderer.h"
+#include "../widgets/ListTile.h"
+#include "ScreenCommon.h"
+
+namespace
+{
+    struct SettingItem
+    {
+        VOXA::Icon icon;
+        const char* title;
+        const char* subtitle;
+        SDL_Color color;
+        VOXA::ScreenId target;
+    };
+}
+
+namespace VOXA
+{
+    ScreenId SettingsScreen::id() const
+    {
+        return ScreenId::Settings;
+    }
+
+    void SettingsScreen::handleEvent(Application& app, const SDL_Event& event)
+    {
+        if (event.type != SDL_EVENT_MOUSE_BUTTON_DOWN)
+        {
+            return;
+        }
+
+        const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+        if (Rect { 12.0f, 10.0f, 20.0f, 20.0f }.contains(point.x, point.y))
+        {
+            app.navigateTo(ScreenId::Home);
+            return;
+        }
+
+        if (Rect { 16.0f, 86.0f, 192.0f, 34.0f }.contains(point.x, point.y))
+        {
+            app.navigateTo(ScreenId::SyncStatus);
+        }
+    }
+
+    void SettingsScreen::update(Application&, float)
+    {
+    }
+
+    void SettingsScreen::render(Application&, Renderer& renderer)
+    {
+        ScreenCommon::renderSurface(renderer);
+        ScreenCommon::renderHeader(renderer, "Settings", true, true, Icon::Plus);
+
+        const std::array<SettingItem, 5> items { {
+            { Icon::Wifi, "Wi-Fi", "Connected", SDL_Color { 68, 162, 255, 255 }, ScreenId::Settings },
+            { Icon::Cloud, "Sync & Backup", "Auto sync on", SDL_Color { 68, 162, 255, 255 }, ScreenId::SyncStatus },
+            { Icon::Storage, "Storage", "12.4 GB / 32 GB", SDL_Color { 80, 80, 88, 255 }, ScreenId::Settings },
+            { Icon::Info, "Device Info", "VOXA V1.0", SDL_Color { 80, 80, 88, 255 }, ScreenId::Settings },
+            { Icon::Star, "About VOXA", "Personal AI Assistant", Colors::Primary, ScreenId::Settings },
+        } };
+
+        for (std::size_t i = 0; i < items.size(); ++i)
+        {
+            ListTile tile(Rect { 16.0f, 48.0f + i * 38.0f, 192.0f, 34.0f }, items[i].icon, items[i].title, items[i].subtitle, items[i].color, SDL_Color { 0, 0, 0, 0 }, true);
+            tile.render(renderer);
+        }
+    }
+}

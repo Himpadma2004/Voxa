@@ -4,6 +4,74 @@
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\Application.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\graphics\Colors.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\graphics\Fonts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\graphics\Icons.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\graphics\Renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\BootScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\HomeScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\IdeasScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\OthersScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\QuestionsScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\RecordScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\ReminderScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\ScreenCommon.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SearchScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SettingsScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SyncStatusScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\Button.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\Card.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\CircleButton.CPP" />
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\FloatingButton.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\ListTile.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\ProgressBar.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\SearchBar.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\widgets\StatusBar.CPP" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\CMakeLists.txt" />
