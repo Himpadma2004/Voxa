@@ -34,6 +34,7 @@ namespace VOXA
         bool m_keyboardOpen { false };
         float m_keyboardAnim { 0.0f };
         bool m_keyboardShift { false };
+        int  m_keyboardMode { 0 }; // 0: Alphabet, 1: Numbers/Basic, 2: Extra Symbols
 
         // Scrolling comments list inside detail screen
         float m_scrollY { 0.0f };

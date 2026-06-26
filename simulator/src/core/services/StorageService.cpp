@@ -13,7 +13,7 @@ namespace VOXA
     namespace
     {
         const char* kRemindersFile  = "reminders.json";
-        const char* kMemoriesFile   = "memories.json";
+        const char* kMemoriesFile   = "memory.json";
         const char* kIdeasFile      = "ideas.json";
         const char* kQuestionsFile  = "questions.json";
         const char* kSettingsFile   = "settings.json";

@@ -55,7 +55,13 @@
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SyncStatusScreen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\DetailScreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\storage\JsonStorage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\storage\MemoryStorage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\platform\SimulatorPlatform.cpp">
@@ -89,6 +95,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\SearchService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\MemoryService.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\navigation\ScreenManager.cpp">

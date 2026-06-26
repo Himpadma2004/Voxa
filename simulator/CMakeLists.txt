@@ -47,10 +47,12 @@ add_executable(VOXA
     src/screens/SearchScreen.cpp
     src/screens/SettingsScreen.cpp
     src/screens/SyncStatusScreen.cpp
+    src/screens/DetailScreen.cpp
     # ── Models (header-only, no .cpp needed) ──────────────────────────────
 
     # ── Storage layer ─────────────────────────────────────────────────────
     src/core/storage/JsonStorage.cpp
+    src/core/storage/MemoryStorage.cpp
 
     # ── Platform layer ────────────────────────────────────────────────────
     src/core/platform/SimulatorPlatform.cpp
@@ -66,6 +68,7 @@ add_executable(VOXA
     src/core/services/HistoryService.cpp
     src/core/services/RecordingService.cpp
     src/core/services/SearchService.cpp
+    src/core/services/MemoryService.cpp
 
     # ── Navigation layer ──────────────────────────────────────────────────
     src/core/navigation/ScreenManager.cpp

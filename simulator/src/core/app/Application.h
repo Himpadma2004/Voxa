@@ -19,22 +19,25 @@ namespace VOXA
     class RecordingService;
     class SearchService;
     class ScreenManager;
+    class MemoryStorage;
+    class MemoryService;
 
     /// Aggregated view of all application services.
     /// Screens should receive a const reference to this struct.
     struct Services
     {
-        BatteryService*   battery    { nullptr };
-        TimeService*      time       { nullptr };
-        StorageService*   storage    { nullptr };
-        ReminderService*  reminders  { nullptr };
-        IdeaService*      ideas      { nullptr };
-        QuestionService*  questions  { nullptr };
-        SettingsService*  settings   { nullptr };
-        HistoryService*   history    { nullptr };
-        RecordingService* recordings { nullptr };
-        SearchService*    search     { nullptr };
-        ScreenManager*    navigation { nullptr };
+        BatteryService*   battery       { nullptr };
+        TimeService*      time          { nullptr };
+        StorageService*   storage       { nullptr };
+        ReminderService*  reminders     { nullptr };
+        IdeaService*      ideas         { nullptr };
+        QuestionService*  questions     { nullptr };
+        SettingsService*  settings      { nullptr };
+        HistoryService*   history       { nullptr };
+        RecordingService* recordings    { nullptr };
+        SearchService*    search        { nullptr };
+        ScreenManager*    navigation    { nullptr };
+        MemoryService*    memoryService { nullptr };
     };
 
     /// Top-level application orchestrator (new architecture).
@@ -88,6 +91,8 @@ namespace VOXA
         std::unique_ptr<HistoryService>  m_historyService;
         std::unique_ptr<RecordingService> m_recordingService;
         std::unique_ptr<SearchService>   m_searchService;
+        std::unique_ptr<MemoryStorage>  m_memoryStorage;
+        std::unique_ptr<MemoryService>  m_memoryService;
         std::unique_ptr<ScreenManager>   m_screenManager;
 
         Services m_services;

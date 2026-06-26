@@ -12,6 +12,8 @@
 #include "../services/HistoryService.h"
 #include "../services/RecordingService.h"
 #include "../services/SearchService.h"
+#include "../storage/MemoryStorage.h"
+#include "../services/MemoryService.h"
 #include "../navigation/ScreenManager.h"
 #include "../Screen.h"
 
@@ -42,22 +44,25 @@ namespace VOXA
         auto historyService  = std::make_unique<HistoryService>(storageService.get());
         auto recordingService = std::make_unique<RecordingService>(storageService.get());
         auto searchService   = std::make_unique<SearchService>(storageService.get());
+        auto memoryStorage   = std::make_unique<MemoryStorage>(storage.get());
+        auto memoryService   = std::make_unique<MemoryService>(memoryStorage.get());
 
         // 4. Navigation
         auto screenManager   = std::make_unique<ScreenManager>(ScreenId::Boot);
 
         // Populate the flat services view
-        m_services.battery    = batteryService.get();
-        m_services.time       = timeService.get();
-        m_services.storage    = storageService.get();
-        m_services.reminders  = reminderService.get();
-        m_services.ideas      = ideaService.get();
-        m_services.questions  = questionService.get();
-        m_services.settings   = settingsService.get();
-        m_services.history    = historyService.get();
-        m_services.recordings = recordingService.get();
-        m_services.search     = searchService.get();
-        m_services.navigation = screenManager.get();
+        m_services.battery       = batteryService.get();
+        m_services.time          = timeService.get();
+        m_services.storage       = storageService.get();
+        m_services.reminders     = reminderService.get();
+        m_services.ideas         = ideaService.get();
+        m_services.questions     = questionService.get();
+        m_services.settings      = settingsService.get();
+        m_services.history       = historyService.get();
+        m_services.recordings    = recordingService.get();
+        m_services.search        = searchService.get();
+        m_services.navigation    = screenManager.get();
+        m_services.memoryService = memoryService.get();
 
         // Transfer ownership
         m_platform        = std::move(platform);
@@ -72,6 +77,8 @@ namespace VOXA
         m_historyService  = std::move(historyService);
         m_recordingService = std::move(recordingService);
         m_searchService   = std::move(searchService);
+        m_memoryStorage   = std::move(memoryStorage);
+        m_memoryService   = std::move(memoryService);
         m_screenManager   = std::move(screenManager);
 
         m_initialized = true;

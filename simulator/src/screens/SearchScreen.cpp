@@ -44,38 +44,164 @@ namespace
         const char* action;
     };
 
-    std::vector<KeyDefinition> getKeyboardKeys(float startX, float startY)
+    std::vector<std::string> getWordSuggestions(const std::string& currentText)
+    {
+        static const std::vector<std::string> vocab = {
+            "YouTube", "Voxa", "Birthday", "Party", "Family", "Meeting", "Reminder", "Schedule", 
+            "Tomorrow", "Integration", "Workspace", "Shopping", "Grocery", "Project", "Presentation", 
+            "AI", "Personal", "Assistant", "Voice", "Note", "Question", "Answer", "Search", "Settings", 
+            "Google", "Deepmind", "Idea", "Call", "Sofia", "Emily", "Gift", "Dinner", "Today", "Week"
+        };
+
+        if (currentText.empty())
+        {
+            return {"YouTube", "Birthday", "Meeting"};
+        }
+
+        std::string lastWord;
+        auto lastSpace = currentText.find_last_of(" \t\n\r");
+        if (lastSpace == std::string::npos)
+        {
+            lastWord = currentText;
+        }
+        else
+        {
+            lastWord = currentText.substr(lastSpace + 1);
+        }
+
+        if (lastWord.empty())
+        {
+            return {"YouTube", "Birthday", "Meeting"};
+        }
+
+        std::string lowerWord = lastWord;
+        std::transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), [](unsigned char c){ return std::tolower(c); });
+
+        std::vector<std::string> matches;
+        for (const auto& w : vocab)
+        {
+            std::string lowerW = w;
+            std::transform(lowerW.begin(), lowerW.end(), lowerW.begin(), [](unsigned char c){ return std::tolower(c); });
+            if (lowerW.rfind(lowerWord, 0) == 0)
+            {
+                matches.push_back(w);
+                if (matches.size() >= 3) break;
+            }
+        }
+
+        if (matches.size() < 3)
+        {
+            std::vector<std::string> defaults = {"the", "a", "is"};
+            for (const auto& d : defaults)
+            {
+                if (std::find(matches.begin(), matches.end(), d) == matches.end())
+                {
+                    matches.push_back(d);
+                    if (matches.size() >= 3) break;
+                }
+            }
+        }
+
+        return matches;
+    }
+
+    void applySuggestion(std::string& currentText, const std::string& suggestion)
+    {
+        auto lastSpace = currentText.find_last_of(" \t\n\r");
+        if (lastSpace == std::string::npos)
+        {
+            currentText = suggestion + " ";
+        }
+        else
+        {
+            currentText = currentText.substr(0, lastSpace + 1) + suggestion + " ";
+        }
+    }
+
+    std::vector<KeyDefinition> getKeyboardKeys(float startX, float startY, int mode)
     {
         std::vector<KeyDefinition> keys;
-        
-        // Row 1
-        const char* row1[] = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
-        float r1X = startX + 46.0f;
-        for (int i = 0; i < 10; ++i) {
-            keys.push_back({row1[i], r1X + i * 92.0f, startY + 20.0f, 80.0f, 54.0f, row1[i]});
+        if (mode == 0) // Alphabet
+        {
+            // Row 1
+            const char* row1[] = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
+            for (int i = 0; i < 10; ++i) {
+                keys.push_back({row1[i], startX + 44.0f + i * 92.0f, startY + 54.0f, 84.0f, 54.0f, row1[i]});
+            }
+            
+            // Row 2
+            const char* row2[] = {"A", "S", "D", "F", "G", "H", "J", "K", "L"};
+            for (int i = 0; i < 9; ++i) {
+                keys.push_back({row2[i], startX + 90.0f + i * 92.0f, startY + 120.0f, 84.0f, 54.0f, row2[i]});
+            }
+            
+            // Row 3
+            keys.push_back({"Shift", startX + 44.0f, startY + 186.0f, 100.0f, 54.0f, "shift"});
+            const char* row3[] = {"Z", "X", "C", "V", "B", "N", "M"};
+            for (int i = 0; i < 7; ++i) {
+                keys.push_back({row3[i], startX + 152.0f + i * 92.0f, startY + 186.0f, 84.0f, 54.0f, row3[i]});
+            }
+            keys.push_back({"Delete", startX + 796.0f, startY + 186.0f, 160.0f, 54.0f, "backspace"});
+            
+            // Row 4
+            keys.push_back({"?123", startX + 44.0f, startY + 252.0f, 140.0f, 54.0f, "mode_sym"});
+            keys.push_back({"Space", startX + 192.0f, startY + 252.0f, 612.0f, 54.0f, "space"});
+            keys.push_back({"Search", startX + 812.0f, startY + 252.0f, 144.0f, 54.0f, "search"});
         }
-        
-        // Row 2
-        const char* row2[] = {"A", "S", "D", "F", "G", "H", "J", "K", "L"};
-        float r2X = startX + 92.0f;
-        for (int i = 0; i < 9; ++i) {
-            keys.push_back({row2[i], r2X + i * 92.0f, startY + 90.0f, 80.0f, 54.0f, row2[i]});
+        else if (mode == 1) // Numbers & Punctuation
+        {
+            // Row 1
+            const char* row1[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+            for (int i = 0; i < 10; ++i) {
+                keys.push_back({row1[i], startX + 44.0f + i * 92.0f, startY + 54.0f, 84.0f, 54.0f, row1[i]});
+            }
+            
+            // Row 2
+            const char* row2[] = {"-", "/", ":", ";", "(", ")", "$", "&", "@", "\""};
+            for (int i = 0; i < 10; ++i) {
+                keys.push_back({row2[i], startX + 44.0f + i * 92.0f, startY + 120.0f, 84.0f, 54.0f, row2[i]});
+            }
+            
+            // Row 3
+            keys.push_back({"#+=", startX + 44.0f, startY + 186.0f, 100.0f, 54.0f, "mode_extra"});
+            const char* row3[] = {".", ",", "?", "!", "'", "_"};
+            for (int i = 0; i < 6; ++i) {
+                keys.push_back({row3[i], startX + 152.0f + i * 92.0f, startY + 186.0f, 84.0f, 54.0f, row3[i]});
+            }
+            keys.push_back({"Delete", startX + 796.0f, startY + 186.0f, 160.0f, 54.0f, "backspace"});
+            
+            // Row 4
+            keys.push_back({"ABC", startX + 44.0f, startY + 252.0f, 140.0f, 54.0f, "mode_abc"});
+            keys.push_back({"Space", startX + 192.0f, startY + 252.0f, 612.0f, 54.0f, "space"});
+            keys.push_back({"Search", startX + 812.0f, startY + 252.0f, 144.0f, 54.0f, "search"});
         }
-        
-        // Row 3
-        keys.push_back({"Shift", startX + 62.0f, startY + 160.0f, 100.0f, 54.0f, "shift"});
-        const char* row3[] = {"Z", "X", "C", "V", "B", "N", "M"};
-        float r3X = startX + 62.0f + 112.0f;
-        for (int i = 0; i < 7; ++i) {
-            keys.push_back({row3[i], r3X + i * 92.0f, startY + 160.0f, 80.0f, 54.0f, row3[i]});
+        else // Extra symbols
+        {
+            // Row 1
+            const char* row1[] = {"[", "]", "{", "}", "#", "%", "^", "*", "+", "="};
+            for (int i = 0; i < 10; ++i) {
+                keys.push_back({row1[i], startX + 44.0f + i * 92.0f, startY + 54.0f, 84.0f, 54.0f, row1[i]});
+            }
+            
+            // Row 2
+            const char* row2[] = {"_", "\\", "|", "~", "<", ">", "\u20AC", "\u00A3", "\u00A5", "\u2022"};
+            for (int i = 0; i < 10; ++i) {
+                keys.push_back({row2[i], startX + 44.0f + i * 92.0f, startY + 120.0f, 84.0f, 54.0f, row2[i]});
+            }
+            
+            // Row 3
+            keys.push_back({"?123", startX + 44.0f, startY + 186.0f, 100.0f, 54.0f, "mode_sym"});
+            const char* row3[] = {".", ",", "?", "!", "'", "_"};
+            for (int i = 0; i < 6; ++i) {
+                keys.push_back({row3[i], startX + 152.0f + i * 92.0f, startY + 186.0f, 84.0f, 54.0f, row3[i]});
+            }
+            keys.push_back({"Delete", startX + 796.0f, startY + 186.0f, 160.0f, 54.0f, "backspace"});
+            
+            // Row 4
+            keys.push_back({"ABC", startX + 44.0f, startY + 252.0f, 140.0f, 54.0f, "mode_abc"});
+            keys.push_back({"Space", startX + 192.0f, startY + 252.0f, 612.0f, 54.0f, "space"});
+            keys.push_back({"Search", startX + 812.0f, startY + 252.0f, 144.0f, 54.0f, "search"});
         }
-        keys.push_back({"Delete", startX + 62.0f + 112.0f + 7 * 92.0f - 12.0f, startY + 160.0f, 120.0f, 54.0f, "backspace"});
-        
-        // Row 4
-        keys.push_back({"Close", startX + 88.0f, startY + 230.0f, 140.0f, 54.0f, "close"});
-        keys.push_back({"Space", startX + 88.0f + 152.0f, startY + 230.0f, 500.0f, 54.0f, "space"});
-        keys.push_back({"Search", startX + 88.0f + 152.0f + 512.0f, startY + 230.0f, 160.0f, 54.0f, "search"});
-        
         return keys;
     }
 }
@@ -225,7 +351,30 @@ namespace VOXA
         if (m_keyboardOpen && m_keyboardAnim > 0.8f)
         {
             const float kbdY = 900.0f - m_keyboardAnim * 330.0f;
-            auto keys = getKeyboardKeys(300.0f, kbdY);
+
+            // Check suggestion bar click: kbdY to kbdY + 44.0f
+            if (point.y >= kbdY && point.y <= kbdY + 44.0f && point.x >= 300.0f && point.x <= 1300.0f)
+            {
+                auto suggestions = getWordSuggestions(m_searchQuery);
+                if (point.x >= 350.0f && point.x <= 620.0f && suggestions.size() > 0)
+                {
+                    app.audio().playClick();
+                    applySuggestion(m_searchQuery, suggestions[0]);
+                }
+                else if (point.x >= 665.0f && point.x <= 935.0f && suggestions.size() > 1)
+                {
+                    app.audio().playClick();
+                    applySuggestion(m_searchQuery, suggestions[1]);
+                }
+                else if (point.x >= 980.0f && point.x <= 1250.0f && suggestions.size() > 2)
+                {
+                    app.audio().playClick();
+                    applySuggestion(m_searchQuery, suggestions[2]);
+                }
+                return;
+            }
+
+            auto keys = getKeyboardKeys(300.0f, kbdY, m_keyboardMode);
             for (const auto& key : keys)
             {
                 if (Rect{ key.x, key.y, key.w, key.h }.contains(point.x, point.y))
@@ -243,14 +392,32 @@ namespace VOXA
                     else if (act == "close" || act == "search")
                     {
                         m_keyboardOpen = false;
+                        m_keyboardMode = 0;
                     }
                     else if (act == "shift")
                     {
-                        // Shift is visual only for simulation
+                        m_keyboardShift = !m_keyboardShift;
+                    }
+                    else if (act == "mode_sym")
+                    {
+                        m_keyboardMode = 1;
+                    }
+                    else if (act == "mode_abc")
+                    {
+                        m_keyboardMode = 0;
+                    }
+                    else if (act == "mode_extra")
+                    {
+                        m_keyboardMode = 2;
                     }
                     else
                     {
-                        m_searchQuery += act;
+                        std::string charToInsert = act;
+                        if (charToInsert.size() == 1 && std::isalpha(charToInsert[0]))
+                        {
+                            if (!m_keyboardShift) charToInsert[0] = std::tolower(charToInsert[0]);
+                        }
+                        m_searchQuery += charToInsert;
                     }
                     return;
                 }
@@ -408,20 +575,41 @@ namespace VOXA
             kbdPanel.setBorder(Colors::PrimaryLight);
             kbdPanel.render(renderer);
 
+            // Draw Suggestion Bar above the QWERTY keys
+            renderer.drawLine(kbdX, kbdY + 44.0f, kbdX + kbdW, kbdY + 44.0f, Colors::GlassBorder);
+            auto suggestions = getWordSuggestions(m_searchQuery);
+            for (std::size_t i = 0; i < suggestions.size(); ++i)
+            {
+                float sugX = kbdX + 50.0f + i * 315.0f;
+                Rect sugRect{ sugX, kbdY + 6.0f, 270.0f, 32.0f };
+                const bool sugHovered = sugRect.contains(mPt.x, mPt.y);
+                
+                renderer.fillRoundedRect(sugRect.x, sugRect.y, sugRect.w, sugRect.h, 16.0f, 
+                    sugHovered ? SDL_Color{ 235, 230, 250, 255 } : SDL_Color{ 245, 243, 248, 200 });
+                renderer.drawRoundedRect(sugRect.x, sugRect.y, sugRect.w, sugRect.h, 16.0f, Colors::GlassBorder);
+                
+                renderer.drawTextCentered(suggestions[i], sugRect.x + sugRect.w * 0.5f, sugRect.y + 6.0f, Colors::Primary, 13);
+            }
+
             // Draw keys
-            auto keys = getKeyboardKeys(kbdX, kbdY);
+            auto keys = getKeyboardKeys(kbdX, kbdY, m_keyboardMode);
             for (const auto& key : keys)
             {
                 const bool keyHovered = Rect{ key.x, key.y, key.w, key.h }.contains(mPt.x, mPt.y);
                 
-                // Frosted key caps
+                // Frosted capsule key caps
                 SDL_Color keyFill = keyHovered ? SDL_Color { 235, 230, 250, 255 } : SDL_Color { 248, 248, 250, 200 };
                 SDL_Color keyBorder = keyHovered ? Colors::Primary : Colors::GlassBorder;
                 
                 std::string act = key.action;
-                if (act == "space" || act == "backspace" || act == "close" || act == "search" || act == "shift")
+                if (act == "space" || act == "backspace" || act == "close" || act == "search" || act == "shift" || act == "mode_sym" || act == "mode_abc" || act == "mode_extra")
                 {
                     keyFill = keyHovered ? SDL_Color { 210, 195, 255, 255 } : SDL_Color { 230, 226, 240, 255 };
+                }
+
+                if (act == "shift" && m_keyboardShift)
+                {
+                    keyFill = Colors::Primary;
                 }
 
                 renderer.fillRoundedRect(key.x, key.y, key.w, key.h, 14.0f, keyFill);
@@ -429,7 +617,14 @@ namespace VOXA
 
                 // Draw label
                 SDL_Color textColor = (keyHovered && (act == "space" || act == "backspace" || act == "close" || act == "search")) ? Colors::White : Colors::TextPrimary;
-                renderer.drawTextCentered(key.label, key.x + key.w * 0.5f, key.y + key.h * 0.32f, textColor, 15);
+                if (act == "shift" && m_keyboardShift) textColor = Colors::White;
+
+                std::string keyLabel = key.label;
+                if (m_keyboardMode == 0 && !m_keyboardShift && keyLabel.size() == 1 && std::isalpha(keyLabel[0]))
+                {
+                    keyLabel[0] = std::tolower(keyLabel[0]);
+                }
+                renderer.drawTextCentered(keyLabel, key.x + key.w * 0.5f, key.y + key.h * 0.32f, textColor, 15);
             }
         }
 

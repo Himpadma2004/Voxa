@@ -437,7 +437,9 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SearchScreen.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SettingsScreen.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\SyncStatusScreen.cpp" />
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\screens\DetailScreen.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\storage\JsonStorage.cpp" />
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\storage\MemoryStorage.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\platform\SimulatorPlatform.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\BatteryService.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\TimeService.cpp" />
@@ -449,6 +451,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\HistoryService.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\RecordingService.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\SearchService.cpp" />
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\MemoryService.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\navigation\ScreenManager.cpp" />
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\app\Application.cpp">
       <ObjectFileName>$(IntDir)src/core/app/Application.cpp.obj</ObjectFileName>

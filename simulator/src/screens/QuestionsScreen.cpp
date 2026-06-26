@@ -47,7 +47,26 @@ namespace VOXA
         }
         else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            m_isDragging = false;
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+                float diffY = std::abs(point.y - m_dragStartY);
+                if (diffY < 6.0f)
+                {
+                    auto questions = app.services().questions->getAll();
+                    for (std::size_t i = 0; i < questions.size(); ++i)
+                    {
+                        Rect tileRect { 380.0f, 200.0f + i * 114.0f - m_scrollY, 840.0f, 84.0f };
+                        if (tileRect.contains(point.x, point.y))
+                        {
+                            app.setSelectedItem("questions", questions[i].id);
+                            app.navigateTo(ScreenId::Detail);
+                            break;
+                        }
+                    }
+                }
+                m_isDragging = false;
+            }
         }
         else if (event.type == SDL_EVENT_MOUSE_WHEEL)
         {

@@ -8,6 +8,7 @@
 #include "../core/services/IdeaService.h"
 #include "../core/services/QuestionService.h"
 #include "../core/services/StorageService.h"
+#include "../core/services/MemoryService.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Fonts.h"
 #include "../graphics/Icons.h"
@@ -203,9 +204,9 @@ namespace VOXA
         }
 
         std::string memoriesCount = "0";
-        if (app.services().storage)
+        if (app.services().memoryService)
         {
-            memoriesCount = std::to_string(app.services().storage->loadAllMemories().size());
+            memoriesCount = std::to_string(app.services().memoryService->getAll().size());
         }
 
         static std::string remStr;

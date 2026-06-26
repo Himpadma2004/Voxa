@@ -6,6 +6,7 @@
 
 #include "../core/Application.h"
 #include "../core/services/StorageService.h"
+#include "../core/services/MemoryService.h"
 #include "../core/models/Memory.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
@@ -47,7 +48,26 @@ namespace VOXA
         }
         else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            m_isDragging = false;
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+                float diffY = std::abs(point.y - m_dragStartY);
+                if (diffY < 6.0f)
+                {
+                    auto memories = app.services().memoryService->getAll();
+                    for (std::size_t i = 0; i < memories.size(); ++i)
+                    {
+                        Rect tileRect { 380.0f, 200.0f + i * 114.0f - m_scrollY, 840.0f, 84.0f };
+                        if (tileRect.contains(point.x, point.y))
+                        {
+                            app.setSelectedItem("others", memories[i].id);
+                            app.navigateTo(ScreenId::Detail);
+                            break;
+                        }
+                    }
+                }
+                m_isDragging = false;
+            }
         }
         else if (event.type == SDL_EVENT_MOUSE_WHEEL)
         {
@@ -64,9 +84,9 @@ namespace VOXA
     void OthersScreen::update(Application& app, float deltaSeconds)
     {
         std::size_t numMemories = 0;
-        if (app.services().storage)
+        if (app.services().memoryService)
         {
-            numMemories = app.services().storage->loadAllMemories().size();
+            numMemories = app.services().memoryService->getAll().size();
         }
 
         float contentHeight = std::max(0.0f, static_cast<float>(numMemories) * 114.0f - 30.0f);
@@ -92,11 +112,11 @@ namespace VOXA
         container.setBorder(Colors::GlassBorder);
         container.render(renderer);
 
-        // Load memories from storage
+        // Load memories from service
         std::vector<Memory> memories;
-        if (app.services().storage)
+        if (app.services().memoryService)
         {
-            memories = app.services().storage->loadAllMemories();
+            memories = app.services().memoryService->getAll();
         }
 
         // Set clipping region to prevent scroll overlap with container borders

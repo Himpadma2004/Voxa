@@ -18,6 +18,8 @@ namespace VOXA
         float m_elapsed { 0.0f };
         bool m_keyboardOpen { false };
         float m_keyboardAnim { 0.0f };
+        bool m_keyboardShift { false };
+        int  m_keyboardMode { 0 }; // 0: Alphabet, 1: Numbers/Basic, 2: Extra Symbols
         std::string m_searchQuery;
         bool m_voiceSearchOpen { false };
         float m_voiceSearchAnim { 0.0f };
