@@ -216,6 +216,68 @@ namespace VOXA
         return oss.str();
     }
 
+    std::map<std::string, std::string>
+        JsonStorage::parseObject(const std::string& json)
+    {
+        std::map<std::string, std::string> result;
+        if (json.empty()) return result;
+
+        std::size_t pos = 0;
+        skipWS(json, pos);
+
+        // Expect opening '{'
+        if (pos >= json.size() || json[pos] != '{') return result;
+        ++pos;
+
+        while (true)
+        {
+            skipWS(json, pos);
+            if (pos >= json.size() || json[pos] == '}') break;
+
+            // Key
+            if (json[pos] != '"') { ++pos; continue; }
+            std::string key = parseString(json, pos);
+
+            skipWS(json, pos);
+            if (pos < json.size() && json[pos] == ':') ++pos;
+
+            skipWS(json, pos);
+            std::string value = parseValue(json, pos);
+            result[key] = value;
+
+            skipWS(json, pos);
+            if (pos < json.size() && json[pos] == ',') ++pos;
+        }
+        return result;
+    }
+
+    std::string
+        JsonStorage::serializeObject(const std::map<std::string, std::string>& obj)
+    {
+        std::ostringstream oss;
+        oss << "{\n";
+        bool first = true;
+        for (const auto& [key, val] : obj)
+        {
+            if (!first) oss << ",\n";
+            first = false;
+
+            oss << "  \"" << key << "\": \"";
+            for (char c : val)
+            {
+                if (c == '"')      oss << "\\\"";
+                else if (c == '\\') oss << "\\\\";
+                else if (c == '\n') oss << "\\n";
+                else if (c == '\r') oss << "\\r";
+                else if (c == '\t') oss << "\\t";
+                else                oss << c;
+            }
+            oss << "\"";
+        }
+        oss << "\n}";
+        return oss.str();
+    }
+
     const std::string& JsonStorage::storageDirectory() const
     {
         return m_directory;

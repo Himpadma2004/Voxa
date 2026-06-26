@@ -12,6 +12,7 @@
 #include "../screens/SearchScreen.h"
 #include "../screens/SettingsScreen.h"
 #include "../screens/SyncStatusScreen.h"
+#include "../screens/DetailScreen.h"
 
 namespace VOXA
 {
@@ -68,6 +69,7 @@ namespace VOXA
         m_screens.emplace(ScreenId::Others, std::make_unique<OthersScreen>());
         m_screens.emplace(ScreenId::Settings, std::make_unique<SettingsScreen>());
         m_screens.emplace(ScreenId::SyncStatus, std::make_unique<SyncStatusScreen>());
+        m_screens.emplace(ScreenId::Detail, std::make_unique<DetailScreen>());
     }
 
     void Application::run()

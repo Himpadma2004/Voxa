@@ -5,7 +5,7 @@
 #include <algorithm>
 
 #include "../core/Application.h"
-#include "../core/services/StorageService.h"
+#include "../core/services/QuestionService.h"
 #include "../core/models/Question.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
@@ -64,9 +64,9 @@ namespace VOXA
     void QuestionsScreen::update(Application& app, float deltaSeconds)
     {
         std::size_t numQuestions = 0;
-        if (app.services().storage)
+        if (app.services().questions)
         {
-            numQuestions = app.services().storage->loadAllQuestions().size();
+            numQuestions = app.services().questions->getAll().size();
         }
 
         float contentHeight = std::max(0.0f, static_cast<float>(numQuestions) * 114.0f - 30.0f);
@@ -92,11 +92,11 @@ namespace VOXA
         container.setBorder(Colors::GlassBorder);
         container.render(renderer);
 
-        // Load questions from storage
+        // Load questions from service
         std::vector<Question> questions;
-        if (app.services().storage)
+        if (app.services().questions)
         {
-            questions = app.services().storage->loadAllQuestions();
+            questions = app.services().questions->getAll();
         }
 
         // Set clipping region to prevent scroll overlap with container borders

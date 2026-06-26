@@ -9,6 +9,9 @@
 #include "../models/Memory.h"
 #include "../models/Idea.h"
 #include "../models/Question.h"
+#include "../models/Settings.h"
+#include "../models/History.h"
+#include "../models/Recording.h"
 
 namespace VOXA
 {
@@ -52,6 +55,26 @@ namespace VOXA
         [[nodiscard]] std::vector<Question> loadAllQuestions();
         bool saveQuestion(const Question& question);
         bool deleteQuestion(uint32_t id);
+
+        // ---------------------------------------------------------------
+        // Settings
+        // ---------------------------------------------------------------
+        [[nodiscard]] Settings loadSettings();
+        bool saveSettings(const Settings& settings);
+
+        // ---------------------------------------------------------------
+        // History
+        // ---------------------------------------------------------------
+        [[nodiscard]] std::vector<HistoryEntry> loadAllHistory();
+        bool saveHistory(const HistoryEntry& entry);
+        bool deleteHistory(uint32_t id);
+
+        // ---------------------------------------------------------------
+        // Recordings
+        // ---------------------------------------------------------------
+        [[nodiscard]] std::vector<Recording> loadAllRecordings();
+        bool saveRecording(const Recording& recording);
+        bool deleteRecording(uint32_t id);
 
     private:
         JsonStorage* m_storage { nullptr };

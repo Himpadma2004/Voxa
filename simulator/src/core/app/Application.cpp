@@ -6,6 +6,11 @@
 #include "../services/TimeService.h"
 #include "../services/StorageService.h"
 #include "../services/ReminderService.h"
+#include "../services/IdeaService.h"
+#include "../services/QuestionService.h"
+#include "../services/SettingsService.h"
+#include "../services/HistoryService.h"
+#include "../services/RecordingService.h"
 #include "../services/SearchService.h"
 #include "../navigation/ScreenManager.h"
 #include "../Screen.h"
@@ -31,6 +36,11 @@ namespace VOXA
         auto batteryService  = std::make_unique<BatteryService>(platform.get());
         auto timeService     = std::make_unique<TimeService>();
         auto reminderService = std::make_unique<ReminderService>(storageService.get());
+        auto ideaService     = std::make_unique<IdeaService>(storageService.get());
+        auto questionService = std::make_unique<QuestionService>(storageService.get());
+        auto settingsService = std::make_unique<SettingsService>(storageService.get());
+        auto historyService  = std::make_unique<HistoryService>(storageService.get());
+        auto recordingService = std::make_unique<RecordingService>(storageService.get());
         auto searchService   = std::make_unique<SearchService>(storageService.get());
 
         // 4. Navigation
@@ -41,6 +51,11 @@ namespace VOXA
         m_services.time       = timeService.get();
         m_services.storage    = storageService.get();
         m_services.reminders  = reminderService.get();
+        m_services.ideas      = ideaService.get();
+        m_services.questions  = questionService.get();
+        m_services.settings   = settingsService.get();
+        m_services.history    = historyService.get();
+        m_services.recordings = recordingService.get();
         m_services.search     = searchService.get();
         m_services.navigation = screenManager.get();
 
@@ -51,6 +66,11 @@ namespace VOXA
         m_batteryService  = std::move(batteryService);
         m_timeService     = std::move(timeService);
         m_reminderService = std::move(reminderService);
+        m_ideaService     = std::move(ideaService);
+        m_questionService = std::move(questionService);
+        m_settingsService = std::move(settingsService);
+        m_historyService  = std::move(historyService);
+        m_recordingService = std::move(recordingService);
         m_searchService   = std::move(searchService);
         m_screenManager   = std::move(screenManager);
 
@@ -65,6 +85,11 @@ namespace VOXA
         // Destroy in reverse dependency order
         m_screenManager.reset();
         m_searchService.reset();
+        m_recordingService.reset();
+        m_historyService.reset();
+        m_settingsService.reset();
+        m_questionService.reset();
+        m_ideaService.reset();
         m_reminderService.reset();
         m_timeService.reset();
         m_batteryService.reset();

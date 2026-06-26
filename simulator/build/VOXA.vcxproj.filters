@@ -73,6 +73,21 @@
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\ReminderService.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\IdeaService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\QuestionService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\SettingsService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\HistoryService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\RecordingService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\services\SearchService.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

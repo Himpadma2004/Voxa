@@ -5,7 +5,7 @@
 #include <algorithm>
 
 #include "../core/Application.h"
-#include "../core/services/StorageService.h"
+#include "../core/services/IdeaService.h"
 #include "../core/models/Idea.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
@@ -64,9 +64,9 @@ namespace VOXA
     void IdeasScreen::update(Application& app, float deltaSeconds)
     {
         std::size_t numIdeas = 0;
-        if (app.services().storage)
+        if (app.services().ideas)
         {
-            numIdeas = app.services().storage->loadAllIdeas().size();
+            numIdeas = app.services().ideas->getAll().size();
         }
 
         float contentHeight = std::max(0.0f, static_cast<float>(numIdeas) * 114.0f - 30.0f);
@@ -92,11 +92,11 @@ namespace VOXA
         container.setBorder(Colors::GlassBorder);
         container.render(renderer);
 
-        // Load ideas from storage
+        // Load ideas from IdeaService
         std::vector<Idea> ideas;
-        if (app.services().storage)
+        if (app.services().ideas)
         {
-            ideas = app.services().storage->loadAllIdeas();
+            ideas = app.services().ideas->getAll();
         }
 
         // Set clipping region to prevent scroll overlap with container borders

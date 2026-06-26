@@ -60,6 +60,11 @@ add_executable(VOXA
     src/core/services/TimeService.cpp
     src/core/services/StorageService.cpp
     src/core/services/ReminderService.cpp
+    src/core/services/IdeaService.cpp
+    src/core/services/QuestionService.cpp
+    src/core/services/SettingsService.cpp
+    src/core/services/HistoryService.cpp
+    src/core/services/RecordingService.cpp
     src/core/services/SearchService.cpp
 
     # ── Navigation layer ──────────────────────────────────────────────────

@@ -44,9 +44,17 @@ namespace VOXA
         [[nodiscard]] static std::vector<std::map<std::string, std::string>>
             parseObjectArray(const std::string& json);
 
+        /// Parse a single flat JSON object into a string-keyed map.
+        [[nodiscard]] static std::map<std::string, std::string>
+            parseObject(const std::string& json);
+
         /// Serialise a list of flat string-keyed maps to a JSON array string.
         [[nodiscard]] static std::string
             serializeObjectArray(const std::vector<std::map<std::string, std::string>>& rows);
+
+        /// Serialise a single flat string-keyed map to a JSON object string.
+        [[nodiscard]] static std::string
+            serializeObject(const std::map<std::string, std::string>& obj);
 
         /// Return the root storage directory path.
         [[nodiscard]] const std::string& storageDirectory() const;

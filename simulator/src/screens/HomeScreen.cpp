@@ -4,6 +4,10 @@
 #include <cmath>
 
 #include "../core/Application.h"
+#include "../core/services/ReminderService.h"
+#include "../core/services/IdeaService.h"
+#include "../core/services/QuestionService.h"
+#include "../core/services/StorageService.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Fonts.h"
 #include "../graphics/Icons.h"
@@ -180,12 +184,45 @@ namespace VOXA
         renderer.drawText("3 files waiting to sync", 1204.0f, 300.0f, Colors::TextSecondary, 14);
         renderer.drawText("Tap Settings to continue", 1204.0f, 332.0f, Colors::Primary, 13);
 
+        std::string remindersCount = "0";
+        if (app.services().reminders)
+        {
+            remindersCount = std::to_string(app.services().reminders->getAll().size());
+        }
+
+        std::string ideasCount = "0";
+        if (app.services().ideas)
+        {
+            ideasCount = std::to_string(app.services().ideas->getAll().size());
+        }
+
+        std::string questionsCount = "0";
+        if (app.services().questions)
+        {
+            questionsCount = std::to_string(app.services().questions->getAll().size());
+        }
+
+        std::string memoriesCount = "0";
+        if (app.services().storage)
+        {
+            memoriesCount = std::to_string(app.services().storage->loadAllMemories().size());
+        }
+
+        static std::string remStr;
+        static std::string ideaStr;
+        static std::string questStr;
+        static std::string memStr;
+        remStr = remindersCount;
+        ideaStr = ideasCount;
+        questStr = questionsCount;
+        memStr = memoriesCount;
+
         const std::array<HomeTile, 6> tiles { {
-            { { 366.0f, 438.0f, 380.0f, 170.0f }, Icon::Bell, "Reminders", "3", ScreenId::Reminders },
-            { { 770.0f, 438.0f, 380.0f, 170.0f }, Icon::Lightbulb, "Ideas", "7", ScreenId::Ideas },
-            { { 1174.0f, 438.0f, 380.0f, 170.0f }, Icon::Question, "Questions", "4", ScreenId::Questions },
+            { { 366.0f, 438.0f, 380.0f, 170.0f }, Icon::Bell, "Reminders", remStr.c_str(), ScreenId::Reminders },
+            { { 770.0f, 438.0f, 380.0f, 170.0f }, Icon::Lightbulb, "Ideas", ideaStr.c_str(), ScreenId::Ideas },
+            { { 1174.0f, 438.0f, 380.0f, 170.0f }, Icon::Question, "Questions", questStr.c_str(), ScreenId::Questions },
             { { 366.0f, 634.0f, 380.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
-            { { 770.0f, 634.0f, 380.0f, 170.0f }, Icon::Folder, "Others", "12", ScreenId::Others },
+            { { 770.0f, 634.0f, 380.0f, 170.0f }, Icon::Folder, "Others", memStr.c_str(), ScreenId::Others },
             { { 1174.0f, 634.0f, 380.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
         } };
 

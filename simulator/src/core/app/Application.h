@@ -13,6 +13,10 @@ namespace VOXA
     class TimeService;
     class ReminderService;
     class IdeaService;
+    class QuestionService;
+    class SettingsService;
+    class HistoryService;
+    class RecordingService;
     class SearchService;
     class ScreenManager;
 
@@ -20,13 +24,17 @@ namespace VOXA
     /// Screens should receive a const reference to this struct.
     struct Services
     {
-        BatteryService*  battery  { nullptr };
-        TimeService*     time     { nullptr };
-        StorageService*  storage  { nullptr };
-        ReminderService* reminders { nullptr };
-        IdeaService*     ideas    { nullptr };
-        SearchService*   search   { nullptr };
-        ScreenManager*   navigation { nullptr };
+        BatteryService*   battery    { nullptr };
+        TimeService*      time       { nullptr };
+        StorageService*   storage    { nullptr };
+        ReminderService*  reminders  { nullptr };
+        IdeaService*      ideas      { nullptr };
+        QuestionService*  questions  { nullptr };
+        SettingsService*  settings   { nullptr };
+        HistoryService*   history    { nullptr };
+        RecordingService* recordings { nullptr };
+        SearchService*    search     { nullptr };
+        ScreenManager*    navigation { nullptr };
     };
 
     /// Top-level application orchestrator (new architecture).
@@ -75,6 +83,10 @@ namespace VOXA
         std::unique_ptr<TimeService>     m_timeService;
         std::unique_ptr<ReminderService> m_reminderService;
         std::unique_ptr<IdeaService>     m_ideaService;
+        std::unique_ptr<QuestionService> m_questionService;
+        std::unique_ptr<SettingsService> m_settingsService;
+        std::unique_ptr<HistoryService>  m_historyService;
+        std::unique_ptr<RecordingService> m_recordingService;
         std::unique_ptr<SearchService>   m_searchService;
         std::unique_ptr<ScreenManager>   m_screenManager;
 

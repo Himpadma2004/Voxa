@@ -16,11 +16,15 @@ namespace VOXA
         const char* kMemoriesFile   = "memories.json";
         const char* kIdeasFile      = "ideas.json";
         const char* kQuestionsFile  = "questions.json";
+        const char* kSettingsFile   = "settings.json";
+        const char* kHistoryFile    = "history.json";
+        const char* kRecordingsFile = "recordings.json";
 
         const char* kDefaultReminders = R"([
-  {"id":"1","title":"Call Sofia","dateTime":"Today, 8:00 PM","completed":"false"},
-  {"id":"2","title":"Emily Birthday","dateTime":"Jul 1, 2025","completed":"false"},
-  {"id":"3","title":"Project Meeting","dateTime":"Tomorrow, 10:00 AM","completed":"false"}
+  {"id":"1","title":"Call Sofia","dateTime":"2026-06-28 20:00","completed":"false"},
+  {"id":"2","title":"Emily Birthday","dateTime":"2026-07-01","completed":"false"},
+  {"id":"3","title":"Project Meeting","dateTime":"2026-06-27 10:00","completed":"false"},
+  {"id":"4","title":"Submit Report","dateTime":"2026-06-30","completed":"false"}
 ])";
         const char* kDefaultMemories = R"([
   {"id":"1","title":"YouTube Integration","content":"","timestamp":"2 days ago","category":"voice","durationSeconds":"0"},
@@ -37,6 +41,26 @@ namespace VOXA
   {"id":"2","text":"Explain LLMs simply","answer":"","timestamp":"May 27","answered":"false"},
   {"id":"3","text":"AI future predictions","answer":"","timestamp":"May 26","answered":"false"},
   {"id":"4","text":"How does memory work?","answer":"","timestamp":"May 25","answered":"false"}
+])";
+        const char* kDefaultSettings = R"({
+  "theme": "light",
+  "language": "en",
+  "notifications": "true",
+  "autoSync": "true",
+  "syncInterval": "300",
+  "wifiEnabled": "true",
+  "storageLimit": "32768",
+  "deviceName": "VOXA Device",
+  "firmwareVersion": "1.0.0",
+  "lastSyncTime": "2026-06-26 10:30"
+})";
+        const char* kDefaultHistory = R"([
+  {"id":"1","screen":"Home","action":"app_open","timestamp":"2026-06-26 12:00"},
+  {"id":"2","screen":"Record","action":"navigate","timestamp":"2026-06-26 11:58"}
+])";
+        const char* kDefaultRecordings = R"([
+  {"id":"1","title":"Meeting Notes","filePath":"recordings/rec_1.wav","durationSeconds":"142","timestamp":"2026-06-26 10:00"},
+  {"id":"2","title":"Voice Memo","filePath":"recordings/rec_2.wav","durationSeconds":"35","timestamp":"2026-06-25 15:30"}
 ])";
 
         /// Seed a file with default content if it doesn't exist yet.
@@ -59,6 +83,9 @@ namespace VOXA
         seedIfEmpty(m_storage, kMemoriesFile,   kDefaultMemories);
         seedIfEmpty(m_storage, kIdeasFile,      kDefaultIdeas);
         seedIfEmpty(m_storage, kQuestionsFile,  kDefaultQuestions);
+        seedIfEmpty(m_storage, kSettingsFile,   kDefaultSettings);
+        seedIfEmpty(m_storage, kHistoryFile,    kDefaultHistory);
+        seedIfEmpty(m_storage, kRecordingsFile, kDefaultRecordings);
     }
 
     // -----------------------------------------------------------------------
@@ -104,6 +131,7 @@ namespace VOXA
             r.title     = get("title");
             r.dateTime  = get("dateTime");
             r.completed = (get("completed") == "true");
+            r.comments  = get("comments");
             if (r.isValid()) result.push_back(std::move(r));
         }
         return result;
@@ -123,6 +151,7 @@ namespace VOXA
                 row["title"]     = reminder.title;
                 row["dateTime"]  = reminder.dateTime;
                 row["completed"] = reminder.completed ? "true" : "false";
+                row["comments"]  = reminder.comments;
                 found = true;
                 break;
             }
@@ -134,7 +163,8 @@ namespace VOXA
                 {"id",        std::to_string(id)},
                 {"title",     reminder.title},
                 {"dateTime",  reminder.dateTime},
-                {"completed", reminder.completed ? "true" : "false"}
+                {"completed", reminder.completed ? "true" : "false"},
+                {"comments",  reminder.comments}
             });
         }
         return m_storage->saveJson(kRemindersFile, JsonStorage::serializeObjectArray(rows));
@@ -176,6 +206,7 @@ namespace VOXA
             m.timestamp = get("timestamp");
             m.category  = get("category");
             try { m.durationSeconds = static_cast<uint32_t>(std::stoul(get("durationSeconds"))); } catch(...) {}
+            m.comments = get("comments");
             if (m.isValid()) result.push_back(std::move(m));
         }
         return result;
@@ -195,6 +226,7 @@ namespace VOXA
                 row["timestamp"]       = memory.timestamp;
                 row["category"]        = memory.category;
                 row["durationSeconds"] = std::to_string(memory.durationSeconds);
+                row["comments"]        = memory.comments;
                 found = true;
                 break;
             }
@@ -208,7 +240,8 @@ namespace VOXA
                 {"content",         memory.content},
                 {"timestamp",       memory.timestamp},
                 {"category",        memory.category},
-                {"durationSeconds", std::to_string(memory.durationSeconds)}
+                {"durationSeconds", std::to_string(memory.durationSeconds)},
+                {"comments",        memory.comments}
             });
         }
         return m_storage->saveJson(kMemoriesFile, JsonStorage::serializeObjectArray(rows));
@@ -248,6 +281,7 @@ namespace VOXA
             idea.title     = get("title");
             idea.content   = get("content");
             idea.timestamp = get("timestamp");
+            idea.comments  = get("comments");
             if (idea.isValid()) result.push_back(std::move(idea));
         }
         return result;
@@ -265,6 +299,7 @@ namespace VOXA
                 row["title"]     = idea.title;
                 row["content"]   = idea.content;
                 row["timestamp"] = idea.timestamp;
+                row["comments"]  = idea.comments;
                 found = true;
                 break;
             }
@@ -276,7 +311,8 @@ namespace VOXA
                 {"id",        std::to_string(id)},
                 {"title",     idea.title},
                 {"content",   idea.content},
-                {"timestamp", idea.timestamp}
+                {"timestamp", idea.timestamp},
+                {"comments",  idea.comments}
             });
         }
         return m_storage->saveJson(kIdeasFile, JsonStorage::serializeObjectArray(rows));
@@ -317,6 +353,7 @@ namespace VOXA
             q.answer    = get("answer");
             q.timestamp = get("timestamp");
             q.answered  = (get("answered") == "true");
+            q.comments  = get("comments");
             if (q.isValid()) result.push_back(std::move(q));
         }
         return result;
@@ -335,6 +372,7 @@ namespace VOXA
                 row["answer"]    = question.answer;
                 row["timestamp"] = question.timestamp;
                 row["answered"]  = question.answered ? "true" : "false";
+                row["comments"]  = question.comments;
                 found = true;
                 break;
             }
@@ -347,7 +385,8 @@ namespace VOXA
                 {"text",      question.text},
                 {"answer",    question.answer},
                 {"timestamp", question.timestamp},
-                {"answered",  question.answered ? "true" : "false"}
+                {"answered",  question.answered ? "true" : "false"},
+                {"comments",  question.comments}
             });
         }
         return m_storage->saveJson(kQuestionsFile, JsonStorage::serializeObjectArray(rows));
@@ -365,5 +404,188 @@ namespace VOXA
         if (it == rows.end()) return false;
         rows.erase(it, rows.end());
         return m_storage->saveJson(kQuestionsFile, JsonStorage::serializeObjectArray(rows));
+    }
+
+    // -----------------------------------------------------------------------
+    // Settings
+    // -----------------------------------------------------------------------
+
+    Settings StorageService::loadSettings()
+    {
+        auto fields = JsonStorage::parseObject(m_storage->loadJson(kSettingsFile));
+        Settings s;
+        auto get = [&](const char* k, const std::string& def) -> std::string {
+            auto it = fields.find(k);
+            return it != fields.end() ? it->second : def;
+        };
+
+        s.theme = get("theme", "light");
+        s.language = get("language", "en");
+        s.notifications = (get("notifications", "true") == "true");
+        s.autoSync = (get("autoSync", "true") == "true");
+        try { s.syncInterval = std::stoul(get("syncInterval", "300")); } catch(...) {}
+        s.wifiEnabled = (get("wifiEnabled", "true") == "true");
+        try { s.storageLimit = std::stoul(get("storageLimit", "32768")); } catch(...) {}
+        s.deviceName = get("deviceName", "VOXA Device");
+        s.firmwareVersion = get("firmwareVersion", "1.0.0");
+        s.lastSyncTime = get("lastSyncTime", "");
+
+        return s;
+    }
+
+    bool StorageService::saveSettings(const Settings& settings)
+    {
+        std::map<std::string, std::string> fields;
+        fields["theme"] = settings.theme;
+        fields["language"] = settings.language;
+        fields["notifications"] = settings.notifications ? "true" : "false";
+        fields["autoSync"] = settings.autoSync ? "true" : "false";
+        fields["syncInterval"] = std::to_string(settings.syncInterval);
+        fields["wifiEnabled"] = settings.wifiEnabled ? "true" : "false";
+        fields["storageLimit"] = std::to_string(settings.storageLimit);
+        fields["deviceName"] = settings.deviceName;
+        fields["firmwareVersion"] = settings.firmwareVersion;
+        fields["lastSyncTime"] = settings.lastSyncTime;
+
+        return m_storage->saveJson(kSettingsFile, JsonStorage::serializeObject(fields));
+    }
+
+    // -----------------------------------------------------------------------
+    // History
+    // -----------------------------------------------------------------------
+
+    std::vector<HistoryEntry> StorageService::loadAllHistory()
+    {
+        auto rows = JsonStorage::parseObjectArray(m_storage->loadJson(kHistoryFile));
+        std::vector<HistoryEntry> result;
+        result.reserve(rows.size());
+        for (const auto& row : rows)
+        {
+            HistoryEntry e;
+            auto get = [&](const char* k) -> std::string {
+                auto it = row.find(k);
+                return it != row.end() ? it->second : std::string{};
+            };
+            try { e.id = static_cast<uint32_t>(std::stoul(get("id"))); } catch(...) {}
+            e.screen    = get("screen");
+            e.action    = get("action");
+            e.timestamp = get("timestamp");
+            if (e.isValid()) result.push_back(std::move(e));
+        }
+        return result;
+    }
+
+    bool StorageService::saveHistory(const HistoryEntry& entry)
+    {
+        auto rows = JsonStorage::parseObjectArray(m_storage->loadJson(kHistoryFile));
+        bool found = false;
+        for (auto& row : rows)
+        {
+            auto it = row.find("id");
+            if (it != row.end() && it->second == std::to_string(entry.id))
+            {
+                row["screen"]    = entry.screen;
+                row["action"]    = entry.action;
+                row["timestamp"] = entry.timestamp;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            uint32_t id = (entry.id == 0) ? nextId(rows) : entry.id;
+            rows.push_back({
+                {"id",        std::to_string(id)},
+                {"screen",    entry.screen},
+                {"action",    entry.action},
+                {"timestamp", entry.timestamp}
+            });
+        }
+        return m_storage->saveJson(kHistoryFile, JsonStorage::serializeObjectArray(rows));
+    }
+
+    bool StorageService::deleteHistory(uint32_t id)
+    {
+        auto rows = JsonStorage::parseObjectArray(m_storage->loadJson(kHistoryFile));
+        const std::string idStr = std::to_string(id);
+        auto it = std::remove_if(rows.begin(), rows.end(),
+            [&](const std::map<std::string, std::string>& r) {
+                auto jt = r.find("id");
+                return jt != r.end() && jt->second == idStr;
+            });
+        if (it == rows.end()) return false;
+        rows.erase(it, rows.end());
+        return m_storage->saveJson(kHistoryFile, JsonStorage::serializeObjectArray(rows));
+    }
+
+    // -----------------------------------------------------------------------
+    // Recordings
+    // -----------------------------------------------------------------------
+
+    std::vector<Recording> StorageService::loadAllRecordings()
+    {
+        auto rows = JsonStorage::parseObjectArray(m_storage->loadJson(kRecordingsFile));
+        std::vector<Recording> result;
+        result.reserve(rows.size());
+        for (const auto& row : rows)
+        {
+            Recording r;
+            auto get = [&](const char* k) -> std::string {
+                auto it = row.find(k);
+                return it != row.end() ? it->second : std::string{};
+            };
+            try { r.id = static_cast<uint32_t>(std::stoul(get("id"))); } catch(...) {}
+            r.title           = get("title");
+            r.filePath        = get("filePath");
+            try { r.durationSeconds = static_cast<uint32_t>(std::stoul(get("durationSeconds"))); } catch(...) {}
+            r.timestamp       = get("timestamp");
+            if (r.isValid()) result.push_back(std::move(r));
+        }
+        return result;
+    }
+
+    bool StorageService::saveRecording(const Recording& recording)
+    {
+        auto rows = JsonStorage::parseObjectArray(m_storage->loadJson(kRecordingsFile));
+        bool found = false;
+        for (auto& row : rows)
+        {
+            auto it = row.find("id");
+            if (it != row.end() && it->second == std::to_string(recording.id))
+            {
+                row["title"]           = recording.title;
+                row["filePath"]        = recording.filePath;
+                row["durationSeconds"] = std::to_string(recording.durationSeconds);
+                row["timestamp"]       = recording.timestamp;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            uint32_t id = (recording.id == 0) ? nextId(rows) : recording.id;
+            rows.push_back({
+                {"id",              std::to_string(id)},
+                {"title",           recording.title},
+                {"filePath",        recording.filePath},
+                {"durationSeconds", std::to_string(recording.durationSeconds)},
+                {"timestamp",       recording.timestamp}
+            });
+        }
+        return m_storage->saveJson(kRecordingsFile, JsonStorage::serializeObjectArray(rows));
+    }
+
+    bool StorageService::deleteRecording(uint32_t id)
+    {
+        auto rows = JsonStorage::parseObjectArray(m_storage->loadJson(kRecordingsFile));
+        const std::string idStr = std::to_string(id);
+        auto it = std::remove_if(rows.begin(), rows.end(),
+            [&](const std::map<std::string, std::string>& r) {
+                auto jt = r.find("id");
+                return jt != r.end() && jt->second == idStr;
+            });
+        if (it == rows.end()) return false;
+        rows.erase(it, rows.end());
+        return m_storage->saveJson(kRecordingsFile, JsonStorage::serializeObjectArray(rows));
     }
 }

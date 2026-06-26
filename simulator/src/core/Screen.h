@@ -18,7 +18,8 @@ namespace VOXA
         Ideas,
         Others,
         Settings,
-        SyncStatus
+        SyncStatus,
+        Detail
     };
 
     class Screen

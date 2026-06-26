@@ -2,10 +2,10 @@
 	"artifacts" : 
 	[
 		{
-			"path" : "Debug/VOXA.exe"
+			"path" : "MinSizeRel/VOXA.exe"
 		},
 		{
-			"path" : "Debug/VOXA.pdb"
+			"path" : "MinSizeRel/VOXA.pdb"
 		}
 	],
 	"backtrace" : 2,
@@ -43,7 +43,7 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 82,
+				"line" : 87,
 				"parent" : 0
 			},
 			{
@@ -76,7 +76,7 @@
 			"compileCommandFragments" : 
 			[
 				{
-					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++17 -MDd"
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /O1 /Ob1 /DNDEBUG -std:c++17 -MD"
 				}
 			],
 			"includes" : 
@@ -132,7 +132,12 @@
 				31,
 				32,
 				33,
-				34
+				34,
+				35,
+				36,
+				37,
+				38,
+				39
 			]
 		}
 	],
@@ -148,11 +153,11 @@
 		"commandFragments" : 
 		[
 			{
-				"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -MDd",
+				"fragment" : "/DWIN32 /D_WINDOWS /EHsc /O1 /Ob1 /DNDEBUG -MD",
 				"role" : "flags"
 			},
 			{
-				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"fragment" : "/machine:x64 /INCREMENTAL:NO",
 				"role" : "flags"
 			},
 			{
@@ -161,12 +166,12 @@
 			},
 			{
 				"backtrace" : 3,
-				"fragment" : "C:\\vcpkg\\installed\\x64-windows\\debug\\lib\\SDL3_ttf.lib",
+				"fragment" : "C:\\vcpkg\\installed\\x64-windows\\lib\\SDL3_ttf.lib",
 				"role" : "libraries"
 			},
 			{
 				"backtrace" : 3,
-				"fragment" : "C:\\vcpkg\\installed\\x64-windows\\debug\\lib\\SDL3.lib",
+				"fragment" : "C:\\vcpkg\\installed\\x64-windows\\lib\\SDL3.lib",
 				"role" : "libraries"
 			},
 			{
@@ -236,18 +241,23 @@
 				26,
 				27,
 				28,
+				29,
 				30,
 				31,
 				32,
-				33
+				33,
+				35,
+				36,
+				37,
+				38
 			]
 		},
 		{
 			"name" : "",
 			"sourceIndexes" : 
 			[
-				29,
-				34
+				34,
+				39
 			]
 		}
 	],
@@ -491,6 +501,56 @@
 			],
 			"compileGroupIndex" : 0,
 			"path" : "src/core/services/ReminderService.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"backtraces" : 
+			[
+				2
+			],
+			"compileGroupIndex" : 0,
+			"path" : "src/core/services/IdeaService.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"backtraces" : 
+			[
+				2
+			],
+			"compileGroupIndex" : 0,
+			"path" : "src/core/services/QuestionService.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"backtraces" : 
+			[
+				2
+			],
+			"compileGroupIndex" : 0,
+			"path" : "src/core/services/SettingsService.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"backtraces" : 
+			[
+				2
+			],
+			"compileGroupIndex" : 0,
+			"path" : "src/core/services/HistoryService.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"backtraces" : 
+			[
+				2
+			],
+			"compileGroupIndex" : 0,
+			"path" : "src/core/services/RecordingService.cpp",
 			"sourceGroupIndex" : 0
 		},
 		{

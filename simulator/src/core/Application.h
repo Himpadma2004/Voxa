@@ -32,6 +32,15 @@ namespace VOXA
         [[nodiscard]] AudioEngine& audio();
         [[nodiscard]] SDL_FPoint windowToCanvas(float windowX, float windowY) const;
 
+        struct DetailViewItem
+        {
+            std::string category; // "ideas" | "reminders" | "questions" | "others"
+            uint32_t id {0};
+        };
+
+        void setSelectedItem(const std::string& category, uint32_t id) { m_selectedItem = {category, id}; }
+        [[nodiscard]] const DetailViewItem& getSelectedItem() const { return m_selectedItem; }
+
         /// Access all backend services (reminders, search, battery, time, …).
         [[nodiscard]] Services& services();
         [[nodiscard]] const Services& services() const;
@@ -66,5 +75,6 @@ namespace VOXA
         float m_transitionElapsed { 0.0f };
         float m_transitionDuration { 0.35f };
         bool m_transitionForward { true };
+        DetailViewItem m_selectedItem;
     };
 }
