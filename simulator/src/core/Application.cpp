@@ -36,6 +36,11 @@ namespace VOXA
 
     bool Application::initialize()
     {
+        if (!m_voxaApp.initialize())
+        {
+            return false;
+        }
+
         if (!m_renderer.initialize("VOXA Simulator", 1600, 900, 1600, 900))
         {
             return false;
@@ -139,6 +144,8 @@ namespace VOXA
 
     void Application::shutdown()
     {
+        m_voxaApp.shutdown();
+
         if (m_currentScreen != nullptr)
         {
             m_currentScreen->onExit(*this);
@@ -292,5 +299,15 @@ namespace VOXA
         m_currentScreenId = m_pendingScreenId;
         m_currentScreen = m_screens.at(m_currentScreenId).get();
         m_currentScreen->onEnter(*this);
+    }
+
+    Services& Application::services()
+    {
+        return m_voxaApp.services();
+    }
+
+    const Services& Application::services() const
+    {
+        return m_voxaApp.services();
     }
 }

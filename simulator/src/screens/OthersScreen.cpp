@@ -1,9 +1,12 @@
 #include "OthersScreen.h"
 
-#include <array>
-#include <tuple>
+#include <vector>
+#include <cmath>
+#include <algorithm>
 
 #include "../core/Application.h"
+#include "../core/services/StorageService.h"
+#include "../core/models/Memory.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
 #include "../widgets/Card.h"
@@ -26,14 +29,59 @@ namespace VOXA
             {
                 app.navigateTo(ScreenId::Home);
             }
+            else if (Rect { 300.0f, 180.0f, 1000.0f, 580.0f }.contains(point.x, point.y))
+            {
+                m_isDragging = true;
+                m_dragStartY = point.y;
+                m_dragStartScrollY = m_targetScrollY;
+            }
+        }
+        else if (event.type == SDL_EVENT_MOUSE_MOTION)
+        {
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.motion.x, event.motion.y);
+                float diffY = point.y - m_dragStartY;
+                m_targetScrollY = m_dragStartScrollY - diffY;
+            }
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+        {
+            m_isDragging = false;
+        }
+        else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+        {
+            float mx = 0.0f, my = 0.0f;
+            SDL_GetMouseState(&mx, &my);
+            const SDL_FPoint mPt = app.windowToCanvas(mx, my);
+            if (Rect { 300.0f, 140.0f, 1000.0f, 640.0f }.contains(mPt.x, mPt.y))
+            {
+                m_targetScrollY -= event.wheel.y * 38.0f;
+            }
         }
     }
 
-    void OthersScreen::update(Application&, float)
+    void OthersScreen::update(Application& app, float deltaSeconds)
     {
+        std::size_t numMemories = 0;
+        if (app.services().storage)
+        {
+            numMemories = app.services().storage->loadAllMemories().size();
+        }
+
+        float contentHeight = std::max(0.0f, static_cast<float>(numMemories) * 114.0f - 30.0f);
+        float visibleHeight = 560.0f;
+        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+        m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
+        m_scrollY += (m_targetScrollY - m_scrollY) * 12.0f * deltaSeconds;
+        if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
+        {
+            m_scrollY = m_targetScrollY;
+        }
     }
 
-    void OthersScreen::render(Application&, Renderer& renderer)
+    void OthersScreen::render(Application& app, Renderer& renderer)
     {
         ScreenCommon::renderSurface(renderer);
         ScreenCommon::renderHeader(renderer, "Others", true, true, Icon::Plus);
@@ -44,20 +92,50 @@ namespace VOXA
         container.setBorder(Colors::GlassBorder);
         container.render(renderer);
 
-        const std::array<std::tuple<Icon, const char*, const char*, SDL_Color>, 4> items { {
-            { Icon::Note, "Meeting Notes", "May 28", SDL_Color { 222, 92, 255, 255 } },
-            { Icon::Chat, "Random Thoughts", "May 27", SDL_Color { 56, 168, 255, 255 } },
-            { Icon::Mic, "Voice Note - Idea", "May 26", SDL_Color { 68, 192, 122, 255 } },
-            { Icon::Note, "Daily Log", "May 25", SDL_Color { 62, 152, 255, 255 } },
-        } };
-
-        for (std::size_t i = 0; i < items.size(); ++i)
+        // Load memories from storage
+        std::vector<Memory> memories;
+        if (app.services().storage)
         {
-            ListTile tile(Rect { 380.0f, 200.0f + i * 114.0f, 840.0f, 84.0f },
-                          std::get<0>(items[i]), std::get<1>(items[i]), std::get<2>(items[i]), std::get<3>(items[i]),
-                          SDL_Color { 0, 0, 0, 0 }, false);
+            memories = app.services().storage->loadAllMemories();
+        }
+
+        // Set clipping region to prevent scroll overlap with container borders
+        renderer.setClipRect(300.0f, 180.0f, 1000.0f, 580.0f);
+
+        for (std::size_t i = 0; i < memories.size(); ++i)
+        {
+            const auto& m = memories[i];
+            
+            // Map category to icon and color
+            Icon icon = Icon::Note;
+            SDL_Color color = SDL_Color { 222, 92, 255, 255 }; // default purple
+            if (m.category == "voice")
+            {
+                icon = Icon::Mic;
+                color = SDL_Color { 68, 192, 122, 255 }; // green for voice note
+            }
+            else if (m.title.find("Thoughts") != std::string::npos || m.title.find("Thoughts") != std::string::npos)
+            {
+                icon = Icon::Chat;
+                color = SDL_Color { 56, 168, 255, 255 }; // blue
+            }
+            else if (m.title.find("Daily") != std::string::npos)
+            {
+                icon = Icon::Note;
+                color = SDL_Color { 62, 152, 255, 255 }; // light blue
+            }
+
+            ListTile tile(Rect { 380.0f, 200.0f + i * 114.0f - m_scrollY, 840.0f, 84.0f },
+                          icon, 
+                          m.title.c_str(), 
+                          m.timestamp.c_str(), 
+                          color,
+                          SDL_Color { 0, 0, 0, 0 }, 
+                          false);
             tile.render(renderer);
         }
+
+        renderer.clearClipRect();
 
         ScreenCommon::renderPageDots(renderer, 0);
     }

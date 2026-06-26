@@ -3,8 +3,11 @@
 #include <array>
 #include <vector>
 #include <cctype>
+#include <algorithm>
+#include <cmath>
 
 #include "../core/Application.h"
+#include "../core/services/SearchService.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
 #include "../widgets/Card.h"
@@ -15,13 +18,21 @@
 
 namespace
 {
-    struct SearchEntry
+    VOXA::Icon getCategoryIcon(const std::string& cat)
     {
-        VOXA::Icon icon;
-        const char* title;
-        const char* age;
-        SDL_Color color;
-    };
+        if (cat == "reminder") return VOXA::Icon::Bell;
+        if (cat == "idea") return VOXA::Icon::Lightbulb;
+        if (cat == "question") return VOXA::Icon::Question;
+        return VOXA::Icon::Mic;
+    }
+
+    SDL_Color getCategoryColor(const std::string& cat)
+    {
+        if (cat == "reminder") return SDL_Color { 255, 170, 40, 255 };
+        if (cat == "idea") return SDL_Color { 255, 178, 40, 255 };
+        if (cat == "question") return SDL_Color { 176, 84, 255, 255 };
+        return SDL_Color { 147, 108, 255, 255 };
+    }
 
     struct KeyDefinition
     {
@@ -85,6 +96,9 @@ namespace VOXA
         m_voiceSearchOpen = false;
         m_voiceSearchAnim = 0.0f;
         m_voiceElapsed = 0.0f;
+        m_scrollY = 0.0f;
+        m_targetScrollY = 0.0f;
+        m_isDragging = false;
     }
 
     void SearchScreen::handleEvent(Application& app, const SDL_Event& event)
@@ -121,6 +135,35 @@ namespace VOXA
             }
         }
 
+        if (event.type == SDL_EVENT_MOUSE_WHEEL)
+        {
+            float mx = 0.0f, my = 0.0f;
+            SDL_GetMouseState(&mx, &my);
+            const SDL_FPoint mPt = app.windowToCanvas(mx, my);
+            if (Rect { 86.0f, 278.0f, 930.0f, 612.0f }.contains(mPt.x, mPt.y))
+            {
+                m_targetScrollY -= event.wheel.y * 38.0f;
+            }
+            return;
+        }
+
+        if (event.type == SDL_EVENT_MOUSE_MOTION)
+        {
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.motion.x, event.motion.y);
+                float diffY = point.y - m_dragStartY;
+                m_targetScrollY = m_dragStartScrollY - diffY;
+            }
+            return;
+        }
+
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+        {
+            m_isDragging = false;
+            return;
+        }
+
         if (event.type != SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
             return;
@@ -133,6 +176,14 @@ namespace VOXA
         {
             app.navigateTo(ScreenId::Home);
             return;
+        }
+
+        // List drag-scrolling click detection
+        if (Rect { 86.0f, 278.0f, 930.0f, 612.0f }.contains(point.x, point.y))
+        {
+            m_isDragging = true;
+            m_dragStartY = point.y;
+            m_dragStartScrollY = m_targetScrollY;
         }
 
         // Search Bar click toggles keyboard
@@ -216,7 +267,7 @@ namespace VOXA
         m_keyboardOpen = false;
     }
 
-    void SearchScreen::update(Application&, float deltaSeconds)
+    void SearchScreen::update(Application& app, float deltaSeconds)
     {
         m_elapsed += deltaSeconds;
 
@@ -278,42 +329,48 @@ namespace VOXA
         }
         drawIcon(renderer, Icon::Search, searchBarRect.x + searchBarRect.w - searchBarRect.h * 0.8f, searchBarRect.y + searchBarRect.h * 0.25f, searchBarRect.h * 0.45f, Colors::TextSecondary);
 
-        renderer.drawText("Recent Searches", 88.0f, 236.0f, Colors::TextPrimary, 18);
-
-        const std::array<SearchEntry, 4> entries { {
-            { Icon::Mic, "YouTube Integration", "2 days ago", SDL_Color { 147, 108, 255, 255 } },
-            { Icon::Lightbulb, "AI Future Notes", "3 days ago", SDL_Color { 255, 178, 40, 255 } },
-            { Icon::Bell, "Project Ideas", "5 days ago", SDL_Color { 255, 170, 40, 255 } },
-            { Icon::Calendar, "Study Plan", "1 week ago", SDL_Color { 176, 84, 255, 255 } },
-        } };
-
-        for (std::size_t i = 0; i < entries.size(); ++i)
+        if (m_searchQuery.empty())
         {
-            // If search query is not empty and entry does not contain query, skip or fade it!
-            bool matches = true;
-            if (!m_searchQuery.empty())
-            {
-                std::string titleLower = entries[i].title;
-                std::string queryLower = m_searchQuery;
-                for (auto& c : titleLower) c = std::tolower(c);
-                for (auto& c : queryLower) c = std::tolower(c);
-                if (titleLower.find(queryLower) == std::string::npos)
-                {
-                    matches = false;
-                }
-            }
+            renderer.drawText("Recent Searches", 88.0f, 236.0f, Colors::TextPrimary, 18);
+        }
+        else
+        {
+            renderer.drawText("Search Results", 88.0f, 236.0f, Colors::TextPrimary, 18);
+        }
 
-            const float slide = std::max(0.0f, 54.0f - m_elapsed * (72.0f + static_cast<float>(i) * 6.0f));
-            const Rect tileRect { 86.0f, 278.0f + i * 122.0f + slide, 930.0f, 96.0f };
-            
-            if (matches)
+        // Retrieve search results dynamically from the SearchService
+        std::vector<SearchResult> results;
+        if (app.services().search)
+        {
+            if (m_searchQuery.empty())
             {
-                const bool tileHovered = tileRect.contains(mPt.x, mPt.y);
-                ListTile tile(tileRect, entries[i].icon, entries[i].title, entries[i].age, entries[i].color, 
-                    tileHovered ? Colors::CardHover : SDL_Color { 0, 0, 0, 0 }, true);
-                tile.render(renderer);
+                results = app.services().search->getRecent(10);
+            }
+            else
+            {
+                results = app.services().search->search(m_searchQuery);
             }
         }
+
+        // Set clipping region to prevent scroll overlap with search bar or screen bottom
+        renderer.setClipRect(80.0f, 270.0f, 960.0f, 620.0f);
+
+        for (std::size_t i = 0; i < results.size(); ++i)
+        {
+            const auto& res = results[i];
+            Icon icon = getCategoryIcon(res.category);
+            SDL_Color color = getCategoryColor(res.category);
+
+            const float slide = std::max(0.0f, 54.0f - m_elapsed * (72.0f + static_cast<float>(i) * 6.0f));
+            const Rect tileRect { 86.0f, 278.0f + i * 122.0f + slide - m_scrollY, 930.0f, 96.0f };
+            const bool tileHovered = tileRect.contains(mPt.x, mPt.y);
+
+            ListTile tile(tileRect, icon, res.title.c_str(), res.timestamp.c_str(), color, 
+                tileHovered ? Colors::CardHover : SDL_Color { 0, 0, 0, 0 }, true);
+            tile.render(renderer);
+        }
+
+        renderer.clearClipRect();
 
         // Spotlight focus card on the right
         const Rect spotRect { 1070.0f, 128.0f, 424.0f, 570.0f };

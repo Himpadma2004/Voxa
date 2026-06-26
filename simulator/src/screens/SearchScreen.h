@@ -22,5 +22,11 @@ namespace VOXA
         bool m_voiceSearchOpen { false };
         float m_voiceSearchAnim { 0.0f };
         float m_voiceElapsed { 0.0f };
+
+        float m_scrollY { 0.0f };
+        float m_targetScrollY { 0.0f };
+        bool m_isDragging { false };
+        float m_dragStartY { 0.0f };
+        float m_dragStartScrollY { 0.0f };
     };
 }

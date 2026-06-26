@@ -2,5 +2,7 @@
   {"id":"1","title":"Call Sofia","dateTime":"2026-06-28 20:00","completed":"false"},
   {"id":"2","title":"Emily Birthday","dateTime":"2026-07-01","completed":"false"},
   {"id":"3","title":"Project Meeting","dateTime":"2026-06-27 10:00","completed":"false"},
-  {"id":"4","title":"Submit Report","dateTime":"2026-06-30","completed":"false"}
+  {"id":"4","title":"Submit Report","dateTime":"2026-06-30","completed":"false"},
+  {"id": 5,"title": "Meeting with Alex","time": "09:30","date": "2026-06-28"},
+  {"id": 6,"title": "Group Project","time": "18:00","date": "2026-06-28"}
 ]

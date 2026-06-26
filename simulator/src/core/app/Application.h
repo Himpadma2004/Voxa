@@ -12,6 +12,7 @@ namespace VOXA
     class BatteryService;
     class TimeService;
     class ReminderService;
+    class IdeaService;
     class SearchService;
     class ScreenManager;
 
@@ -23,6 +24,7 @@ namespace VOXA
         TimeService*     time     { nullptr };
         StorageService*  storage  { nullptr };
         ReminderService* reminders { nullptr };
+        IdeaService*     ideas    { nullptr };
         SearchService*   search   { nullptr };
         ScreenManager*   navigation { nullptr };
     };
@@ -72,6 +74,7 @@ namespace VOXA
         std::unique_ptr<BatteryService>  m_batteryService;
         std::unique_ptr<TimeService>     m_timeService;
         std::unique_ptr<ReminderService> m_reminderService;
+        std::unique_ptr<IdeaService>     m_ideaService;
         std::unique_ptr<SearchService>   m_searchService;
         std::unique_ptr<ScreenManager>   m_screenManager;
 
