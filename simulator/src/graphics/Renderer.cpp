@@ -92,7 +92,7 @@ namespace VOXA
         m_canvasHeight = canvasHeight;
 
         SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderLogicalPresentation(m_renderer, canvasWidth, canvasHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
+        SDL_SetRenderLogicalPresentation(m_renderer, canvasWidth, canvasHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
         m_running = true;
         return true;
     }
@@ -150,8 +150,7 @@ namespace VOXA
         m_letterboxViewport.x = (winW - m_letterboxViewport.w) / 2;
         m_letterboxViewport.y = (winH - m_letterboxViewport.h) / 2;
         
-        SDL_SetRenderViewport(m_renderer, &m_letterboxViewport);
-        SDL_SetRenderScale(m_renderer, m_letterboxScale, m_letterboxScale);
+        clear(SDL_Color{ 0, 0, 0, 255 });
     }
 
     void Renderer::endFrame()
@@ -544,6 +543,6 @@ namespace VOXA
 
     void Renderer::resetLogicalOffset()
     {
-        SDL_SetRenderViewport(m_renderer, &m_letterboxViewport);
+        SDL_SetRenderViewport(m_renderer, nullptr);
     }
 }
