@@ -26,8 +26,8 @@ namespace VOXA
         const float iconBoxX = m_bounds.x + m_bounds.h * 0.28f;
         const float iconBoxY = m_bounds.y + (m_bounds.h - iconBoxSize) * 0.5f;
         const float textX = m_bounds.x + m_bounds.h * 0.92f;
-        const float titleSize = std::max(16.0f, m_bounds.h * 0.24f);
-        const float subtitleSize = std::max(12.0f, m_bounds.h * 0.18f);
+        const float titleSize = std::max(11.0f, m_bounds.h * 0.24f);
+        const float subtitleSize = std::max(9.0f, m_bounds.h * 0.18f);
 
         renderer.fillRoundedRect(m_bounds.x, m_bounds.y, m_bounds.w, m_bounds.h, radius, Colors::Card);
         renderer.drawRoundedRect(m_bounds.x, m_bounds.y, m_bounds.w, m_bounds.h, radius, Colors::GlassBorder);

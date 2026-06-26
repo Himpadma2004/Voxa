@@ -2,29 +2,56 @@
 
 #include <array>
 #include <cmath>
+#include <chrono>
+#include <ctime>
+#include <string>
 
 #include "../core/Application.h"
-#include "../core/services/ReminderService.h"
-#include "../core/services/IdeaService.h"
-#include "../core/services/QuestionService.h"
-#include "../core/services/StorageService.h"
-#include "../core/services/MemoryService.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Fonts.h"
 #include "../graphics/Icons.h"
 #include "../graphics/Renderer.h"
 #include "../widgets/Card.h"
-#include "../widgets/StatusBar.h"
 #include "ScreenCommon.h"
 
 namespace
 {
-    struct HomeTile
+    std::string getCurrentDateText()
     {
-        VOXA::Rect bounds;
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm;
+#if defined(_MSC_VER)
+        localtime_s(&local_tm, &now_time);
+#else
+        localtime_r(&now_time, &local_tm);
+#endif
+        char buffer[128];
+        std::strftime(buffer, sizeof(buffer), "%A, %b %d", &local_tm);
+        return std::string(buffer);
+    }
+
+    std::string getCurrentTimeText()
+    {
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm;
+#if defined(_MSC_VER)
+        localtime_s(&local_tm, &now_time);
+#else
+        localtime_r(&now_time, &local_tm);
+#endif
+        char buffer[128];
+        std::strftime(buffer, sizeof(buffer), "%I:%M", &local_tm);
+        std::string s(buffer);
+        if (!s.empty() && s[0] == '0') s = s.substr(1);
+        return s;
+    }
+
+    struct HomeAppCell
+    {
         VOXA::Icon icon;
         const char* title;
-        const char* value;
         VOXA::ScreenId target;
     };
 }
@@ -43,60 +70,99 @@ namespace VOXA
 
     void HomeScreen::handleEvent(Application& app, const SDL_Event& event)
     {
-        if (event.type != SDL_EVENT_MOUSE_BUTTON_DOWN)
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
-            return;
+            const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+            m_isDragging = true;
+            m_dragStartX = point.x;
+            m_dragStartY = point.y;
         }
-
-        const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-
-        const Rect recordCard { 366.0f, 218.0f, 784.0f, 180.0f };
-        if (recordCard.contains(point.x, point.y))
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            app.navigateTo(ScreenId::Record);
-            return;
-        }
-
-        // Quick nav sidebar items
-        const std::array<std::pair<const char*, ScreenId>, 4> quickNav { {
-            { "Search Memories", ScreenId::Search },
-            { "Voice Capture", ScreenId::Record },
-            { "Reminder Stack", ScreenId::Reminders },
-            { "System Settings", ScreenId::Settings },
-        } };
-        for (std::size_t i = 0; i < quickNav.size(); ++i)
-        {
-            const float y = 390.0f + static_cast<float>(i) * 76.0f;
-            if (Rect { 74.0f, y, 218.0f, 54.0f }.contains(point.x, point.y))
+            if (m_isDragging)
             {
-                app.navigateTo(quickNav[i].second);
-                return;
-            }
-        }
+                const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+                float dx = point.x - m_dragStartX;
+                float dy = point.y - m_dragStartY;
+                m_isDragging = false;
 
-        // Sidebar mic button
-        const float micDist = std::hypot(point.x - 183.0f, point.y - 744.0f);
-        if (micDist <= 40.0f)
-        {
-            app.navigateTo(ScreenId::Record);
-            return;
-        }
+                // Watch-like swipe detection
+                if (std::abs(dx) > 30.0f && std::abs(dy) < 50.0f)
+                {
+                    if (dx < 0.0f && m_page == 0) // swiped left -> next page
+                    {
+                        m_page = 1;
+                        app.audio().playSoftConfirm();
+                        return;
+                    }
+                    else if (dx > 0.0f && m_page == 1) // swiped right -> prev page
+                    {
+                        m_page = 0;
+                        app.audio().playSoftConfirm();
+                        return;
+                    }
+                }
 
-        const std::array<HomeTile, 6> tiles { {
-            { { 366.0f, 438.0f, 380.0f, 170.0f }, Icon::Bell, "Reminders", "3", ScreenId::Reminders },
-            { { 770.0f, 438.0f, 380.0f, 170.0f }, Icon::Lightbulb, "Ideas", "7", ScreenId::Ideas },
-            { { 1174.0f, 438.0f, 380.0f, 170.0f }, Icon::Question, "Questions", "4", ScreenId::Questions },
-            { { 366.0f, 634.0f, 380.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
-            { { 770.0f, 634.0f, 380.0f, 170.0f }, Icon::Folder, "Others", "12", ScreenId::Others },
-            { { 1174.0f, 634.0f, 380.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
-        } };
+                // Standard touch click
+                if (std::abs(dx) < 6.0f && std::abs(dy) < 6.0f)
+                {
+                    // Bottom page dots trigger clicks to ease testing
+                    if (point.y >= 215.0f && point.y <= 235.0f)
+                    {
+                        if (point.x >= 140.0f && point.x <= 160.0f)
+                        {
+                            m_page = 0;
+                            app.audio().playClick();
+                            return;
+                        }
+                        else if (point.x >= 160.0f && point.x <= 180.0f)
+                        {
+                            m_page = 1;
+                            app.audio().playClick();
+                            return;
+                        }
+                    }
 
-        for (const HomeTile& tile : tiles)
-        {
-            if (tile.bounds.contains(point.x, point.y))
-            {
-                app.navigateTo(tile.target);
-                return;
+                    if (m_page == 0)
+                    {
+                        // Mic button: centered at (160, 168), radius 28
+                        float dist = std::hypot(point.x - 160.0f, point.y - 168.0f);
+                        if (dist <= 28.0f)
+                        {
+                            app.navigateTo(ScreenId::Record);
+                            return;
+                        }
+                    }
+                    else if (m_page == 1)
+                    {
+                        const std::array<HomeAppCell, 6> cells { {
+                            { Icon::Mic, "Capture", ScreenId::Record },
+                            { Icon::Search, "Search", ScreenId::Search },
+                            { Icon::Bell, "Reminders", ScreenId::Reminders },
+                            { Icon::Lightbulb, "Ideas", ScreenId::Ideas },
+                            { Icon::Question, "Questions", ScreenId::Questions },
+                            { Icon::Settings, "Settings", ScreenId::Settings }
+                        } };
+
+                        const float cellW = 80.0f;
+                        const float cellH = 60.0f;
+
+                        for (std::size_t i = 0; i < cells.size(); ++i)
+                        {
+                            int row = static_cast<int>(i) / 3;
+                            int col = static_cast<int>(i) % 3;
+                            float cx = 54.0f + col * 106.0f;
+                            float cy = 85.0f + row * 85.0f;
+                            Rect cellRect { cx - cellW * 0.5f, cy - cellH * 0.5f, cellW, cellH };
+
+                            if (cellRect.contains(point.x, point.y))
+                            {
+                                app.navigateTo(cells[i].target);
+                                return;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -110,148 +176,66 @@ namespace VOXA
     {
         ScreenCommon::renderSurface(renderer);
 
-        // Get mouse coordinates for hover state checks
+        const float width = static_cast<float>(renderer.canvasWidth());
+        
         float mx = 0.0f, my = 0.0f;
         SDL_GetMouseState(&mx, &my);
         const SDL_FPoint mPt = app.windowToCanvas(mx, my);
 
-        Card sidebar(Rect { 48.0f, 118.0f, 270.0f, 686.0f }, SDL_Color { 255, 255, 255, 120 }, 24.0f);
-        sidebar.setShadow(Colors::Shadow, 8);
-        sidebar.setBorder(Colors::GlassBorder);
-        sidebar.render(renderer);
-
-        renderer.drawText("V O X A", 86.0f, 170.0f, Colors::Primary, 26);
-        renderer.drawText("PERSONAL AI ASSISTANT", 86.0f, 214.0f, Colors::TextSecondary, 12);
-        renderer.drawText("Embedded Voice Workspace", 86.0f, 278.0f, Colors::TextPrimary, 18);
-        renderer.drawText("Landscape simulator preview", 86.0f, 310.0f, Colors::TextSecondary, 13);
-
-        const std::array<std::pair<const char*, ScreenId>, 4> quickNav { {
-            { "Search Memories", ScreenId::Search },
-            { "Voice Capture", ScreenId::Record },
-            { "Reminder Stack", ScreenId::Reminders },
-            { "System Settings", ScreenId::Settings },
-        } };
-
-        for (std::size_t i = 0; i < quickNav.size(); ++i)
+        if (m_page == 0)
         {
-            const float y = 390.0f + static_cast<float>(i) * 76.0f;
-            const Rect navRect { 74.0f, y, 218.0f, 54.0f };
-            const bool hovered = navRect.contains(mPt.x, mPt.y);
+            // PAGE 0: Watch Face & Main Capture
+            // Large digital watch clock
+            renderer.drawTextCentered(getCurrentDateText(), width * 0.5f, 48.0f, Colors::TextSecondary, 12);
+            renderer.drawTextCentered(getCurrentTimeText(), width * 0.5f, 62.0f, Colors::TextPrimary, 52);
 
-            renderer.fillRoundedRect(74.0f, y, 218.0f, 54.0f, 18.0f, 
-                hovered ? SDL_Color { 255, 255, 255, 200 } : SDL_Color { 255, 255, 255, static_cast<Uint8>(i == 1 ? 160 : 70) });
-            renderer.drawRoundedRect(74.0f, y, 218.0f, 54.0f, 18.0f, hovered ? Colors::PrimaryLight : Colors::GlassBorder);
-            renderer.drawText(quickNav[i].first, 98.0f, y + 17.0f, hovered ? Colors::Primary : Colors::TextPrimary, 14);
+            // Large watch microphone capture button
+            const float micX = 160.0f;
+            const float micY = 168.0f;
+            const float micR = 28.0f;
+            const float dist = std::hypot(mPt.x - micX, mPt.y - micY);
+            const bool hovered = dist <= micR;
+
+            renderer.drawGlowCircle(micX, micY, micR + 4.0f, SDL_Color { 124, 92, 255, 20 }, 8);
+            renderer.fillCircle(micX, micY, hovered ? micR + 2.0f : micR, Colors::Primary);
+            renderer.drawCircle(micX, micY, hovered ? micR + 2.0f : micR, SDL_Color { 255, 255, 255, 90 });
+            drawIcon(renderer, Icon::Mic, micX - 14.0f, micY - 14.0f, 28.0f, Colors::White);
+
+            ScreenCommon::renderPageDots(renderer, 0, 2);
         }
-
-        const float micDist = std::hypot(mPt.x - 183.0f, mPt.y - 744.0f);
-        const bool micHovered = micDist <= 54.0f;
-        // Clean minimal mic button - flat filled circle, no gradient spheres
-        renderer.fillCircle(183.0f, 744.0f, micHovered ? 34.0f : 30.0f, micHovered ? Colors::Primary : SDL_Color { 186, 160, 255, 255 });
-        renderer.drawCircle(183.0f, 744.0f, micHovered ? 34.0f : 30.0f, SDL_Color { 255, 255, 255, 60 });
-        drawIcon(renderer, Icon::Mic, 161.0f, 722.0f, 44.0f, Colors::White);
-
-        const float greetOffset = std::max(0.0f, 14.0f - m_elapsed * 26.0f);
-        renderer.drawText("Good Morning", 366.0f, 126.0f + greetOffset, Colors::TextPrimary, 30);
-        renderer.drawText("*", 592.0f, 118.0f + greetOffset, SDL_Color { 255, 184, 54, 255 }, 22);
-        renderer.drawText("Ready to capture your thoughts in a clean HD landscape workspace.", 368.0f, 172.0f + greetOffset, Colors::TextSecondary, 14);
-
-        const Rect recordCardRect { 366.0f, 218.0f, 784.0f, 180.0f };
-        const bool recordHovered = recordCardRect.contains(mPt.x, mPt.y);
-        Card recordCard(recordCardRect, recordHovered ? Colors::CardHover : Colors::Card, 24.0f);
-        recordCard.setShadow(Colors::Shadow, 6);
-        recordCard.setBorder(recordHovered ? Colors::PrimaryLight : Colors::GlassBorder);
-        recordCard.render(renderer);
-
-        // Mic circle icon on the left of the record card
-        const float micCX = 456.0f;
-        const float micCY = 308.0f;
-        const float micR  = 48.0f;
-        renderer.fillCircle(micCX, micCY, micR, Colors::Primary);
-        renderer.drawCircle(micCX, micCY, micR, SDL_Color { 255, 255, 255, 60 });
-        drawIcon(renderer, Icon::Mic, micCX - micR * 0.5f, micCY - micR * 0.5f, micR, Colors::White);
-
-        // Label and subtitle to the right
-        renderer.drawText("Record", 546.0f, 264.0f, Colors::TextPrimary, 22);
-        renderer.drawText("Tap to start a voice session with waveform monitoring", 546.0f, 312.0f, Colors::TextSecondary, 13);
-
-        const Rect insightCardRect { 1174.0f, 218.0f, 380.0f, 180.0f };
-        const bool insightHovered = insightCardRect.contains(mPt.x, mPt.y);
-        Card insightCard(insightCardRect, insightHovered ? Colors::CardHover : Colors::Card, 24.0f);
-        insightCard.setShadow(Colors::Shadow, 6);
-        insightCard.setBorder(insightHovered ? Colors::PrimaryLight : Colors::GlassBorder);
-        insightCard.render(renderer);
-        renderer.drawText("Today's Sync", 1204.0f, 256.0f, Colors::TextPrimary, 22);
-        renderer.drawText("3 files waiting to sync", 1204.0f, 300.0f, Colors::TextSecondary, 14);
-        renderer.drawText("Tap Settings to continue", 1204.0f, 332.0f, Colors::Primary, 13);
-
-        std::string remindersCount = "0";
-        if (app.services().reminders)
+        else
         {
-            remindersCount = std::to_string(app.services().reminders->getAll().size());
-        }
+            // PAGE 1: Option Grid (Icon First Watch Apps)
+            const std::array<HomeAppCell, 6> cells { {
+                { Icon::Mic, "Capture", ScreenId::Record },
+                { Icon::Search, "Search", ScreenId::Search },
+                { Icon::Bell, "Reminders", ScreenId::Reminders },
+                { Icon::Lightbulb, "Ideas", ScreenId::Ideas },
+                { Icon::Question, "Questions", ScreenId::Questions },
+                { Icon::Settings, "Settings", ScreenId::Settings }
+            } };
 
-        std::string ideasCount = "0";
-        if (app.services().ideas)
-        {
-            ideasCount = std::to_string(app.services().ideas->getAll().size());
-        }
+            const float cellW = 80.0f;
+            const float cellH = 60.0f;
 
-        std::string questionsCount = "0";
-        if (app.services().questions)
-        {
-            questionsCount = std::to_string(app.services().questions->getAll().size());
-        }
-
-        std::string memoriesCount = "0";
-        if (app.services().memoryService)
-        {
-            memoriesCount = std::to_string(app.services().memoryService->getAll().size());
-        }
-
-        static std::string remStr;
-        static std::string ideaStr;
-        static std::string questStr;
-        static std::string memStr;
-        remStr = remindersCount;
-        ideaStr = ideasCount;
-        questStr = questionsCount;
-        memStr = memoriesCount;
-
-        const std::array<HomeTile, 6> tiles { {
-            { { 366.0f, 438.0f, 380.0f, 170.0f }, Icon::Bell, "Reminders", remStr.c_str(), ScreenId::Reminders },
-            { { 770.0f, 438.0f, 380.0f, 170.0f }, Icon::Lightbulb, "Ideas", ideaStr.c_str(), ScreenId::Ideas },
-            { { 1174.0f, 438.0f, 380.0f, 170.0f }, Icon::Question, "Questions", questStr.c_str(), ScreenId::Questions },
-            { { 366.0f, 634.0f, 380.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
-            { { 770.0f, 634.0f, 380.0f, 170.0f }, Icon::Folder, "Others", memStr.c_str(), ScreenId::Others },
-            { { 1174.0f, 634.0f, 380.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
-        } };
-
-        for (std::size_t i = 0; i < tiles.size(); ++i)
-        {
-            const HomeTile& tile = tiles[i];
-            const bool tileHovered = tile.bounds.contains(mPt.x, mPt.y);
-            
-            float rise = std::max(0.0f, 16.0f - m_elapsed * (20.0f + static_cast<float>(i) * 3.0f));
-            if (tileHovered)
+            for (std::size_t i = 0; i < cells.size(); ++i)
             {
-                rise -= 5.0f; // lift on hover
+                int row = static_cast<int>(i) / 3;
+                int col = static_cast<int>(i) % 3;
+                float cx = 54.0f + col * 106.0f;
+                float cy = 85.0f + row * 85.0f;
+                Rect cellRect { cx - cellW * 0.5f, cy - cellH * 0.5f, cellW, cellH };
+
+                const bool hovered = cellRect.contains(mPt.x, mPt.y);
+                Card card(cellRect, hovered ? Colors::CardHover : Colors::Card, 12.0f);
+                card.setBorder(hovered ? Colors::PrimaryLight : Colors::GlassBorder);
+                card.render(renderer);
+
+                drawIcon(renderer, cells[i].icon, cx - 11.0f, cy - 20.0f, 22.0f, Colors::Primary);
+                renderer.drawTextCentered(cells[i].title, cx, cy + 12.0f, Colors::TextPrimary, 10);
             }
 
-            Card card(Rect { tile.bounds.x, tile.bounds.y + rise, tile.bounds.w, tile.bounds.h }, 
-                tileHovered ? Colors::CardHover : Colors::Card, 24.0f);
-            card.setShadow(Colors::Shadow, tileHovered ? 8 : 5);
-            card.setBorder(tileHovered ? Colors::PrimaryLight : Colors::GlassBorder);
-            card.render(renderer);
-
-            drawIcon(renderer, tile.icon, tile.bounds.x + 28.0f, tile.bounds.y + 28.0f + rise, 28.0f, Colors::Primary);
-            renderer.drawText(tile.title, tile.bounds.x + 28.0f, tile.bounds.y + 76.0f + rise, Colors::TextPrimary, 16);
-            if (tile.value[0] != '\0')
-            {
-                renderer.drawText(tile.value, tile.bounds.x + 28.0f, tile.bounds.y + 108.0f + rise, Colors::TextSecondary, 13);
-            }
+            ScreenCommon::renderPageDots(renderer, 1, 2);
         }
-
-        ScreenCommon::renderPageDots(renderer, 0);
     }
 }

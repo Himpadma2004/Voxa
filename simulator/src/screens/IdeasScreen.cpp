@@ -25,11 +25,12 @@ namespace VOXA
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-            if (Rect { 44.0f, 34.0f, 56.0f, 56.0f }.contains(point.x, point.y))
+            // Header back button hit area centered at (18, 28) with radius 11
+            if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
             {
                 app.navigateTo(ScreenId::Home);
             }
-            else if (Rect { 300.0f, 180.0f, 1000.0f, 580.0f }.contains(point.x, point.y))
+            else if (Rect { 10.0f, 54.0f, 300.0f, 175.0f }.contains(point.x, point.y))
             {
                 m_isDragging = true;
                 m_dragStartY = point.y;
@@ -56,7 +57,7 @@ namespace VOXA
                     auto ideas = app.services().ideas->getAll();
                     for (std::size_t i = 0; i < ideas.size(); ++i)
                     {
-                        Rect tileRect { 380.0f, 200.0f + i * 114.0f - m_scrollY, 840.0f, 84.0f };
+                        Rect tileRect { 15.0f, 58.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f };
                         if (tileRect.contains(point.x, point.y))
                         {
                             app.setSelectedItem("ideas", ideas[i].id);
@@ -73,9 +74,9 @@ namespace VOXA
             float mx = 0.0f, my = 0.0f;
             SDL_GetMouseState(&mx, &my);
             const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 300.0f, 140.0f, 1000.0f, 640.0f }.contains(mPt.x, mPt.y))
+            if (Rect { 10.0f, 52.0f, 300.0f, 180.0f }.contains(mPt.x, mPt.y))
             {
-                m_targetScrollY -= event.wheel.y * 38.0f;
+                m_targetScrollY -= event.wheel.y * 20.0f;
             }
         }
     }
@@ -88,8 +89,8 @@ namespace VOXA
             numIdeas = app.services().ideas->getAll().size();
         }
 
-        float contentHeight = std::max(0.0f, static_cast<float>(numIdeas) * 114.0f - 30.0f);
-        float visibleHeight = 560.0f;
+        float contentHeight = std::max(0.0f, static_cast<float>(numIdeas) * 42.0f - 10.0f);
+        float visibleHeight = 170.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
@@ -106,35 +107,31 @@ namespace VOXA
         ScreenCommon::renderHeader(renderer, "Ideas", true, true, Icon::Plus);
 
         // Center glass card container
-        Card container(Rect { 300.0f, 140.0f, 1000.0f, 640.0f }, Colors::Card, 32.0f);
-        container.setShadow(Colors::Shadow, 8);
+        Card container(Rect { 10.0f, 52.0f, 300.0f, 180.0f }, Colors::Card, 16.0f);
+        container.setShadow(Colors::Shadow, 4);
         container.setBorder(Colors::GlassBorder);
         container.render(renderer);
 
-        // Load ideas from IdeaService
         std::vector<Idea> ideas;
         if (app.services().ideas)
         {
             ideas = app.services().ideas->getAll();
         }
 
-        // Set clipping region to prevent scroll overlap with container borders
-        renderer.setClipRect(300.0f, 180.0f, 1000.0f, 580.0f);
+        renderer.setClipRect(10.0f, 54.0f, 300.0f, 175.0f);
 
         for (std::size_t i = 0; i < ideas.size(); ++i)
         {
-            ListTile tile(Rect { 380.0f, 200.0f + i * 114.0f - m_scrollY, 840.0f, 84.0f }, 
+            ListTile tile(Rect { 15.0f, 58.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f }, 
                           Icon::Lightbulb, 
                           ideas[i].title.c_str(), 
                           ideas[i].timestamp.c_str(), 
                           SDL_Color { 255, 178, 40, 255 }, 
-                          SDL_Color { 255, 178, 40, 255 }, 
-                          false);
+                          SDL_Color { 0, 0, 0, 0 }, 
+                          true);
             tile.render(renderer);
         }
 
         renderer.clearClipRect();
-
-        ScreenCommon::renderPageDots(renderer, 0);
     }
 }

@@ -1,6 +1,8 @@
 #include "SettingsScreen.h"
 
 #include <array>
+#include <cmath>
+#include <algorithm>
 
 #include "../core/Application.h"
 #include "../core/services/SettingsService.h"
@@ -32,40 +34,91 @@ namespace VOXA
 
     void SettingsScreen::handleEvent(Application& app, const SDL_Event& event)
     {
-        if (event.type != SDL_EVENT_MOUSE_BUTTON_DOWN)
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
-            return;
-        }
-
-        const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-        if (Rect { 44.0f, 34.0f, 56.0f, 56.0f }.contains(point.x, point.y))
-        {
-            app.navigateTo(ScreenId::Home);
-            return;
-        }
-
-        // Tap on "Wi-Fi" tile (index 0, y = 190.0f)
-        if (Rect { 380.0f, 190.0f, 840.0f, 80.0f }.contains(point.x, point.y))
-        {
-            if (app.services().settings)
+            const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+            // Header back button hit area centered at (18, 28) with radius 11
+            if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
             {
-                auto settings = app.services().settings->getSettings();
-                settings.wifiEnabled = !settings.wifiEnabled;
-                app.services().settings->updateSettings(settings);
-                app.audio().playSoftConfirm();
+                app.navigateTo(ScreenId::Home);
+                return;
             }
-            return;
-        }
 
-        // Tap on "Sync & Backup" tile (index 1, y = 285.0f)
-        if (Rect { 380.0f, 285.0f, 840.0f, 80.0f }.contains(point.x, point.y))
+            if (Rect { 10.0f, 54.0f, 300.0f, 175.0f }.contains(point.x, point.y))
+            {
+                m_isDragging = true;
+                m_dragStartY = point.y;
+                m_dragStartScrollY = m_targetScrollY;
+            }
+        }
+        else if (event.type == SDL_EVENT_MOUSE_MOTION)
         {
-            app.navigateTo(ScreenId::SyncStatus);
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.motion.x, event.motion.y);
+                float diffY = point.y - m_dragStartY;
+                m_targetScrollY = m_dragStartScrollY - diffY;
+            }
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+        {
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+                float diffY = std::abs(point.y - m_dragStartY);
+                if (diffY < 6.0f)
+                {
+                    // Wi-Fi tile (index 0, y = 58.0f)
+                    Rect wifiRect { 15.0f, 58.0f - m_scrollY, 290.0f, 38.0f };
+                    if (wifiRect.contains(point.x, point.y))
+                    {
+                        if (app.services().settings)
+                        {
+                            auto settings = app.services().settings->getSettings();
+                            settings.wifiEnabled = !settings.wifiEnabled;
+                            app.services().settings->updateSettings(settings);
+                            app.audio().playSoftConfirm();
+                        }
+                        m_isDragging = false;
+                        return;
+                    }
+
+                    // Sync & Backup tile (index 1, y = 100.0f)
+                    Rect syncRect { 15.0f, 100.0f - m_scrollY, 290.0f, 38.0f };
+                    if (syncRect.contains(point.x, point.y))
+                    {
+                        app.navigateTo(ScreenId::SyncStatus);
+                        m_isDragging = false;
+                        return;
+                    }
+                }
+                m_isDragging = false;
+            }
+        }
+        else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+        {
+            float mx = 0.0f, my = 0.0f;
+            SDL_GetMouseState(&mx, &my);
+            const SDL_FPoint mPt = app.windowToCanvas(mx, my);
+            if (Rect { 10.0f, 52.0f, 300.0f, 180.0f }.contains(mPt.x, mPt.y))
+            {
+                m_targetScrollY -= event.wheel.y * 20.0f;
+            }
         }
     }
 
-    void SettingsScreen::update(Application&, float)
+    void SettingsScreen::update(Application& app, float deltaSeconds)
     {
+        float contentHeight = 5.0f * 42.0f - 10.0f;
+        float visibleHeight = 170.0f;
+        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+        m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
+        m_scrollY += (m_targetScrollY - m_scrollY) * 12.0f * deltaSeconds;
+        if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
+        {
+            m_scrollY = m_targetScrollY;
+        }
     }
 
     void SettingsScreen::render(Application& app, Renderer& renderer)
@@ -74,8 +127,8 @@ namespace VOXA
         ScreenCommon::renderHeader(renderer, "Settings", true, true, Icon::Plus);
 
         // Center glass card container
-        Card container(Rect { 300.0f, 140.0f, 1000.0f, 640.0f }, Colors::Card, 32.0f);
-        container.setShadow(Colors::Shadow, 8);
+        Card container(Rect { 10.0f, 52.0f, 300.0f, 180.0f }, Colors::Card, 16.0f);
+        container.setShadow(Colors::Shadow, 4);
         container.setBorder(Colors::GlassBorder);
         container.render(renderer);
 
@@ -85,7 +138,6 @@ namespace VOXA
             settings = app.services().settings->getSettings();
         }
 
-        // storage limit subtitle format
         char storageText[64] = "12.4 GB / 32 GB";
         if (settings.storageLimit > 0)
         {
@@ -93,8 +145,7 @@ namespace VOXA
             SDL_snprintf(storageText, sizeof(storageText), "12.4 GB / %.1f GB", limitGB);
         }
 
-        // Device info subtitle format
-        char deviceInfoText[128] = "VOXA Device (v1.0.0)";
+        char deviceInfoText[128] = "VOXA (v1.0.0)";
         if (!settings.deviceName.empty())
         {
             SDL_snprintf(deviceInfoText, sizeof(deviceInfoText), "%s (v%s)", settings.deviceName.c_str(), settings.firmwareVersion.c_str());
@@ -105,13 +156,23 @@ namespace VOXA
             { Icon::Cloud, "Sync & Backup", settings.autoSync ? "Auto sync on" : "Auto sync off", SDL_Color { 68, 162, 255, 255 }, ScreenId::SyncStatus },
             { Icon::Storage, "Storage", storageText, SDL_Color { 80, 80, 88, 255 }, ScreenId::Settings },
             { Icon::Info, "Device Info", deviceInfoText, SDL_Color { 80, 80, 88, 255 }, ScreenId::Settings },
-            { Icon::Star, "About VOXA", "Personal AI Assistant", Colors::Primary, ScreenId::Settings },
+            { Icon::Star, "About VOXA", "AI Companion", Colors::Primary, ScreenId::Settings },
         } };
+
+        renderer.setClipRect(10.0f, 54.0f, 300.0f, 175.0f);
 
         for (std::size_t i = 0; i < items.size(); ++i)
         {
-            ListTile tile(Rect { 380.0f, 190.0f + i * 95.0f, 840.0f, 80.0f }, items[i].icon, items[i].title, items[i].subtitle, items[i].color, SDL_Color { 0, 0, 0, 0 }, true);
+            ListTile tile(Rect { 15.0f, 58.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f }, 
+                           items[i].icon, 
+                           items[i].title, 
+                           items[i].subtitle, 
+                           items[i].color, 
+                           SDL_Color { 0, 0, 0, 0 }, 
+                           true);
             tile.render(renderer);
         }
+
+        renderer.clearClipRect();
     }
 }

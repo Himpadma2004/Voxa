@@ -1,5 +1,6 @@
 #pragma once
 
+#include <SDL3/SDL.h>
 #include "../core/Screen.h"
 
 namespace VOXA
@@ -15,5 +16,9 @@ namespace VOXA
 
     private:
         float m_elapsed { 0.0f };
+        int m_page { 0 };               // 0 = Watch Face, 1 = Option Grid
+        bool m_isDragging { false };
+        float m_dragStartX { 0.0f };
+        float m_dragStartY { 0.0f };
     };
 }

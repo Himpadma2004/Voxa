@@ -35,31 +35,32 @@ namespace VOXA
         const float width = static_cast<float>(renderer.canvasWidth());
         const float height = static_cast<float>(renderer.canvasHeight());
 
-        // Draw a premium deep space gradient background for high contrast with light text/glowing waves
+        // Draw premium deep space background
         renderer.fillVerticalGradient(0.0f, 0.0f, width, height, SDL_Color { 8, 8, 12, 255 }, SDL_Color { 18, 14, 28, 255 });
 
+        // Wave animation adapted to watch screen height
         for (int i = 0; i < 5; ++i)
         {
             const float offset = m_elapsed * 42.0f + static_cast<float>(i) * 18.0f;
             for (int x = 0; x < static_cast<int>(width); ++x)
             {
                 const float xf = static_cast<float>(x);
-                const float y = height * 0.76f + std::sin((xf + offset) * 0.018f) * 28.0f + std::sin((xf - offset) * 0.01f) * 18.0f + i * 6.0f;
-                renderer.fillCircle(xf, y, 1.4f + i * 0.4f, SDL_Color { static_cast<Uint8>(124 + i * 12), static_cast<Uint8>(92 + i * 10), 255, static_cast<Uint8>(52 - i * 7) });
+                const float y = height * 0.8f + std::sin((xf + offset) * 0.03f) * 10.0f + std::sin((xf - offset) * 0.02f) * 6.0f + i * 2.0f;
+                renderer.fillCircle(xf, y, 0.8f + i * 0.2f, SDL_Color { static_cast<Uint8>(124 + i * 12), static_cast<Uint8>(92 + i * 10), 255, static_cast<Uint8>(52 - i * 7) });
             }
         }
 
-        renderer.drawGlowCircle(width * 0.84f, height * 0.7f, 128.0f, SDL_Color { 124, 92, 255, 18 }, 10);
-        renderer.drawGlowCircle(width * 0.12f, height * 0.72f, 92.0f, SDL_Color { 92, 60, 240, 12 }, 8);
-        renderer.drawGlowCircle(width * 0.5f, height * 0.22f, 160.0f, SDL_Color { 124, 92, 255, 10 }, 9);
+        renderer.drawGlowCircle(width * 0.84f, height * 0.7f, 40.0f, SDL_Color { 124, 92, 255, 18 }, 6);
+        renderer.drawGlowCircle(width * 0.12f, height * 0.72f, 30.0f, SDL_Color { 92, 60, 240, 12 }, 5);
+        renderer.drawGlowCircle(width * 0.5f, height * 0.22f, 50.0f, SDL_Color { 124, 92, 255, 10 }, 5);
 
-        renderer.drawTextCentered("VOXA", width * 0.5f, 260.0f, SDL_Color { 210, 190, 255, 255 }, 64);
-        renderer.drawTextCentered("Premium Embedded AI Companion", width * 0.5f, 350.0f, SDL_Color { 225, 225, 235, 255 }, 22);
-        renderer.drawTextCentered("Booting secure memory canvas and assistant modules", width * 0.5f, 392.0f, SDL_Color { 175, 176, 190, 255 }, 16);
+        // Larger centered VOXA title (size 36 is highly readable on watch)
+        renderer.drawTextCentered("VOXA", width * 0.5f, 60.0f, SDL_Color { 210, 190, 255, 255 }, 36);
+        // Tagline requested: "Take care of your moments"
+        renderer.drawTextCentered("Take care of your moments", width * 0.5f, 105.0f, SDL_Color { 225, 225, 235, 255 }, 13);
 
-        ProgressBar progressBar(Rect { width * 0.35f, 642.0f, width * 0.3f, 10.0f }, m_elapsed / 2.5f, SDL_Color { 48, 48, 60, 255 }, Colors::Primary);
+        renderer.drawTextCentered("Initializing...", width * 0.5f, 135.0f, SDL_Color { 210, 210, 220, 255 }, 10);
+        ProgressBar progressBar(Rect { width * 0.3f, 150.0f, width * 0.4f, 5.0f }, m_elapsed / 2.5f, SDL_Color { 48, 48, 60, 255 }, Colors::Primary);
         progressBar.render(renderer);
-
-        renderer.drawTextCentered("Initializing...", width * 0.5f, 604.0f, SDL_Color { 210, 210, 220, 255 }, 16);
     }
 }

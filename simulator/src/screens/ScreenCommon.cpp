@@ -23,9 +23,11 @@ namespace
 #endif
 
         char buffer[128];
-        // Format: "Friday, Jun 26  11:44 AM"
-        std::strftime(buffer, sizeof(buffer), "%A, %b %d  %I:%M %p", &local_tm);
-        return std::string(buffer);
+        // watch-like compact time: e.g. "11:44 AM"
+        std::strftime(buffer, sizeof(buffer), "%I:%M %p", &local_tm);
+        std::string s(buffer);
+        if (!s.empty() && s[0] == '0') s = s.substr(1);
+        return s;
     }
 }
 
@@ -36,43 +38,43 @@ namespace VOXA::ScreenCommon
         const float width = static_cast<float>(renderer.canvasWidth());
         const float height = static_cast<float>(renderer.canvasHeight());
         
-        // 1. Draw a very subtle off-white/gray gradient background
+        // 1. Draw a very subtle off-white/gray watch background
         renderer.fillVerticalGradient(0.0f, 0.0f, width, height, SDL_Color { 248, 248, 249, 255 }, SDL_Color { 240, 240, 243, 255 });
         
-        // 2. Overlay very soft, low-opacity ambient corner glows
-        renderer.fillCircleGradient(width * 0.90f, height * 0.10f, 300.0f, SDL_Color { 166, 123, 250, 4 }, SDL_Color { 248, 248, 249, 0 });
-        renderer.fillCircleGradient(width * 0.10f, height * 0.90f, 250.0f, SDL_Color { 124, 92, 255, 3 }, SDL_Color { 248, 248, 249, 0 });
+        // 2. Overlay soft, low-opacity ambient corner glows
+        renderer.fillCircleGradient(width * 0.90f, height * 0.10f, 80.0f, SDL_Color { 166, 123, 250, 6 }, SDL_Color { 248, 248, 249, 0 });
+        renderer.fillCircleGradient(width * 0.10f, height * 0.90f, 80.0f, SDL_Color { 124, 92, 255, 5 }, SDL_Color { 248, 248, 249, 0 });
 
-        // 3. Draw a unified premium status bar at the top (y = 20.0f)
+        // 3. Compact status bar at the top
         // Left: VOXA
-        renderer.drawText("VOXA", 48.0f, 18.0f, Colors::TextPrimary, 13);
+        renderer.drawText("VOXA", 8.0f, 4.0f, Colors::TextPrimary, 9);
         // Center: Date & Time
-        renderer.drawTextCentered(getCurrentTimeAndDate(), width * 0.5f, 18.0f, Colors::TextPrimary, 13);
+        renderer.drawTextCentered(getCurrentTimeAndDate(), width * 0.5f, 4.0f, Colors::TextPrimary, 9);
         // Right: Wifi and Battery status
-        drawIcon(renderer, Icon::Wifi, width - 170.0f, 24.0f, 15.0f, Colors::TextPrimary);
-        renderer.drawText("92%", width - 142.0f, 20.0f, Colors::TextPrimary, 11);
-        drawIcon(renderer, Icon::Battery, width - 96.0f, 22.0f, 18.0f, Colors::TextPrimary);
+        drawIcon(renderer, Icon::Wifi, width - 42.0f, 4.0f, 10.0f, Colors::TextPrimary);
+        renderer.drawText("92%", width - 30.0f, 4.0f, Colors::TextPrimary, 8);
+        drawIcon(renderer, Icon::Battery, width - 14.0f, 4.0f, 10.0f, Colors::TextPrimary);
     }
 
     void renderPageDots(Renderer& renderer, int activeIndex, int count)
     {
         const float centerX = static_cast<float>(renderer.canvasWidth()) * 0.5f;
-        const float startX = centerX - static_cast<float>((count - 1) * 20) * 0.5f;
+        const float startX = centerX - static_cast<float>((count - 1) * 12) * 0.5f;
         for (int i = 0; i < count; ++i)
         {
             const bool active = i == activeIndex;
             SDL_Color color = active ? Colors::Primary : SDL_Color { 190, 190, 195, 255 };
-            renderer.fillRoundedRect(startX + i * 20.0f, 830.0f, active ? 18.0f : 8.0f, 8.0f, 4.0f, color);
+            renderer.fillRoundedRect(startX + i * 12.0f, 225.0f, active ? 10.0f : 4.0f, 4.0f, 2.0f, color);
         }
     }
 
     void renderCircularButton(Renderer& renderer, float centerX, float centerY, Icon icon, SDL_Color fill, SDL_Color iconColor)
     {
-        // VisionOS style glass circular button
-        renderer.drawSoftShadow(centerX - 28.0f, centerY - 28.0f, 56.0f, 56.0f, 28.0f, 6, SDL_Color { 0, 0, 0, 14 });
-        renderer.fillCircle(centerX, centerY, 28.0f, SDL_Color { 255, 255, 255, 160 }); // frosted white
-        renderer.drawCircle(centerX, centerY, 28.0f, SDL_Color { 255, 255, 255, 180 }); // thin border highlight
-        drawIcon(renderer, icon, centerX - 12.0f, centerY - 12.0f, 24.0f, iconColor);
+        // Compact circular button
+        renderer.drawSoftShadow(centerX - 11.0f, centerY - 11.0f, 22.0f, 22.0f, 11.0f, 3, SDL_Color { 0, 0, 0, 14 });
+        renderer.fillCircle(centerX, centerY, 11.0f, fill); // frosted fill or white
+        renderer.drawCircle(centerX, centerY, 11.0f, SDL_Color { 255, 255, 255, 180 }); // border highlight
+        drawIcon(renderer, icon, centerX - 5.5f, centerY - 5.5f, 11.0f, iconColor);
     }
 
     void renderHeader(Renderer& renderer, const std::string& title, bool showBack, bool showRightAction, Icon rightIcon)
@@ -81,14 +83,14 @@ namespace VOXA::ScreenCommon
 
         if (showBack)
         {
-            renderCircularButton(renderer, 72.0f, 62.0f, Icon::Back, SDL_Color { 255, 255, 255, 255 }, Colors::TextPrimary);
+            renderCircularButton(renderer, 18.0f, 28.0f, Icon::Back, SDL_Color { 255, 255, 255, 255 }, Colors::TextPrimary);
         }
 
-        renderer.drawTextCentered(title, width * 0.5f, 48.0f, Colors::TextPrimary, 22);
+        renderer.drawTextCentered(title, width * 0.5f, 22.0f, Colors::TextPrimary, 13);
 
         if (showRightAction)
         {
-            renderCircularButton(renderer, width - 72.0f, 62.0f, rightIcon, SDL_Color { 255, 255, 255, 255 }, Colors::TextPrimary);
+            renderCircularButton(renderer, width - 18.0f, 28.0f, rightIcon, SDL_Color { 255, 255, 255, 255 }, Colors::TextPrimary);
         }
     }
 }
