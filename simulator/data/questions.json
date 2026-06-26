@@ -1,0 +1,6 @@
+[
+  {"id":"1","text":"What is ChromaDB?","answer":"ChromaDB is an open-source vector database for storing and querying embeddings.","timestamp":"May 28","answered":"true"},
+  {"id":"2","text":"Explain LLMs simply","answer":"","timestamp":"May 27","answered":"false"},
+  {"id":"3","text":"AI future predictions","answer":"","timestamp":"May 26","answered":"false"},
+  {"id":"4","text":"How does memory work?","answer":"","timestamp":"May 25","answered":"false"}
+]

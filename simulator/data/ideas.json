@@ -1,0 +1,6 @@
+[
+  {"id":"1","title":"YouTube Integration","content":"Build a bridge between VOXA and YouTube APIs for voice-controlled playback","timestamp":"May 28"},
+  {"id":"2","title":"Offline AI Mode","content":"Run a local LLM on-device without internet connection","timestamp":"May 27"},
+  {"id":"3","title":"Smart Dashboard","content":"Unified view of all memories, reminders, and ideas","timestamp":"May 26"},
+  {"id":"4","title":"Auto Summary Feature","content":"Automatically summarise long voice recordings into bullet points","timestamp":"May 25"}
+]

@@ -1,5 +1,3 @@
-#pragma once
-
 #include <memory>
 #include <unordered_map>
 
@@ -8,6 +6,7 @@
 #include "Screen.h"
 #include "AudioEngine.h"
 #include "../graphics/Renderer.h"
+#include "app/Application.h"   // VoxaApp + Services
 
 namespace VOXA
 {
@@ -33,6 +32,10 @@ namespace VOXA
         [[nodiscard]] AudioEngine& audio();
         [[nodiscard]] SDL_FPoint windowToCanvas(float windowX, float windowY) const;
 
+        /// Access all backend services (reminders, search, battery, time, …).
+        [[nodiscard]] Services& services();
+        [[nodiscard]] const Services& services() const;
+
     private:
         struct EnumClassHash
         {
@@ -47,8 +50,9 @@ namespace VOXA
         void dispatchEvent(const SDL_Event& event);
         void commitPendingNavigation();
 
-        Renderer m_renderer;
+        Renderer    m_renderer;
         AudioEngine m_audio;
+        VoxaApp     m_voxaApp;   // Owns all backend services
         std::unordered_map<ScreenId, std::unique_ptr<Screen>, EnumClassHash> m_screens;
         Screen* m_currentScreen { nullptr };
         ScreenId m_currentScreenId { ScreenId::Boot };

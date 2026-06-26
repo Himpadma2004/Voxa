@@ -1,0 +1,7 @@
+[
+  {"id":"1","screen":"Home","action":"app_open","timestamp":"2026-06-26 12:00"},
+  {"id":"2","screen":"Record","action":"navigate","timestamp":"2026-06-26 11:58"},
+  {"id":"3","screen":"Home","action":"navigate_back","timestamp":"2026-06-26 11:55"},
+  {"id":"4","screen":"Search","action":"navigate","timestamp":"2026-06-26 11:52"},
+  {"id":"5","screen":"Reminders","action":"navigate","timestamp":"2026-06-26 11:48"}
+]

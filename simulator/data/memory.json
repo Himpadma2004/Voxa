@@ -1,0 +1,6 @@
+[
+  {"id":"1","title":"YouTube Integration","content":"Brainstormed API approach, need auth flow","timestamp":"2 days ago","category":"voice","durationSeconds":"142"},
+  {"id":"2","title":"Product Roadmap Discussion","content":"Q3 features: offline AI, sync improvements, dashboard","timestamp":"3 days ago","category":"voice","durationSeconds":"287"},
+  {"id":"3","title":"Morning Thoughts","content":"Reflection on project direction and next steps","timestamp":"4 days ago","category":"note","durationSeconds":"0"},
+  {"id":"4","title":"Meeting Notes — Client Call","content":"Client wants faster boot time and better voice accuracy","timestamp":"5 days ago","category":"note","durationSeconds":"0"}
+]

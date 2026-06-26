@@ -1,0 +1,12 @@
+{
+  "theme": "light",
+  "language": "en",
+  "notifications": "true",
+  "autoSync": "true",
+  "syncInterval": "300",
+  "wifiEnabled": "true",
+  "storageLimit": "32768",
+  "deviceName": "VOXA Device",
+  "firmwareVersion": "1.0.0",
+  "lastSyncTime": "2026-06-26 10:30"
+}
