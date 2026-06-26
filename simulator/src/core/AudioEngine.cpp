@@ -43,17 +43,22 @@ namespace VOXA
 
     void AudioEngine::playBoot()
     {
-        playToneSequence(320.0f, 1.45f, 0.22f, 4, true);
+        // Three soft ascending notes: C4, E4, G4 — a gentle welcoming chord sequence
+        // Each note is 60ms at very low volume (0.07) with 1 harmonic = pure sine
+        playToneSequence(261.63f, 0.06f, 0.07f, 1, false); // C4
+        playToneSequence(329.63f, 0.06f, 0.07f, 1, false); // E4
+        playToneSequence(392.00f, 0.10f, 0.07f, 1, false); // G4 (slightly longer)
     }
 
     void AudioEngine::playClick()
     {
-        playToneSequence(620.0f, 0.08f, 0.12f, 2, false);
+        // Silent — no click sound to avoid annoyance
     }
 
     void AudioEngine::playSoftConfirm()
     {
-        playToneSequence(520.0f, 0.18f, 0.11f, 3, true);
+        // Crisp confirm tone sequence at 800Hz for 80ms
+        playToneSequence(800.0f, 0.08f, 0.08f, 1, true);
     }
 
     void AudioEngine::playToneSequence(float baseFrequency, float durationSeconds, float volume, int harmonics, bool rising)
@@ -79,8 +84,8 @@ namespace VOXA
                 sample += std::sin(2.0f * kPi * pitch * static_cast<float>(h) * t) / static_cast<float>(h);
             }
 
-            const float shimmer = std::sin(2.0f * kPi * 7.0f * t) * 0.08f;
-            samples[i] = (sample / static_cast<float>(harmonics) + shimmer) * volume * envelope;
+            // Remove shimmer completely to yield a clean digital tone without muddiness
+            samples[i] = (sample / static_cast<float>(harmonics)) * volume * envelope;
         }
 
         SDL_PutAudioStreamData(m_stream, samples.data(), static_cast<int>(samples.size() * sizeof(float)));

@@ -18,6 +18,34 @@ namespace
             static_cast<Uint8>(a.a * inv + b.a * t)
         };
     }
+
+    std::string codepointToUtf8(char32_t codepoint)
+    {
+        std::string utf8;
+        if (codepoint < 0x80)
+        {
+            utf8 += static_cast<char>(codepoint);
+        }
+        else if (codepoint < 0x800)
+        {
+            utf8 += static_cast<char>((codepoint >> 6) | 0xC0);
+            utf8 += static_cast<char>((codepoint & 0x3F) | 0x80);
+        }
+        else if (codepoint < 0x10000)
+        {
+            utf8 += static_cast<char>((codepoint >> 12) | 0xE0);
+            utf8 += static_cast<char>(((codepoint >> 6) & 0x3F) | 0x80);
+            utf8 += static_cast<char>((codepoint & 0x3F) | 0x80);
+        }
+        else
+        {
+            utf8 += static_cast<char>((codepoint >> 18) | 0xF0);
+            utf8 += static_cast<char>(((codepoint >> 12) & 0x3F) | 0x80);
+            utf8 += static_cast<char>(((codepoint >> 6) & 0x3F) | 0x80);
+            utf8 += static_cast<char>((codepoint & 0x3F) | 0x80);
+        }
+        return utf8;
+    }
 }
 
 namespace VOXA
@@ -36,9 +64,16 @@ namespace VOXA
             return false;
         }
 
+        if (!TTF_Init())
+        {
+            SDL_Quit();
+            return false;
+        }
+
         m_window = SDL_CreateWindow(title, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
         if (m_window == nullptr)
         {
+            TTF_Quit();
             SDL_Quit();
             return false;
         }
@@ -48,6 +83,7 @@ namespace VOXA
         {
             SDL_DestroyWindow(m_window);
             m_window = nullptr;
+            TTF_Quit();
             SDL_Quit();
             return false;
         }
@@ -56,7 +92,7 @@ namespace VOXA
         m_canvasHeight = canvasHeight;
 
         SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderLogicalPresentation(m_renderer, canvasWidth, canvasHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+        SDL_SetRenderLogicalPresentation(m_renderer, canvasWidth, canvasHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
         m_running = true;
         return true;
     }
@@ -64,6 +100,26 @@ namespace VOXA
     void Renderer::shutdown()
     {
         m_running = false;
+
+        for (auto& pair : m_fonts)
+        {
+            if (pair.second != nullptr)
+            {
+                TTF_CloseFont(pair.second);
+            }
+        }
+        m_fonts.clear();
+
+        for (auto& pair : m_iconFonts)
+        {
+            if (pair.second != nullptr)
+            {
+                TTF_CloseFont(pair.second);
+            }
+        }
+        m_iconFonts.clear();
+
+        TTF_Quit();
 
         if (m_renderer != nullptr)
         {
@@ -82,6 +138,20 @@ namespace VOXA
 
     void Renderer::beginFrame()
     {
+        int winW = 0, winH = 0;
+        SDL_GetRenderOutputSize(m_renderer, &winW, &winH);
+        
+        float scaleX = static_cast<float>(winW) / static_cast<float>(m_canvasWidth);
+        float scaleY = static_cast<float>(winH) / static_cast<float>(m_canvasHeight);
+        m_letterboxScale = std::min(scaleX, scaleY);
+        
+        m_letterboxViewport.w = static_cast<int>(static_cast<float>(m_canvasWidth) * m_letterboxScale);
+        m_letterboxViewport.h = static_cast<int>(static_cast<float>(m_canvasHeight) * m_letterboxScale);
+        m_letterboxViewport.x = (winW - m_letterboxViewport.w) / 2;
+        m_letterboxViewport.y = (winH - m_letterboxViewport.h) / 2;
+        
+        SDL_SetRenderViewport(m_renderer, &m_letterboxViewport);
+        SDL_SetRenderScale(m_renderer, m_letterboxScale, m_letterboxScale);
     }
 
     void Renderer::endFrame()
@@ -154,48 +224,76 @@ namespace VOXA
 
     void Renderer::drawRoundedRect(float x, float y, float w, float h, float radius, SDL_Color color)
     {
+        if (radius <= 0.0f)
+        {
+            drawRect(x, y, w, h, color);
+            return;
+        }
+
+        // Draw straight lines
         drawLine(x + radius, y, x + w - radius, y, color);
         drawLine(x + radius, y + h, x + w - radius, y + h, color);
         drawLine(x, y + radius, x, y + h - radius, color);
         drawLine(x + w, y + radius, x + w, y + h - radius, color);
 
-        const int segments = 18;
+        // Draw 4 corner arcs
+        const int segments = 16;
         for (int i = 0; i < segments; ++i)
         {
-            const float a0 = static_cast<float>(i) / segments;
-            const float a1 = static_cast<float>(i + 1) / segments;
+            const float a0 = static_cast<float>(i) / segments * (kPi * 0.5f);
+            const float a1 = static_cast<float>(i + 1) / segments * (kPi * 0.5f);
 
-            const float tl0 = kPi + a0 * kPi * 0.5f;
-            const float tl1 = kPi + a1 * kPi * 0.5f;
-            drawLine(x + radius + std::cos(tl0) * radius, y + radius + std::sin(tl0) * radius,
-                     x + radius + std::cos(tl1) * radius, y + radius + std::sin(tl1) * radius, color);
+            // Top-Right: 0 to Pi/2
+            drawLine(x + w - radius + std::cos(a0) * radius, y + radius - std::sin(a0) * radius,
+                     x + w - radius + std::cos(a1) * radius, y + radius - std::sin(a1) * radius, color);
 
-            const float tr0 = -kPi * 0.5f + a0 * kPi * 0.5f;
-            const float tr1 = -kPi * 0.5f + a1 * kPi * 0.5f;
-            drawLine(x + w - radius + std::cos(tr0) * radius, y + radius + std::sin(tr0) * radius,
-                     x + w - radius + std::cos(tr1) * radius, y + radius + std::sin(tr1) * radius, color);
+            // Top-Left: Pi/2 to Pi
+            drawLine(x + radius - std::sin(a0) * radius, y + radius - std::cos(a0) * radius,
+                     x + radius - std::sin(a1) * radius, y + radius - std::cos(a1) * radius, color);
 
-            const float br0 = a0 * kPi * 0.5f;
-            const float br1 = a1 * kPi * 0.5f;
-            drawLine(x + w - radius + std::cos(br0) * radius, y + h - radius + std::sin(br0) * radius,
-                     x + w - radius + std::cos(br1) * radius, y + h - radius + std::sin(br1) * radius, color);
+            // Bottom-Left: Pi to 3Pi/2
+            drawLine(x + radius - std::cos(a0) * radius, y + h - radius + std::sin(a0) * radius,
+                     x + radius - std::cos(a1) * radius, y + h - radius + std::sin(a1) * radius, color);
 
-            const float bl0 = kPi * 0.5f + a0 * kPi * 0.5f;
-            const float bl1 = kPi * 0.5f + a1 * kPi * 0.5f;
-            drawLine(x + radius + std::cos(bl0) * radius, y + h - radius + std::sin(bl0) * radius,
-                     x + radius + std::cos(bl1) * radius, y + h - radius + std::sin(bl1) * radius, color);
+            // Bottom-Right: 3Pi/2 to 2Pi
+            drawLine(x + w - radius + std::sin(a0) * radius, y + h - radius + std::cos(a0) * radius,
+                     x + w - radius + std::sin(a1) * radius, y + h - radius + std::cos(a1) * radius, color);
         }
     }
 
     void Renderer::fillRoundedRect(float x, float y, float w, float h, float radius, SDL_Color color)
     {
-        fillRect(x + radius, y, w - radius * 2.0f, h, color);
-        fillRect(x, y + radius, radius, h - radius * 2.0f, color);
-        fillRect(x + w - radius, y + radius, radius, h - radius * 2.0f, color);
-        fillCircle(x + radius, y + radius, radius, color);
-        fillCircle(x + w - radius, y + radius, radius, color);
-        fillCircle(x + w - radius, y + h - radius, radius, color);
-        fillCircle(x + radius, y + h - radius, radius, color);
+        if (radius <= 0.0f)
+        {
+            fillRect(x, y, w, h, color);
+            return;
+        }
+
+        setDrawColor(color);
+        const int r = static_cast<int>(radius);
+        const int ix = static_cast<int>(x);
+        const int iy = static_cast<int>(y);
+        const int iw = static_cast<int>(w);
+        const int ih = static_cast<int>(h);
+
+        for (int row = 0; row < ih; ++row)
+        {
+            float dx = 0.0f;
+            if (row < r)
+            {
+                const float dy = static_cast<float>(r - row);
+                dx = radius - std::sqrt(std::max(0.0f, radius * radius - dy * dy));
+            }
+            else if (row >= ih - r)
+            {
+                const float dy = static_cast<float>(row - (ih - r - 1));
+                dx = radius - std::sqrt(std::max(0.0f, radius * radius - dy * dy));
+            }
+
+            const float startX = static_cast<float>(ix) + dx;
+            const float endX = static_cast<float>(ix + iw) - dx;
+            SDL_RenderLine(m_renderer, startX, static_cast<float>(iy + row), endX, static_cast<float>(iy + row));
+        }
     }
 
     void Renderer::fillVerticalGradient(float x, float y, float w, float h, SDL_Color top, SDL_Color bottom)
@@ -233,10 +331,12 @@ namespace VOXA
 
     void Renderer::fillCircleGradient(float centerX, float centerY, float radius, SDL_Color inner, SDL_Color outer)
     {
-        for (int i = static_cast<int>(radius); i >= 1; --i)
+        const int steps = 16;
+        for (int i = steps; i >= 1; --i)
         {
-            const float t = 1.0f - (static_cast<float>(i) / radius);
-            fillCircle(centerX, centerY, static_cast<float>(i), mixColor(inner, outer, t));
+            const float r = radius * (static_cast<float>(i) / steps);
+            const float t = 1.0f - (static_cast<float>(i) / steps);
+            fillCircle(centerX, centerY, r, mixColor(inner, outer, t));
         }
     }
 
@@ -258,6 +358,16 @@ namespace VOXA
             shade.a = static_cast<Uint8>(std::max(2, color.a / (i * 2)));
             fillRoundedRect(x - static_cast<float>(i), y - static_cast<float>(i) + 1.0f, w + static_cast<float>(i) * 2.0f,
                             h + static_cast<float>(i) * 2.0f, radius + static_cast<float>(i), shade);
+        }
+    }
+
+    void Renderer::drawGlassCard(float x, float y, float w, float h, float radius, SDL_Color shadowColor, SDL_Color fillColor, SDL_Color borderColor)
+    {
+        drawSoftShadow(x, y, w, h, radius, 8, shadowColor);
+        fillRoundedRect(x, y, w, h, radius, fillColor);
+        if (borderColor.a > 0)
+        {
+            drawRoundedRect(x, y, w, h, radius, borderColor);
         }
     }
 
@@ -284,8 +394,50 @@ namespace VOXA
         SDL_SetRenderClipRect(m_renderer, nullptr);
     }
 
+    TTF_Font* Renderer::getFont(int size) const
+    {
+        auto it = m_fonts.find(size);
+        if (it != m_fonts.end())
+        {
+            return it->second;
+        }
+
+        // Try Loading Segoe UI (default Windows system font)
+        TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/segoeui.ttf", static_cast<float>(size));
+        if (font == nullptr)
+        {
+            // Fallback 1: Arial
+            font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", static_cast<float>(size));
+        }
+
+        m_fonts[size] = font;
+        return font;
+    }
+
     void Renderer::drawText(const std::string& text, float x, float y, SDL_Color color, int size)
     {
+        if (text.empty()) return;
+        TTF_Font* font = getFont(size);
+        if (font != nullptr)
+        {
+            SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), 0, color);
+            if (surface != nullptr)
+            {
+                SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+                if (texture != nullptr)
+                {
+                    const float w = static_cast<float>(surface->w);
+                    const float h = static_cast<float>(surface->h);
+                    const SDL_FRect dstRect { x, y, w, h };
+                    SDL_RenderTexture(m_renderer, texture, nullptr, &dstRect);
+                    SDL_DestroyTexture(texture);
+                }
+                SDL_DestroySurface(surface);
+                return;
+            }
+        }
+
+        // Fallback to debug text
         const float textScale = std::max(1.0f, static_cast<float>(size) / 8.0f);
         SDL_SetRenderScale(m_renderer, textScale, textScale);
         setDrawColor(color);
@@ -295,8 +447,103 @@ namespace VOXA
 
     void Renderer::drawTextCentered(const std::string& text, float centerX, float y, SDL_Color color, int size)
     {
+        if (text.empty()) return;
+        TTF_Font* font = getFont(size);
+        if (font != nullptr)
+        {
+            SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), 0, color);
+            if (surface != nullptr)
+            {
+                SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+                if (texture != nullptr)
+                {
+                    const float w = static_cast<float>(surface->w);
+                    const float h = static_cast<float>(surface->h);
+                    const SDL_FRect dstRect { centerX - w * 0.5f, y, w, h };
+                    SDL_RenderTexture(m_renderer, texture, nullptr, &dstRect);
+                    SDL_DestroyTexture(texture);
+                }
+                SDL_DestroySurface(surface);
+                return;
+            }
+        }
+
+        // Fallback to debug text centered
         const float glyphWidth = static_cast<float>(size) * 0.6f;
         const float width = glyphWidth * static_cast<float>(text.size());
         drawText(text, centerX - width * 0.5f, y, color, size);
+    }
+
+    TTF_Font* Renderer::getIconFont(int size) const
+    {
+        auto it = m_iconFonts.find(size);
+        if (it != m_iconFonts.end())
+        {
+            return it->second;
+        }
+
+        // Try Loading Segoe MDL2 Assets (default Windows built-in icon font)
+        TTF_Font* font = TTF_OpenFont("C:/Windows/Fonts/segmdl2.ttf", static_cast<float>(size));
+        if (font == nullptr)
+        {
+            // Fallback to Segoe Fluent Icons
+            font = TTF_OpenFont("C:/Windows/Fonts/SegoeFluentIcons.ttf", static_cast<float>(size));
+        }
+        if (font == nullptr)
+        {
+            // Fallback to Webdings
+            font = TTF_OpenFont("C:/Windows/Fonts/webdings.ttf", static_cast<float>(size));
+        }
+        if (font == nullptr)
+        {
+            // Fallback to Arial
+            font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", static_cast<float>(size));
+        }
+
+        m_iconFonts[size] = font;
+        return font;
+    }
+
+    void Renderer::drawIconGlyph(char32_t codepoint, float cx, float cy, SDL_Color color, int size)
+    {
+        TTF_Font* font = getIconFont(size);
+        if (font != nullptr)
+        {
+            std::string text = codepointToUtf8(codepoint);
+            SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), 0, color);
+            if (surface != nullptr)
+            {
+                SDL_Texture* texture = SDL_CreateTextureFromSurface(m_renderer, surface);
+                if (texture != nullptr)
+                {
+                    const float w = static_cast<float>(surface->w);
+                    const float h = static_cast<float>(surface->h);
+                    // Center the glyph exactly at (cx, cy)
+                    const SDL_FRect dstRect { cx - w * 0.5f, cy - h * 0.5f, w, h };
+                    SDL_RenderTexture(m_renderer, texture, nullptr, &dstRect);
+                    SDL_DestroyTexture(texture);
+                }
+                SDL_DestroySurface(surface);
+                return;
+            }
+        }
+
+        // Fallback: draw a simple small dot or circle
+        drawCircle(cx, cy, static_cast<float>(size) * 0.35f, color);
+    }
+
+    void Renderer::setLogicalOffset(float offsetX, float offsetY)
+    {
+        SDL_Rect vp;
+        vp.x = m_letterboxViewport.x + static_cast<int>(offsetX * m_letterboxScale);
+        vp.y = m_letterboxViewport.y + static_cast<int>(offsetY * m_letterboxScale);
+        vp.w = m_letterboxViewport.w;
+        vp.h = m_letterboxViewport.h;
+        SDL_SetRenderViewport(m_renderer, &vp);
+    }
+
+    void Renderer::resetLogicalOffset()
+    {
+        SDL_SetRenderViewport(m_renderer, &m_letterboxViewport);
     }
 }

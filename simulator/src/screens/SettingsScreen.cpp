@@ -5,6 +5,7 @@
 #include "../core/Application.h"
 #include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
+#include "../widgets/Card.h"
 #include "../widgets/ListTile.h"
 #include "ScreenCommon.h"
 
@@ -35,13 +36,14 @@ namespace VOXA
         }
 
         const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-        if (Rect { 12.0f, 10.0f, 20.0f, 20.0f }.contains(point.x, point.y))
+        if (Rect { 44.0f, 34.0f, 56.0f, 56.0f }.contains(point.x, point.y))
         {
             app.navigateTo(ScreenId::Home);
             return;
         }
 
-        if (Rect { 16.0f, 86.0f, 192.0f, 34.0f }.contains(point.x, point.y))
+        // Tap on "Sync & Backup" tile (index 1, y = 285.0f)
+        if (Rect { 380.0f, 285.0f, 840.0f, 80.0f }.contains(point.x, point.y))
         {
             app.navigateTo(ScreenId::SyncStatus);
         }
@@ -56,6 +58,12 @@ namespace VOXA
         ScreenCommon::renderSurface(renderer);
         ScreenCommon::renderHeader(renderer, "Settings", true, true, Icon::Plus);
 
+        // Center glass card container
+        Card container(Rect { 300.0f, 140.0f, 1000.0f, 640.0f }, Colors::Card, 32.0f);
+        container.setShadow(Colors::Shadow, 8);
+        container.setBorder(Colors::GlassBorder);
+        container.render(renderer);
+
         const std::array<SettingItem, 5> items { {
             { Icon::Wifi, "Wi-Fi", "Connected", SDL_Color { 68, 162, 255, 255 }, ScreenId::Settings },
             { Icon::Cloud, "Sync & Backup", "Auto sync on", SDL_Color { 68, 162, 255, 255 }, ScreenId::SyncStatus },
@@ -66,7 +74,7 @@ namespace VOXA
 
         for (std::size_t i = 0; i < items.size(); ++i)
         {
-            ListTile tile(Rect { 16.0f, 48.0f + i * 38.0f, 192.0f, 34.0f }, items[i].icon, items[i].title, items[i].subtitle, items[i].color, SDL_Color { 0, 0, 0, 0 }, true);
+            ListTile tile(Rect { 380.0f, 190.0f + i * 95.0f, 840.0f, 80.0f }, items[i].icon, items[i].title, items[i].subtitle, items[i].color, SDL_Color { 0, 0, 0, 0 }, true);
             tile.render(renderer);
         }
     }

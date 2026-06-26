@@ -13,6 +13,7 @@ C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeDetermineCompilerSupport.cma
 C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeDetermineRCCompiler.cmake
 C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeDetermineSystem.cmake
 C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeFindBinUtils.cmake
+C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeFindDependencyMacro.cmake
 C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeGenericSystem.cmake
 C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeInitializeConfigs.cmake
 C:/Program Files/CMake/share/cmake-4.4/Modules/CMakeLanguageInformation.cmake
@@ -99,4 +100,9 @@ C:/vcpkg/installed/x64-windows/share/sdl3/SDL3headersTargets.cmake
 C:/vcpkg/installed/x64-windows/share/sdl3/SDL3sharedTargets-debug.cmake
 C:/vcpkg/installed/x64-windows/share/sdl3/SDL3sharedTargets-release.cmake
 C:/vcpkg/installed/x64-windows/share/sdl3/SDL3sharedTargets.cmake
+C:/vcpkg/installed/x64-windows/share/sdl3_ttf/SDL3_ttf-shared-targets-debug.cmake
+C:/vcpkg/installed/x64-windows/share/sdl3_ttf/SDL3_ttf-shared-targets-release.cmake
+C:/vcpkg/installed/x64-windows/share/sdl3_ttf/SDL3_ttf-shared-targets.cmake
+C:/vcpkg/installed/x64-windows/share/sdl3_ttf/SDL3_ttfConfig.cmake
+C:/vcpkg/installed/x64-windows/share/sdl3_ttf/SDL3_ttfConfigVersion.cmake
 C:/vcpkg/scripts/buildsystems/vcpkg.cmake

@@ -32,10 +32,11 @@ namespace VOXA
 
     void BootScreen::render(Application&, Renderer& renderer)
     {
-        renderer.clear(Colors::Background);
-
         const float width = static_cast<float>(renderer.canvasWidth());
         const float height = static_cast<float>(renderer.canvasHeight());
+
+        // Draw a premium deep space gradient background for high contrast with light text/glowing waves
+        renderer.fillVerticalGradient(0.0f, 0.0f, width, height, SDL_Color { 8, 8, 12, 255 }, SDL_Color { 18, 14, 28, 255 });
 
         for (int i = 0; i < 5; ++i)
         {

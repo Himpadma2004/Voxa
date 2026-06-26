@@ -22,6 +22,11 @@ namespace VOXA
         extern const SDL_Color Primary;
         extern const SDL_Color PrimaryLight;
         extern const SDL_Color PrimaryDark;
+        extern const SDL_Color Accent;
+        extern const SDL_Color Highlight;
+        extern const SDL_Color Glass;
+        extern const SDL_Color GlassBorder;
+        extern const SDL_Color Shadow;
 
         // ===========================
         // Text

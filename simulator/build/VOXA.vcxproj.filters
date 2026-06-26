@@ -7,6 +7,9 @@
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\Application.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\core\AudioEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\HIMPADMA\Desktop\Dokumen\VS code\python 2.0\DL Project\Voxa\simulator\src\graphics\Colors.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

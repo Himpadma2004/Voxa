@@ -11,16 +11,16 @@ namespace VOXA
 
         const SDL_Color Background =
             {
-                18,
-                18,
-                18,
+                246,
+                246,
+                247,
                 255};
 
         const SDL_Color Surface =
             {
-                245,
-                242,
-                238,
+                246,
+                246,
+                247,
                 255};
 
         const SDL_Color Card =
@@ -28,14 +28,14 @@ namespace VOXA
                 255,
                 255,
                 255,
-                255};
+                46}; // rgba(255,255,255,0.18)
 
         const SDL_Color CardHover =
             {
-                248,
-                248,
-                248,
-                255};
+                255,
+                255,
+                255,
+                76}; // rgba(255,255,255,0.30)
 
         //----------------------------------------------------------
         // Purple Theme
@@ -46,14 +46,14 @@ namespace VOXA
                 124,
                 92,
                 255,
-                255};
+                255}; // #7C5CFF
 
         const SDL_Color PrimaryLight =
             {
-                162,
-                135,
-                255,
-                255};
+                166,
+                123,
+                250,
+                255}; // #A67BFA
 
         const SDL_Color PrimaryDark =
             {
@@ -62,23 +62,58 @@ namespace VOXA
                 220,
                 255};
 
+        const SDL_Color Accent =
+            {
+                166,
+                123,
+                250,
+                255}; // #A67BFA
+
+        const SDL_Color Highlight =
+            {
+                198,
+                180,
+                255,
+                255}; // #C6B4FF
+
+        const SDL_Color Glass =
+            {
+                255,
+                255,
+                255,
+                46}; // rgba(255,255,255,0.18)
+
+        const SDL_Color GlassBorder =
+            {
+                255,
+                255,
+                255,
+                76}; // rgba(255,255,255,0.30)
+
+        const SDL_Color Shadow =
+            {
+                0,
+                0,
+                0,
+                20}; // rgba(0,0,0,0.08)
+
         //----------------------------------------------------------
         // Text
         //----------------------------------------------------------
 
         const SDL_Color TextPrimary =
             {
-                28,
-                28,
-                30,
-                255};
+                17,
+                17,
+                17,
+                255}; // #111111
 
         const SDL_Color TextSecondary =
             {
-                125,
-                125,
-                130,
-                255};
+                122,
+                122,
+                122,
+                255}; // #7A7A7A
 
         const SDL_Color TextDisabled =
             {
@@ -93,17 +128,17 @@ namespace VOXA
 
         const SDL_Color Border =
             {
-                224,
-                224,
-                224,
-                255};
+                255,
+                255,
+                255,
+                76}; // rgba(255,255,255,0.30)
 
         const SDL_Color Divider =
             {
-                235,
-                235,
-                235,
-                255};
+                255,
+                255,
+                255,
+                89}; // rgba(255,255,255,0.35)
 
         //----------------------------------------------------------
         // Status

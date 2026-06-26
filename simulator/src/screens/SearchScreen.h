@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include "../core/Screen.h"
 
 namespace VOXA
@@ -15,5 +16,11 @@ namespace VOXA
 
     private:
         float m_elapsed { 0.0f };
+        bool m_keyboardOpen { false };
+        float m_keyboardAnim { 0.0f };
+        std::string m_searchQuery;
+        bool m_voiceSearchOpen { false };
+        float m_voiceSearchAnim { 0.0f };
+        float m_voiceElapsed { 0.0f };
     };
 }

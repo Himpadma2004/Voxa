@@ -23,9 +23,15 @@ find_package(SDL3 CONFIG REQUIRED
         "C:/vcpkg/packages/sdl3_x64-windows/share/sdl3"
 )
 
+find_package(SDL3_ttf CONFIG REQUIRED
+    HINTS
+        "C:/vcpkg/installed/x64-windows/share/sdl3_ttf"
+)
+
 add_executable(VOXA
     src/main.cpp
     src/core/Application.cpp
+    src/core/AudioEngine.cpp
     src/graphics/Colors.cpp
     src/graphics/Fonts.cpp
     src/graphics/Icons.cpp
@@ -51,4 +57,4 @@ add_executable(VOXA
     src/widgets/StatusBar.CPP
 )
 
-target_link_libraries(VOXA PRIVATE SDL3::SDL3)
+target_link_libraries(VOXA PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)

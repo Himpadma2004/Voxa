@@ -80,10 +80,56 @@ namespace VOXA
             m_lastTickMs = nowMs;
 
             commitPendingNavigation();
+
+            // Update screens and transition state
+            if (m_inTransition)
+            {
+                m_transitionElapsed += deltaSeconds;
+                if (m_transitionElapsed >= m_transitionDuration)
+                {
+                    m_inTransition = false;
+                    if (m_prevScreen != nullptr)
+                    {
+                        m_prevScreen->onExit(*this);
+                        m_prevScreen = nullptr;
+                    }
+                }
+            }
+
+            if (m_prevScreen != nullptr)
+            {
+                m_prevScreen->update(*this, deltaSeconds);
+            }
             m_currentScreen->update(*this, deltaSeconds);
 
             m_renderer.beginFrame();
-            m_currentScreen->render(*this, m_renderer);
+            
+            if (m_inTransition && m_prevScreen != nullptr)
+            {
+                float t = m_transitionElapsed / m_transitionDuration;
+                if (t > 1.0f) t = 1.0f;
+                // Ease out cubic curves for phone-like physics
+                t = 1.0f - std::pow(1.0f - t, 3.0f);
+
+                const float width = static_cast<float>(m_renderer.canvasWidth());
+                const float offsetPrev = m_transitionForward ? (-t * width) : (t * width);
+                const float offsetCurr = m_transitionForward ? ((1.0f - t) * width) : (-(1.0f - t) * width);
+
+                // Draw previous screen translated
+                m_renderer.setLogicalOffset(offsetPrev, 0.0f);
+                m_prevScreen->render(*this, m_renderer);
+
+                // Draw current screen translated
+                m_renderer.setLogicalOffset(offsetCurr, 0.0f);
+                m_currentScreen->render(*this, m_renderer);
+
+                m_renderer.resetLogicalOffset();
+            }
+            else
+            {
+                m_currentScreen->render(*this, m_renderer);
+            }
+
             m_renderer.endFrame();
 
             commitPendingNavigation();
@@ -194,11 +240,6 @@ namespace VOXA
             }
         }
 
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
-        {
-            m_audio.playClick();
-        }
-
         if (m_currentScreen != nullptr)
         {
             m_currentScreen->handleEvent(*this, event);
@@ -219,10 +260,34 @@ namespace VOXA
             return;
         }
 
-        if (m_currentScreen != nullptr)
+        // If we are currently transitioning, skip intermediate transitions
+        if (m_inTransition)
         {
-            m_currentScreen->onExit(*this);
+            if (m_prevScreen != nullptr)
+            {
+                m_prevScreen->onExit(*this);
+            }
+            m_prevScreen = nullptr;
+            m_inTransition = false;
         }
+
+        // Home screen is the primary screen. Navigation to it is backward (slide right).
+        // Navigation from it is forward (slide left).
+        m_transitionForward = (m_pendingScreenId != ScreenId::Home);
+
+        // Special exceptions: Settings to SyncStatus is forward, SyncStatus to Settings is backward.
+        if (m_currentScreenId == ScreenId::Settings && m_pendingScreenId == ScreenId::SyncStatus)
+        {
+            m_transitionForward = true;
+        }
+        else if (m_currentScreenId == ScreenId::SyncStatus && m_pendingScreenId == ScreenId::Settings)
+        {
+            m_transitionForward = false;
+        }
+
+        m_prevScreen = m_currentScreen;
+        m_inTransition = true;
+        m_transitionElapsed = 0.0f;
 
         m_currentScreenId = m_pendingScreenId;
         m_currentScreen = m_screens.at(m_currentScreenId).get();

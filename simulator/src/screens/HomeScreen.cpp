@@ -9,7 +9,6 @@
 #include "../graphics/Icons.h"
 #include "../graphics/Renderer.h"
 #include "../widgets/Card.h"
-#include "../widgets/CircleButton.h"
 #include "../widgets/StatusBar.h"
 #include "ScreenCommon.h"
 
@@ -46,20 +45,45 @@ namespace VOXA
 
         const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
 
-        const Rect recordCard { 380.0f, 218.0f, 520.0f, 180.0f };
+        const Rect recordCard { 366.0f, 218.0f, 784.0f, 180.0f };
         if (recordCard.contains(point.x, point.y))
         {
             app.navigateTo(ScreenId::Record);
             return;
         }
 
+        // Quick nav sidebar items
+        const std::array<std::pair<const char*, ScreenId>, 4> quickNav { {
+            { "Search Memories", ScreenId::Search },
+            { "Voice Capture", ScreenId::Record },
+            { "Reminder Stack", ScreenId::Reminders },
+            { "System Settings", ScreenId::Settings },
+        } };
+        for (std::size_t i = 0; i < quickNav.size(); ++i)
+        {
+            const float y = 390.0f + static_cast<float>(i) * 76.0f;
+            if (Rect { 74.0f, y, 218.0f, 54.0f }.contains(point.x, point.y))
+            {
+                app.navigateTo(quickNav[i].second);
+                return;
+            }
+        }
+
+        // Sidebar mic button
+        const float micDist = std::hypot(point.x - 183.0f, point.y - 744.0f);
+        if (micDist <= 40.0f)
+        {
+            app.navigateTo(ScreenId::Record);
+            return;
+        }
+
         const std::array<HomeTile, 6> tiles { {
-            { { 380.0f, 438.0f, 240.0f, 170.0f }, Icon::Bell, "Reminders", "3", ScreenId::Reminders },
-            { { 642.0f, 438.0f, 240.0f, 170.0f }, Icon::Lightbulb, "Ideas", "7", ScreenId::Ideas },
-            { { 904.0f, 438.0f, 240.0f, 170.0f }, Icon::Question, "Questions", "4", ScreenId::Questions },
-            { { 380.0f, 634.0f, 240.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
-            { { 642.0f, 634.0f, 240.0f, 170.0f }, Icon::Folder, "Others", "12", ScreenId::Others },
-            { { 904.0f, 634.0f, 240.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
+            { { 366.0f, 438.0f, 380.0f, 170.0f }, Icon::Bell, "Reminders", "3", ScreenId::Reminders },
+            { { 770.0f, 438.0f, 380.0f, 170.0f }, Icon::Lightbulb, "Ideas", "7", ScreenId::Ideas },
+            { { 1174.0f, 438.0f, 380.0f, 170.0f }, Icon::Question, "Questions", "4", ScreenId::Questions },
+            { { 366.0f, 634.0f, 380.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
+            { { 770.0f, 634.0f, 380.0f, 170.0f }, Icon::Folder, "Others", "12", ScreenId::Others },
+            { { 1174.0f, 634.0f, 380.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
         } };
 
         for (const HomeTile& tile : tiles)
@@ -77,20 +101,24 @@ namespace VOXA
         m_elapsed += deltaSeconds;
     }
 
-    void HomeScreen::render(Application&, Renderer& renderer)
+    void HomeScreen::render(Application& app, Renderer& renderer)
     {
         ScreenCommon::renderSurface(renderer);
-        StatusBar statusBar("VOXA", "92%");
-        statusBar.render(renderer);
 
-        Card sidebar(Rect { 48.0f, 118.0f, 270.0f, 686.0f }, SDL_Color { 18, 20, 28, 228 }, 34.0f);
-        sidebar.setShadow(SDL_Color { 4, 4, 8, 18 }, 8);
+        // Get mouse coordinates for hover state checks
+        float mx = 0.0f, my = 0.0f;
+        SDL_GetMouseState(&mx, &my);
+        const SDL_FPoint mPt = app.windowToCanvas(mx, my);
+
+        Card sidebar(Rect { 48.0f, 118.0f, 270.0f, 686.0f }, SDL_Color { 255, 255, 255, 120 }, 24.0f);
+        sidebar.setShadow(Colors::Shadow, 8);
+        sidebar.setBorder(Colors::GlassBorder);
         sidebar.render(renderer);
 
-        renderer.drawText("V O X A", 86.0f, 170.0f, SDL_Color { 242, 242, 248, 255 }, 36);
-        renderer.drawText("PERSONAL AI ASSISTANT", 86.0f, 224.0f, SDL_Color { 176, 178, 192, 255 }, 14);
-        renderer.drawText("Embedded voice workspace", 86.0f, 288.0f, SDL_Color { 208, 210, 224, 255 }, 20);
-        renderer.drawText("Landscape simulator preview", 86.0f, 320.0f, SDL_Color { 138, 140, 156, 255 }, 14);
+        renderer.drawText("V O X A", 86.0f, 170.0f, Colors::Primary, 26);
+        renderer.drawText("PERSONAL AI ASSISTANT", 86.0f, 214.0f, Colors::TextSecondary, 12);
+        renderer.drawText("Embedded Voice Workspace", 86.0f, 278.0f, Colors::TextPrimary, 18);
+        renderer.drawText("Landscape simulator preview", 86.0f, 310.0f, Colors::TextSecondary, 13);
 
         const std::array<std::pair<const char*, ScreenId>, 4> quickNav { {
             { "Search Memories", ScreenId::Search },
@@ -101,58 +129,88 @@ namespace VOXA
 
         for (std::size_t i = 0; i < quickNav.size(); ++i)
         {
-            const float y = 410.0f + static_cast<float>(i) * 82.0f;
-            renderer.fillRoundedRect(78.0f, y, 210.0f, 60.0f, 22.0f, SDL_Color { 255, 255, 255, i == 1 ? 24 : 12 });
-            renderer.drawText(quickNav[i].first, 102.0f, y + 20.0f, SDL_Color { 238, 239, 246, 255 }, 16);
+            const float y = 390.0f + static_cast<float>(i) * 76.0f;
+            const Rect navRect { 74.0f, y, 218.0f, 54.0f };
+            const bool hovered = navRect.contains(mPt.x, mPt.y);
+
+            renderer.fillRoundedRect(74.0f, y, 218.0f, 54.0f, 18.0f, 
+                hovered ? SDL_Color { 255, 255, 255, 200 } : SDL_Color { 255, 255, 255, static_cast<Uint8>(i == 1 ? 160 : 70) });
+            renderer.drawRoundedRect(74.0f, y, 218.0f, 54.0f, 18.0f, hovered ? Colors::PrimaryLight : Colors::GlassBorder);
+            renderer.drawText(quickNav[i].first, 98.0f, y + 17.0f, hovered ? Colors::Primary : Colors::TextPrimary, 14);
         }
 
-        renderer.drawGlowCircle(214.0f, 744.0f, 54.0f, SDL_Color { 124, 92, 255, 20 }, 8);
-        renderer.fillCircleGradient(214.0f, 744.0f, 42.0f, SDL_Color { 186, 160, 255, 255 }, Colors::Primary);
-        drawIcon(renderer, Icon::Mic, 192.0f, 722.0f, 44.0f, Colors::White);
+        const float micDist = std::hypot(mPt.x - 183.0f, mPt.y - 744.0f);
+        const bool micHovered = micDist <= 54.0f;
+        // Clean minimal mic button - flat filled circle, no gradient spheres
+        renderer.fillCircle(183.0f, 744.0f, micHovered ? 34.0f : 30.0f, micHovered ? Colors::Primary : SDL_Color { 186, 160, 255, 255 });
+        renderer.drawCircle(183.0f, 744.0f, micHovered ? 34.0f : 30.0f, SDL_Color { 255, 255, 255, 60 });
+        drawIcon(renderer, Icon::Mic, 161.0f, 722.0f, 44.0f, Colors::White);
 
         const float greetOffset = std::max(0.0f, 14.0f - m_elapsed * 26.0f);
-        renderer.drawText("Good Morning", 380.0f, 126.0f + greetOffset, Colors::TextPrimary, 46);
-        renderer.drawText("*", 696.0f, 118.0f + greetOffset, SDL_Color { 255, 184, 54, 255 }, 34);
-        renderer.drawText("Ready to capture your thoughts in a clean HD landscape workspace.", 382.0f, 180.0f + greetOffset, Colors::TextSecondary, 18);
+        renderer.drawText("Good Morning", 366.0f, 126.0f + greetOffset, Colors::TextPrimary, 30);
+        renderer.drawText("*", 592.0f, 118.0f + greetOffset, SDL_Color { 255, 184, 54, 255 }, 22);
+        renderer.drawText("Ready to capture your thoughts in a clean HD landscape workspace.", 368.0f, 172.0f + greetOffset, Colors::TextSecondary, 14);
 
-        Card recordCard(Rect { 380.0f, 218.0f, 520.0f, 180.0f }, Colors::Card, 28.0f);
-        recordCard.setShadow(SDL_Color { 18, 18, 20, 10 }, 6);
+        const Rect recordCardRect { 366.0f, 218.0f, 784.0f, 180.0f };
+        const bool recordHovered = recordCardRect.contains(mPt.x, mPt.y);
+        Card recordCard(recordCardRect, recordHovered ? Colors::CardHover : Colors::Card, 24.0f);
+        recordCard.setShadow(Colors::Shadow, 6);
+        recordCard.setBorder(recordHovered ? Colors::PrimaryLight : Colors::GlassBorder);
         recordCard.render(renderer);
 
-        CircleButton mic(476.0f, 308.0f, 56.0f, Icon::Mic, Colors::Primary, Colors::White);
-        mic.render(renderer);
-        renderer.drawText("Record", 580.0f, 272.0f, Colors::TextPrimary, 34);
-        renderer.drawText("Tap to start an elegant voice session with waveform monitoring", 580.0f, 324.0f, Colors::TextSecondary, 18);
+        // Mic circle icon on the left of the record card
+        const float micCX = 456.0f;
+        const float micCY = 308.0f;
+        const float micR  = 48.0f;
+        renderer.fillCircle(micCX, micCY, micR, Colors::Primary);
+        renderer.drawCircle(micCX, micCY, micR, SDL_Color { 255, 255, 255, 60 });
+        drawIcon(renderer, Icon::Mic, micCX - micR * 0.5f, micCY - micR * 0.5f, micR, Colors::White);
 
-        Card insightCard(Rect { 930.0f, 218.0f, 360.0f, 180.0f }, SDL_Color { 248, 245, 252, 255 }, 28.0f);
-        insightCard.setShadow(SDL_Color { 18, 18, 20, 10 }, 6);
+        // Label and subtitle to the right
+        renderer.drawText("Record", 546.0f, 264.0f, Colors::TextPrimary, 22);
+        renderer.drawText("Tap to start a voice session with waveform monitoring", 546.0f, 312.0f, Colors::TextSecondary, 13);
+
+        const Rect insightCardRect { 1174.0f, 218.0f, 380.0f, 180.0f };
+        const bool insightHovered = insightCardRect.contains(mPt.x, mPt.y);
+        Card insightCard(insightCardRect, insightHovered ? Colors::CardHover : Colors::Card, 24.0f);
+        insightCard.setShadow(Colors::Shadow, 6);
+        insightCard.setBorder(insightHovered ? Colors::PrimaryLight : Colors::GlassBorder);
         insightCard.render(renderer);
-        renderer.drawText("Today's Sync", 970.0f, 258.0f, Colors::TextPrimary, 26);
-        renderer.drawText("3 files waiting to sync", 970.0f, 306.0f, Colors::TextSecondary, 18);
-        renderer.drawText("Tap Settings to continue", 970.0f, 336.0f, Colors::Primary, 16);
+        renderer.drawText("Today's Sync", 1204.0f, 256.0f, Colors::TextPrimary, 22);
+        renderer.drawText("3 files waiting to sync", 1204.0f, 300.0f, Colors::TextSecondary, 14);
+        renderer.drawText("Tap Settings to continue", 1204.0f, 332.0f, Colors::Primary, 13);
 
         const std::array<HomeTile, 6> tiles { {
-            { { 380.0f, 438.0f, 240.0f, 170.0f }, Icon::Bell, "Reminders", "3", ScreenId::Reminders },
-            { { 642.0f, 438.0f, 240.0f, 170.0f }, Icon::Lightbulb, "Ideas", "7", ScreenId::Ideas },
-            { { 904.0f, 438.0f, 240.0f, 170.0f }, Icon::Question, "Questions", "4", ScreenId::Questions },
-            { { 380.0f, 634.0f, 240.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
-            { { 642.0f, 634.0f, 240.0f, 170.0f }, Icon::Folder, "Others", "12", ScreenId::Others },
-            { { 904.0f, 634.0f, 240.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
+            { { 366.0f, 438.0f, 380.0f, 170.0f }, Icon::Bell, "Reminders", "3", ScreenId::Reminders },
+            { { 770.0f, 438.0f, 380.0f, 170.0f }, Icon::Lightbulb, "Ideas", "7", ScreenId::Ideas },
+            { { 1174.0f, 438.0f, 380.0f, 170.0f }, Icon::Question, "Questions", "4", ScreenId::Questions },
+            { { 366.0f, 634.0f, 380.0f, 170.0f }, Icon::Search, "Search", "", ScreenId::Search },
+            { { 770.0f, 634.0f, 380.0f, 170.0f }, Icon::Folder, "Others", "12", ScreenId::Others },
+            { { 1174.0f, 634.0f, 380.0f, 170.0f }, Icon::Settings, "Settings", "", ScreenId::Settings },
         } };
 
         for (std::size_t i = 0; i < tiles.size(); ++i)
         {
             const HomeTile& tile = tiles[i];
-            const float rise = std::max(0.0f, 16.0f - m_elapsed * (20.0f + static_cast<float>(i) * 3.0f));
-            Card card(Rect { tile.bounds.x, tile.bounds.y + rise, tile.bounds.w, tile.bounds.h }, Colors::Card, 26.0f);
-            card.setShadow(SDL_Color { 18, 18, 20, 8 }, 4);
+            const bool tileHovered = tile.bounds.contains(mPt.x, mPt.y);
+            
+            float rise = std::max(0.0f, 16.0f - m_elapsed * (20.0f + static_cast<float>(i) * 3.0f));
+            if (tileHovered)
+            {
+                rise -= 5.0f; // lift on hover
+            }
+
+            Card card(Rect { tile.bounds.x, tile.bounds.y + rise, tile.bounds.w, tile.bounds.h }, 
+                tileHovered ? Colors::CardHover : Colors::Card, 24.0f);
+            card.setShadow(Colors::Shadow, tileHovered ? 8 : 5);
+            card.setBorder(tileHovered ? Colors::PrimaryLight : Colors::GlassBorder);
             card.render(renderer);
 
-            drawIcon(renderer, tile.icon, tile.bounds.x + 32.0f, tile.bounds.y + 26.0f + rise, 36.0f, Colors::TextPrimary);
-            renderer.drawText(tile.title, tile.bounds.x + 34.0f, tile.bounds.y + 92.0f + rise, Colors::TextPrimary, 24);
+            drawIcon(renderer, tile.icon, tile.bounds.x + 28.0f, tile.bounds.y + 28.0f + rise, 28.0f, Colors::Primary);
+            renderer.drawText(tile.title, tile.bounds.x + 28.0f, tile.bounds.y + 76.0f + rise, Colors::TextPrimary, 16);
             if (tile.value[0] != '\0')
             {
-                renderer.drawText(tile.value, tile.bounds.x + 34.0f, tile.bounds.y + 126.0f + rise, Colors::TextSecondary, 16);
+                renderer.drawText(tile.value, tile.bounds.x + 28.0f, tile.bounds.y + 108.0f + rise, Colors::TextSecondary, 13);
             }
         }
 

@@ -56,5 +56,11 @@ namespace VOXA
         bool m_hasPendingNavigation { false };
         bool m_quitRequested { false };
         Uint64 m_lastTickMs { 0 };
+
+        Screen* m_prevScreen { nullptr };
+        bool m_inTransition { false };
+        float m_transitionElapsed { 0.0f };
+        float m_transitionDuration { 0.35f };
+        bool m_transitionForward { true };
     };
 }

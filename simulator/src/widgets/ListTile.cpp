@@ -30,9 +30,8 @@ namespace VOXA
         const float subtitleSize = std::max(12.0f, m_bounds.h * 0.18f);
 
         renderer.fillRoundedRect(m_bounds.x, m_bounds.y, m_bounds.w, m_bounds.h, radius, Colors::Card);
-        renderer.drawRoundedRect(m_bounds.x, m_bounds.y, m_bounds.w, m_bounds.h, radius, SDL_Color { 239, 235, 231, 255 });
+        renderer.drawRoundedRect(m_bounds.x, m_bounds.y, m_bounds.w, m_bounds.h, radius, Colors::GlassBorder);
 
-        renderer.fillCircle(iconBoxX + iconBoxSize * 0.5f, iconBoxY + iconBoxSize * 0.5f, iconBoxSize * 0.58f, SDL_Color { 252, 249, 246, 255 });
         drawIcon(renderer, m_icon, iconBoxX, iconBoxY, iconBoxSize, m_iconColor);
 
         renderer.drawText(m_title, textX, m_bounds.y + m_bounds.h * 0.24f, Colors::TextPrimary, static_cast<int>(titleSize));

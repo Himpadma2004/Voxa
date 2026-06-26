@@ -4,7 +4,9 @@
 #include <tuple>
 
 #include "../core/Application.h"
+#include "../graphics/Colors.h"
 #include "../graphics/Renderer.h"
+#include "../widgets/Card.h"
 #include "../widgets/ListTile.h"
 #include "ScreenCommon.h"
 
@@ -20,7 +22,7 @@ namespace VOXA
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-            if (Rect { 12.0f, 10.0f, 20.0f, 20.0f }.contains(point.x, point.y))
+            if (Rect { 44.0f, 34.0f, 56.0f, 56.0f }.contains(point.x, point.y))
             {
                 app.navigateTo(ScreenId::Home);
             }
@@ -36,6 +38,12 @@ namespace VOXA
         ScreenCommon::renderSurface(renderer);
         ScreenCommon::renderHeader(renderer, "Others", true, true, Icon::Plus);
 
+        // Center glass card container
+        Card container(Rect { 300.0f, 140.0f, 1000.0f, 640.0f }, Colors::Card, 32.0f);
+        container.setShadow(Colors::Shadow, 8);
+        container.setBorder(Colors::GlassBorder);
+        container.render(renderer);
+
         const std::array<std::tuple<Icon, const char*, const char*, SDL_Color>, 4> items { {
             { Icon::Note, "Meeting Notes", "May 28", SDL_Color { 222, 92, 255, 255 } },
             { Icon::Chat, "Random Thoughts", "May 27", SDL_Color { 56, 168, 255, 255 } },
@@ -45,9 +53,9 @@ namespace VOXA
 
         for (std::size_t i = 0; i < items.size(); ++i)
         {
-            ListTile tile(Rect { 14.0f, 48.0f + i * 42.0f, 192.0f, 34.0f },
+            ListTile tile(Rect { 380.0f, 200.0f + i * 114.0f, 840.0f, 84.0f },
                           std::get<0>(items[i]), std::get<1>(items[i]), std::get<2>(items[i]), std::get<3>(items[i]),
-                          SDL_Color { 184, 160, 210, 255 }, false);
+                          SDL_Color { 0, 0, 0, 0 }, false);
             tile.render(renderer);
         }
 
