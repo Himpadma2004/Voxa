@@ -22,7 +22,7 @@ namespace VOXA
 
     void RecordScreen::handleEvent(Application& app, const SDL_Event& event)
     {
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
             
