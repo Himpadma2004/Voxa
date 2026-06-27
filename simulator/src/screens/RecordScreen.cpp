@@ -43,8 +43,12 @@ namespace VOXA
                 return;
             }
 
-            // Tapping elsewhere stops capture
-            if (point.y > 45.0f)
+            // Central microphone button tap target (centered at cx=160, cy=100 with radius 32)
+            const float cx = 160.0f;
+            const float cy = 100.0f;
+            const float dx = point.x - cx;
+            const float dy = point.y - cy;
+            if (dx * dx + dy * dy <= 32.0f * 32.0f)
             {
                 app.audio().playSoftConfirm();
                 app.navigateTo(ScreenId::Home);
@@ -93,7 +97,7 @@ namespace VOXA
 
         renderer.drawTextCentered(timer, cx, 142.0f, Colors::TextPrimary, 22);
         renderer.drawTextCentered("Recording...", cx, 166.0f, Colors::Primary, 11);
-        renderer.drawTextCentered("Tap anywhere to save", cx, 180.0f, Colors::TextSecondary, 9);
+        renderer.drawTextCentered("Tap button to save", cx, 180.0f, Colors::TextSecondary, 9);
 
         // 6. Premium full-width horizontal oscilloscope wave visualizer
         for (int i = 0; i < 30; ++i)
