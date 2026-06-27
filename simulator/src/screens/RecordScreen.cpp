@@ -30,7 +30,7 @@ namespace VOXA
             if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
             {
                 app.audio().playSoftConfirm();
-                app.navigateTo(ScreenId::Home);
+                app.navigateBack();
                 return;
             }
 

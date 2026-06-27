@@ -1,6 +1,6 @@
 [
   {"comments": "", "completed": "false", "dateTime": "2026-06-26", "id": "2", "title": "Emily Birthday"},
-  {"completed": "false", "dateTime": "2026-06-27 10:00", "id": "3", "title": "Project Meeting"},
+  {"comments": "", "completed": "false", "dateTime": "2026-06-27 10:00", "id": "3", "title": "Project Meeting"},
   {"date": "2026-06-28", "id": "5", "time": "09:30", "title": "Meeting with Alex"},
   {"date": "2026-06-28", "id": "6", "time": "18:00", "title": "Group Project"}
 ]

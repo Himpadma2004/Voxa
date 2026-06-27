@@ -302,10 +302,7 @@ namespace VOXA
         if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
         {
             app.audio().playSoftConfirm();
-            if (m_category == "ideas") app.navigateTo(ScreenId::Ideas);
-            else if (m_category == "reminders") app.navigateTo(ScreenId::Reminders);
-            else if (m_category == "questions") app.navigateTo(ScreenId::Questions);
-            else app.navigateTo(ScreenId::Others);
+            app.navigateBack();
             return;
         }
 
@@ -792,10 +789,7 @@ namespace VOXA
         }
 
         // Navigate back
-        if (m_category == "ideas") app.navigateTo(ScreenId::Ideas);
-        else if (m_category == "reminders") app.navigateTo(ScreenId::Reminders);
-        else if (m_category == "questions") app.navigateTo(ScreenId::Questions);
-        else app.navigateTo(ScreenId::Others);
+        app.navigateBack();
     }
 
     void DetailScreen::deleteItem(Application& app)
@@ -822,10 +816,7 @@ namespace VOXA
         }
 
         // Navigate back
-        if (m_category == "ideas") app.navigateTo(ScreenId::Ideas);
-        else if (m_category == "reminders") app.navigateTo(ScreenId::Reminders);
-        else if (m_category == "questions") app.navigateTo(ScreenId::Questions);
-        else app.navigateTo(ScreenId::Others);
+        app.navigateBack();
     }
 
     void DetailScreen::addComment(Application& app)

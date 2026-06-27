@@ -1,5 +1,6 @@
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include <SDL3/SDL.h>
 
@@ -21,6 +22,7 @@ namespace VOXA
         void shutdown();
 
         void navigateTo(ScreenId screenId);
+        void navigateBack();          ///< Go to the previous screen (history stack)
         void requestQuit();
 
         [[nodiscard]] bool isRunning() const;
@@ -67,8 +69,10 @@ namespace VOXA
         ScreenId m_currentScreenId { ScreenId::Boot };
         ScreenId m_pendingScreenId { ScreenId::Boot };
         bool m_hasPendingNavigation { false };
+        bool m_pendingIsBack { false };         ///< True when navigation is via navigateBack()
         bool m_quitRequested { false };
         Uint64 m_lastTickMs { 0 };
+        std::vector<ScreenId> m_navHistory; ///< Stack of visited screens for back navigation
 
         Screen* m_prevScreen { nullptr };
         bool m_inTransition { false };

@@ -40,7 +40,7 @@ namespace VOXA
             // Header back button hit area centered at (18, 28) with radius 11
             if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
             {
-                app.navigateTo(ScreenId::Home);
+                app.navigateBack();
                 return;
             }
 

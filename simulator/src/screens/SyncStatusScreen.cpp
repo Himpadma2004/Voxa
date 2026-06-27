@@ -25,7 +25,7 @@ namespace VOXA
         // Header back button hit area centered at (18, 28) with radius 11
         if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
         {
-            app.navigateTo(ScreenId::Settings);
+            app.navigateBack();
             return;
         }
 
@@ -33,7 +33,7 @@ namespace VOXA
         if (Rect { 110.0f, 182.0f, 100.0f, 22.0f }.contains(point.x, point.y))
         {
             app.audio().playSoftConfirm();
-            app.navigateTo(ScreenId::Settings);
+            app.navigateBack();
         }
     }
 

@@ -163,6 +163,25 @@ namespace VOXA
     {
         m_pendingScreenId = screenId;
         m_hasPendingNavigation = true;
+        m_pendingIsBack = false;  // forward navigation
+    }
+
+    void Application::navigateBack()
+    {
+        if (!m_navHistory.empty())
+        {
+            m_pendingScreenId = m_navHistory.back();
+            m_navHistory.pop_back();
+            m_hasPendingNavigation = true;
+            m_pendingIsBack = true;  // back navigation — skip history push
+        }
+        else
+        {
+            // Nothing in history — go Home without clearing anything
+            m_pendingScreenId = ScreenId::Home;
+            m_hasPendingNavigation = true;
+            m_pendingIsBack = true;
+        }
     }
 
     void Application::requestQuit()
@@ -218,7 +237,7 @@ namespace VOXA
             switch (event.key.key)
             {
             case SDLK_ESCAPE:
-                navigateTo(ScreenId::Home);
+                navigateBack();
                 return;
             case SDLK_1:
                 navigateTo(ScreenId::Home);
@@ -263,10 +282,26 @@ namespace VOXA
         }
 
         m_hasPendingNavigation = false;
+        const bool isBack = m_pendingIsBack;
+        m_pendingIsBack = false;
 
         if (m_pendingScreenId == m_currentScreenId)
         {
             return;
+        }
+
+        // Update history ONLY for forward navigations (not back, not Boot source)
+        if (!isBack && m_currentScreenId != ScreenId::Boot)
+        {
+            if (m_pendingScreenId == ScreenId::Home)
+            {
+                // Navigating to Home always resets the history stack
+                m_navHistory.clear();
+            }
+            else
+            {
+                m_navHistory.push_back(m_currentScreenId);
+            }
         }
 
         // If we are currently transitioning, skip intermediate transitions
@@ -280,18 +315,26 @@ namespace VOXA
             m_inTransition = false;
         }
 
-        // Home screen is the primary screen. Navigation to it is backward (slide right).
-        // Navigation from it is forward (slide left).
-        m_transitionForward = (m_pendingScreenId != ScreenId::Home);
-
-        // Special exceptions: Settings to SyncStatus is forward, SyncStatus to Settings is backward.
-        if (m_currentScreenId == ScreenId::Settings && m_pendingScreenId == ScreenId::SyncStatus)
-        {
-            m_transitionForward = true;
-        }
-        else if (m_currentScreenId == ScreenId::SyncStatus && m_pendingScreenId == ScreenId::Settings)
+        // Back navigation always slides right (reverse direction).
+        // Forward navigation slides left.
+        if (isBack)
         {
             m_transitionForward = false;
+        }
+        else
+        {
+            // Home screen is the root — going there is backward.
+            // Special sub-nav: Settings->SyncStatus is forward, reverse is backward.
+            m_transitionForward = (m_pendingScreenId != ScreenId::Home);
+
+            if (m_currentScreenId == ScreenId::Settings && m_pendingScreenId == ScreenId::SyncStatus)
+            {
+                m_transitionForward = true;
+            }
+            else if (m_currentScreenId == ScreenId::SyncStatus && m_pendingScreenId == ScreenId::Settings)
+            {
+                m_transitionForward = false;
+            }
         }
 
         m_prevScreen = m_currentScreen;
