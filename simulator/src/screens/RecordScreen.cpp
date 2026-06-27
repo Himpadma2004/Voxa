@@ -43,12 +43,9 @@ namespace VOXA
                 return;
             }
 
-            // Central microphone button tap target (centered at cx=160, cy=100 with radius 32)
-            const float cx = 160.0f;
-            const float cy = 100.0f;
-            const float dx = point.x - cx;
-            const float dy = point.y - cy;
-            if (dx * dx + dy * dy <= 32.0f * 32.0f)
+            // Generous tap target for central microphone button area (covers button, halos, timer, and labels)
+            // X range: 100 to 220 (120px wide), Y range: 50 to 190 (140px tall)
+            if (point.x >= 100.0f && point.x <= 220.0f && point.y >= 50.0f && point.y <= 190.0f)
             {
                 app.audio().playSoftConfirm();
                 app.navigateTo(ScreenId::Home);
