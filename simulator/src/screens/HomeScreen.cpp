@@ -167,7 +167,7 @@ namespace VOXA
                     // Click on Menu List Items
                     for (std::size_t i = 0; i < menuItems.size(); ++i)
                     {
-                        Rect itemRect { 10.0f, 50.0f + i * 50.0f - m_menuScrollY, 300.0f, 44.0f };
+                        Rect itemRect { 12.0f, 50.0f + i * 50.0f - m_menuScrollY, 296.0f, 44.0f };
                         if (itemRect.contains(pt.x, pt.y) && pt.y >= 48.0f && pt.y <= 220.0f)
                         {
                             app.navigateTo(menuItems[i].target);
@@ -331,30 +331,31 @@ namespace VOXA
             const auto& item = menuItems[i];
             const float itemY = 50.0f + i * 50.0f - m_menuScrollY;
 
-            // Render tile rounded card: height 44.0f
-            renderer.fillRoundedRect(10.0f, itemY, 300.0f, 44.0f, 10.0f, SDL_Color { 255, 255, 255, 255 });
-            renderer.drawRoundedRect(10.0f, itemY, 300.0f, 44.0f, 10.0f, SDL_Color { 235, 235, 240, 255 });
+            // Tile card: x=12 to x=308 (equal 12px margins each side)
+            renderer.fillRoundedRect(12.0f, itemY, 296.0f, 44.0f, 10.0f, SDL_Color { 255, 255, 255, 255 });
+            renderer.drawRoundedRect(12.0f, itemY, 296.0f, 44.0f, 10.0f, SDL_Color { 235, 235, 240, 255 });
 
-            // Icon Circle: diameter 28 (radius 14.0f)
+            // Icon circle: center at x=34 (12 margin + 14 radius + 8 padding)
             const float cy = itemY + 22.0f;
-            renderer.fillCircle(26.0f, cy, 14.0f, item.color);
-            drawIcon(renderer, item.icon, 26.0f - 7.0f, cy - 7.0f, 14.0f, Colors::White);
+            renderer.fillCircle(34.0f, cy, 14.0f, item.color);
+            drawIcon(renderer, item.icon, 34.0f - 7.0f, cy - 7.0f, 14.0f, Colors::White);
 
-            // Text Label: shifted right and font size 12
-            renderer.drawText(item.label, 50.0f, itemY + 12.0f, Colors::TextPrimary, 12);
+            // Text Label: starts at x=56 (right of icon + gap)
+            renderer.drawText(item.label, 56.0f, itemY + 12.0f, Colors::TextPrimary, 12);
 
             // Badge Count (if > 0)
             if (item.badgeCount > 0)
             {
                 char badgeStr[8];
                 SDL_snprintf(badgeStr, sizeof(badgeStr), "%d", item.badgeCount);
-                
-                renderer.fillCircle(255.0f, cy, 10.0f, SDL_Color { 240, 235, 255, 255 });
-                renderer.drawTextCentered(badgeStr, 255.0f, cy - 5.0f, Colors::Primary, 9);
+
+                // Badge circle at x=258 (12px from right chevron)
+                renderer.fillCircle(258.0f, cy, 10.0f, SDL_Color { 240, 235, 255, 255 });
+                renderer.drawTextCentered(badgeStr, 258.0f, cy - 5.0f, Colors::Primary, 9);
             }
 
-            // Right Chevron: centered and size 12
-            drawIcon(renderer, Icon::ChevronRight, 280.0f, cy - 6.0f, 12.0f, SDL_Color { 180, 180, 185, 255 });
+            // Right Chevron at x=282 (leaving 14px gap to right edge of card)
+            drawIcon(renderer, Icon::ChevronRight, 282.0f, cy - 6.0f, 12.0f, SDL_Color { 180, 180, 185, 255 });
         }
 
         renderer.clearClipRect();
