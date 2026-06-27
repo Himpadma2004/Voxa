@@ -261,7 +261,7 @@ namespace VOXA
         // Subtitle (Centered)
         renderer.drawTextCentered("How can I help today?", 160.0f, 68.0f, Colors::TextSecondary, 10);
 
-        // --- 3D Pulsing Centered Mic Button ---
+        // --- Premium Centered Mic Button (Neutral Watch Style) ---
         const float micCx = 160.0f;
         const float micCy = 126.0f;
         const float micR = 36.0f;
@@ -269,29 +269,22 @@ namespace VOXA
         // Dynamic pulsing factor based on elapsed time (smooth sine wave)
         float pulse = std::sin(m_elapsed * 4.0f) * 0.5f + 0.5f; // 0.0 to 1.0
 
-        // 1. Concentric pulsing halo rings
-        renderer.drawCircle(micCx, micCy, micR + 6.0f + pulse * 4.0f, SDL_Color { 155, 120, 255, static_cast<Uint8>(35 + pulse * 20) });
-        renderer.drawCircle(micCx, micCy, micR + 12.0f + pulse * 8.0f, SDL_Color { 155, 120, 255, static_cast<Uint8>(10 + pulse * 10) });
+        // 1. Concentric pulsing halo rings (neutral, translucent purple)
+        renderer.drawCircle(micCx, micCy, micR + 6.0f + pulse * 4.0f, SDL_Color { 155, 120, 255, static_cast<Uint8>(30 + pulse * 15) });
+        renderer.drawCircle(micCx, micCy, micR + 12.0f + pulse * 8.0f, SDL_Color { 155, 120, 255, static_cast<Uint8>(8 + pulse * 8) });
 
-        // 2. Soft outer button shadow
+        // 2. Soft button shadow
         renderer.drawSoftShadow(micCx - micR, micCy - micR, micR * 2.0f, micR * 2.0f, micR, 4, SDL_Color { 0, 0, 0, 16 });
         
-        // 3. Thick purple outer ring
+        // 3. Central solid purple circle
         renderer.fillCircle(micCx, micCy, micR, Colors::Primary);
-        renderer.drawCircle(micCx, micCy, micR, SDL_Color { 255, 255, 255, 60 });
+        
+        // 4. Clean white border highlight around the circle
+        renderer.drawCircle(micCx, micCy, micR, SDL_Color { 255, 255, 255, 180 });
 
-        // 4. Inner white disc to create a premium 3D ring border
-        renderer.fillCircle(micCx, micCy, micR - 2.5f, SDL_Color { 255, 255, 255, 255 });
-
-        // 5. Very soft inner purple-to-white gradient for depth
-        float innerR = micR - 5.0f;
-        renderer.fillVerticalGradient(micCx - innerR, micCy - innerR, innerR * 2.0f, innerR * 2.0f, 
-                                     SDL_Color { 246, 241, 255, 255 }, SDL_Color { 255, 255, 255, 255 });
-        renderer.drawCircle(micCx, micCy, innerR, SDL_Color { 235, 230, 248, 255 });
-
-        // 6. Mic icon in the center in theme purple
-        const float micIconSz = 24.0f;
-        drawIcon(renderer, Icon::Mic, micCx - micIconSz * 0.5f, micCy - micIconSz * 0.5f, micIconSz, Colors::Primary);
+        // 5. Microphone icon in centered white (high-contrast, neutral, premium)
+        const float micIconSz = 22.0f;
+        drawIcon(renderer, Icon::Mic, micCx - micIconSz * 0.5f, micCy - micIconSz * 0.5f, micIconSz, Colors::White);
 
         // Tap to Record helper text centered below the button
         renderer.drawTextCentered("Tap to Record", 160.0f, 178.0f, Colors::Primary, 11);
