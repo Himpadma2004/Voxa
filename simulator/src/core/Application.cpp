@@ -42,7 +42,7 @@ namespace VOXA
             return false;
         }
 
-        if (!m_renderer.initialize("VOXA Simulator", 640, 480, 320, 240))
+        if (!m_renderer.initialize("VOXA Simulator", 320, 240, 320, 240))
         {
             return false;
         }

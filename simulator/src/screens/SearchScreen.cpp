@@ -1,3 +1,4 @@
+// SearchScreen.cpp — smartwatch search screen for Waveshare 2.8" 320x240 display
 #include "SearchScreen.h"
 
 #include <array>
@@ -146,7 +147,7 @@ namespace
             // Row 4
             keys.push_back({"?12", startX + 5.0f, startY + 96.0f, 45.0f, 20.0f, "mode_sym"});
             keys.push_back({"Space", startX + 54.0f, startY + 96.0f, 182.0f, 20.0f, "space"});
-            keys.push_back({"Go", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "search"});
+            keys.push_back({"Done", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "search"});
         }
         else if (mode == 1) // Numbers & Punctuation
         {
@@ -173,7 +174,7 @@ namespace
             // Row 4
             keys.push_back({"ABC", startX + 5.0f, startY + 96.0f, 45.0f, 20.0f, "mode_abc"});
             keys.push_back({"Space", startX + 54.0f, startY + 96.0f, 182.0f, 20.0f, "space"});
-            keys.push_back({"Go", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "search"});
+            keys.push_back({"Done", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "search"});
         }
         else // Extra symbols
         {
@@ -200,7 +201,7 @@ namespace
             // Row 4
             keys.push_back({"ABC", startX + 5.0f, startY + 96.0f, 45.0f, 20.0f, "mode_abc"});
             keys.push_back({"Space", startX + 54.0f, startY + 96.0f, 182.0f, 20.0f, "space"});
-            keys.push_back({"Go", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "search"});
+            keys.push_back({"Done", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "search"});
         }
         return keys;
     }
@@ -265,7 +266,7 @@ namespace VOXA
             float mx = 0.0f, my = 0.0f;
             SDL_GetMouseState(&mx, &my);
             const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 10.0f, 104.0f, 300.0f, 126.0f }.contains(mPt.x, mPt.y))
+            if (Rect { 10.0f, 110.0f, 300.0f, 120.0f }.contains(mPt.x, mPt.y))
             {
                 m_targetScrollY -= event.wheel.y * 20.0f;
             }
@@ -285,7 +286,42 @@ namespace VOXA
 
         if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            m_isDragging = false;
+            if (m_isDragging)
+            {
+                const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+                float diffY = std::abs(point.y - m_dragStartY);
+                if (diffY < 6.0f)
+                {
+                    // Tapped a search result tile!
+                    std::vector<SearchResult> results;
+                    if (app.services().search)
+                    {
+                        if (m_searchQuery.empty())
+                        {
+                            results = app.services().search->getRecent(5);
+                        }
+                        else
+                        {
+                            results = app.services().search->search(m_searchQuery);
+                        }
+                    }
+
+                    for (std::size_t i = 0; i < results.size(); ++i)
+                    {
+                        Rect tileRect { 10.0f, 110.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f };
+                        if (tileRect.contains(point.x, point.y) && point.y >= 110.0f && point.y <= 230.0f)
+                        {
+                            std::string detailCat = results[i].category + "s";
+                            if (results[i].category == "memory") detailCat = "others";
+                            
+                            app.setSelectedItem(detailCat, results[i].sourceId);
+                            app.navigateTo(ScreenId::Detail);
+                            break;
+                        }
+                    }
+                }
+                m_isDragging = false;
+            }
             return;
         }
 
@@ -296,37 +332,44 @@ namespace VOXA
 
         const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
         
-        // Circular Back Button
-        if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
+        // Circular Back Button (Large 40x40 tap target in top-left)
+        if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
         {
             app.navigateTo(ScreenId::Home);
             return;
         }
 
+        // Clear button tap
+        if (Rect { 260.0f, 85.0f, 50.0f, 20.0f }.contains(point.x, point.y))
+        {
+            app.audio().playSoftConfirm();
+            m_searchQuery = "";
+            return;
+        }
+
         // List drag-scrolling
-        if (Rect { 10.0f, 104.0f, 300.0f, 126.0f }.contains(point.x, point.y))
+        if (Rect { 10.0f, 110.0f, 300.0f, 120.0f }.contains(point.x, point.y))
         {
             m_isDragging = true;
             m_dragStartY = point.y;
             m_dragStartScrollY = m_targetScrollY;
         }
 
-        // Search Bar click toggles keyboard
-        const Rect searchBarRect { 10.0f, 52.0f, 300.0f, 26.0f };
+        // Search Bar click toggles keyboard or voice search
+        const Rect searchBarRect { 10.0f, 50.0f, 300.0f, 32.0f };
         if (searchBarRect.contains(point.x, point.y))
         {
-            m_keyboardOpen = true;
-            m_voiceSearchOpen = false;
-            return;
-        }
-
-        // Floating Mic Button click triggers voice search overlay
-        const Rect micBtnRect { 270.0f, 190.0f, 40.0f, 40.0f };
-        if (micBtnRect.contains(point.x, point.y) && !m_keyboardOpen)
-        {
-            m_voiceSearchOpen = true;
-            m_keyboardOpen = false;
-            app.audio().playSoftConfirm();
+            if (point.x >= 270.0f)
+            {
+                m_voiceSearchOpen = true;
+                m_keyboardOpen = false;
+                app.audio().playSoftConfirm();
+            }
+            else
+            {
+                m_keyboardOpen = true;
+                m_voiceSearchOpen = false;
+            }
             return;
         }
 
@@ -350,24 +393,26 @@ namespace VOXA
         {
             const float kbdY = 240.0f - m_keyboardAnim * 135.0f;
 
-            // Suggestion bar clicks
+            std::string* activeStr = &m_searchQuery;
+
+            // Check suggestion bar click: kbdY to kbdY + 20.0f
             if (point.y >= kbdY && point.y <= kbdY + 20.0f && point.x >= 5.0f && point.x <= 315.0f)
             {
-                auto suggestions = getWordSuggestions(m_searchQuery);
+                auto suggestions = getWordSuggestions(*activeStr);
                 if (point.x >= 10.0f && point.x <= 100.0f && suggestions.size() > 0)
                 {
                     app.audio().playClick();
-                    applySuggestion(m_searchQuery, suggestions[0]);
+                    applySuggestion(*activeStr, suggestions[0]);
                 }
                 else if (point.x >= 110.0f && point.x <= 200.0f && suggestions.size() > 1)
                 {
                     app.audio().playClick();
-                    applySuggestion(m_searchQuery, suggestions[1]);
+                    applySuggestion(*activeStr, suggestions[1]);
                 }
                 else if (point.x >= 210.0f && point.x <= 300.0f && suggestions.size() > 2)
                 {
                     app.audio().playClick();
-                    applySuggestion(m_searchQuery, suggestions[2]);
+                    applySuggestion(*activeStr, suggestions[2]);
                 }
                 return;
             }
@@ -379,6 +424,7 @@ namespace VOXA
                 {
                     app.audio().playClick();
                     std::string act = key.action;
+                    
                     if (act == "backspace")
                     {
                         if (!m_searchQuery.empty()) m_searchQuery.pop_back();
@@ -421,12 +467,14 @@ namespace VOXA
                 }
             }
 
+            // Click inside keyboard eats the event
             if (Rect{ 5.0f, kbdY, 310.0f, 135.0f }.contains(point.x, point.y))
             {
                 return;
             }
         }
 
+        // Click completely outside closes keyboard
         m_keyboardOpen = false;
     }
 
@@ -453,12 +501,37 @@ namespace VOXA
             m_voiceSearchAnim = std::max(0.0f, m_voiceSearchAnim - deltaSeconds * 6.0f);
             m_voiceElapsed = 0.0f;
         }
+
+        // Calculate scroll limits
+        std::vector<SearchResult> results;
+        if (app.services().search)
+        {
+            if (m_searchQuery.empty())
+            {
+                results = app.services().search->getRecent(5);
+            }
+            else
+            {
+                results = app.services().search->search(m_searchQuery);
+            }
+        }
+
+        float contentHeight = std::max(0.0f, static_cast<float>(results.size()) * 54.0f);
+        float visibleHeight = 120.0f;
+        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+        m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
+        m_scrollY += (m_targetScrollY - m_scrollY) * 12.0f * deltaSeconds;
+        if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
+        {
+            m_scrollY = m_targetScrollY;
+        }
     }
 
     void SearchScreen::render(Application& app, Renderer& renderer)
     {
         ScreenCommon::renderSurface(renderer);
-        ScreenCommon::renderHeader(renderer, "Search", true, true, Icon::Filter);
+        ScreenCommon::renderHeader(renderer, "Search", true, false, Icon::Plus);
 
         float mx = 0.0f, my = 0.0f;
         SDL_GetMouseState(&mx, &my);
@@ -470,34 +543,42 @@ namespace VOXA
             searchDisplay += "|";
         }
 
-        // Draw watch Search Bar
-        const Rect searchBarRect { 10.0f, 52.0f, 300.0f, 26.0f };
-        const bool searchHovered = searchBarRect.contains(mPt.x, mPt.y) || m_keyboardOpen;
+        // Draw watch Search Bar Capsule
+        const Rect searchBarRect { 10.0f, 50.0f, 300.0f, 32.0f };
         
-        renderer.fillRoundedRect(searchBarRect.x, searchBarRect.y, searchBarRect.w, searchBarRect.h, 13.0f, 
-            searchHovered ? SDL_Color { 255, 255, 255, 180 } : SDL_Color { 255, 255, 255, 120 });
-        renderer.drawRoundedRect(searchBarRect.x, searchBarRect.y, searchBarRect.w, searchBarRect.h, 13.0f, 
-            m_keyboardOpen ? Colors::PrimaryLight : Colors::GlassBorder);
+        renderer.fillRoundedRect(searchBarRect.x, searchBarRect.y, searchBarRect.w, searchBarRect.h, 16.0f, 
+            SDL_Color { 255, 255, 255, 255 });
+        renderer.drawRoundedRect(searchBarRect.x, searchBarRect.y, searchBarRect.w, searchBarRect.h, 16.0f, 
+            m_keyboardOpen ? Colors::PrimaryLight : SDL_Color { 235, 235, 240, 255 });
         
+        // Search icon on left
+        drawIcon(renderer, Icon::Search, searchBarRect.x + 10.0f, searchBarRect.y + 10.0f, 12.0f, Colors::TextSecondary);
+
+        // Input text
         if (m_searchQuery.empty())
         {
-            renderer.drawText("Search...", searchBarRect.x + 12.0f, searchBarRect.y + 6.0f, SDL_Color { 140, 140, 145, 255 }, 11);
+            renderer.drawText("Search anything...", searchBarRect.x + 28.0f, searchBarRect.y + 9.0f, SDL_Color { 160, 160, 165, 255 }, 11);
         }
         else
         {
-            renderer.drawText(searchDisplay, searchBarRect.x + 12.0f, searchBarRect.y + 6.0f, Colors::TextPrimary, 11);
+            renderer.drawText(searchDisplay, searchBarRect.x + 28.0f, searchBarRect.y + 9.0f, Colors::TextPrimary, 11);
         }
-        drawIcon(renderer, Icon::Search, searchBarRect.x + searchBarRect.w - 22.0f, searchBarRect.y + 3.0f, 20.0f, Colors::TextSecondary);
+
+        // Purple mic icon on right
+        drawIcon(renderer, Icon::Mic, searchBarRect.x + searchBarRect.w - 22.0f, searchBarRect.y + 9.0f, 13.0f, Colors::Primary);
 
         // Section header
         if (m_searchQuery.empty())
         {
-            renderer.drawText("Recent Searches", 12.0f, 88.0f, Colors::TextPrimary, 11);
+            renderer.drawText("Recent Searches", 12.0f, 94.0f, Colors::TextPrimary, 11);
         }
         else
         {
-            renderer.drawText("Search Results", 12.0f, 88.0f, Colors::TextPrimary, 11);
+            renderer.drawText("Search Results", 12.0f, 94.0f, Colors::TextPrimary, 11);
         }
+
+        // Clear button
+        renderer.drawTextCentered("Clear", 285.0f, 94.0f, Colors::Primary, 10);
 
         std::vector<SearchResult> results;
         if (app.services().search)
@@ -513,33 +594,33 @@ namespace VOXA
         }
 
         // Set clipping region for scrolling search items
-        renderer.setClipRect(10.0f, 104.0f, 300.0f, 126.0f);
+        renderer.setClipRect(5.0f, 110.0f, 310.0f, 120.0f);
 
         for (std::size_t i = 0; i < results.size(); ++i)
         {
             const auto& res = results[i];
             Icon icon = getCategoryIcon(res.category);
-            SDL_Color color = getCategoryColor(res.category);
+            
+            // If recent search (query is empty), show a Clock/History icon instead!
+            if (m_searchQuery.empty())
+            {
+                icon = Icon::Calendar; // maps to clock/history look
+            }
 
-            const float slide = std::max(0.0f, 18.0f - m_elapsed * (40.0f + static_cast<float>(i) * 4.0f));
-            const Rect tileRect { 15.0f, 104.0f + i * 42.0f + slide - m_scrollY, 290.0f, 38.0f };
-            const bool tileHovered = tileRect.contains(mPt.x, mPt.y);
+            SDL_Color color = getCategoryColor(res.category);
+            if (m_searchQuery.empty())
+            {
+                color = SDL_Color { 150, 150, 160, 255 }; // generic grey for recents
+            }
+
+            const Rect tileRect { 10.0f, 110.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f };
 
             ListTile tile(tileRect, icon, res.title.c_str(), res.timestamp.c_str(), color, 
-                tileHovered ? Colors::CardHover : SDL_Color { 0, 0, 0, 0 }, true);
+                SDL_Color { 0, 0, 0, 0 }, true);
             tile.render(renderer);
         }
 
         renderer.clearClipRect();
-
-        // Floating Mic Button on bottom right (only if keyboard is closed)
-        if (m_keyboardAnim < 0.1f && m_voiceSearchAnim < 0.1f)
-        {
-            const Rect micBtnRect { 270.0f, 190.0f, 40.0f, 40.0f };
-            const bool micHovered = micBtnRect.contains(mPt.x, mPt.y);
-            FloatingButton button(290.0f, 210.0f, micHovered ? 17.0f : 15.0f, Icon::Mic, Colors::Primary, Colors::White);
-            button.render(renderer);
-        }
 
         // Render sliding watch QWERTY Virtual Keyboard
         if (m_keyboardAnim > 0.0f)
@@ -549,7 +630,7 @@ namespace VOXA
             const float kbdW = 310.0f;
             const float kbdH = 135.0f;
 
-            Card kbdPanel(Rect{ kbdX, kbdY, kbdW, kbdH }, SDL_Color { 255, 255, 255, 230 }, 16.0f);
+            Card kbdPanel(Rect{ kbdX, kbdY, kbdW, kbdH }, SDL_Color { 255, 255, 255, 240 }, 12.0f);
             kbdPanel.setShadow(Colors::Shadow, 6);
             kbdPanel.setBorder(Colors::PrimaryLight);
             kbdPanel.render(renderer);

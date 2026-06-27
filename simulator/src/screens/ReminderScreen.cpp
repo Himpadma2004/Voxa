@@ -27,10 +27,10 @@ namespace
     };
 
     const std::array<ReminderStyle, 4> styles { {
-        { SDL_Color { 130, 92, 255, 255 }, SDL_Color { 130, 92, 255, 255 } },
-        { SDL_Color { 255, 92, 146, 255 }, SDL_Color { 255, 92, 146, 255 } },
-        { SDL_Color { 255, 168, 32, 255 }, SDL_Color { 255, 168, 32, 255 } },
-        { SDL_Color { 200, 92, 255, 255 }, SDL_Color { 150, 104, 255, 255 } }
+        { SDL_Color { 145, 105, 255, 255 }, SDL_Color { 145, 105, 255, 255 } },
+        { SDL_Color { 255, 95, 150, 255 }, SDL_Color { 255, 95, 150, 255 } },
+        { SDL_Color { 255, 180, 40, 255 }, SDL_Color { 255, 180, 40, 255 } },
+        { SDL_Color { 80, 185, 255, 255 }, SDL_Color { 80, 185, 255, 255 } }
     } };
 
     std::string formatDateTime(const std::string& raw)
@@ -45,7 +45,7 @@ namespace
             tm.tm_hour = hr;
             tm.tm_min = min;
             char buf[64];
-            std::strftime(buf, sizeof(buf), "%b %d, %I:%M %p", &tm);
+            std::strftime(buf, sizeof(buf), "%I:%M %p", &tm);
             std::string s(buf);
             if (!s.empty() && s[0] == '0') s = s.substr(1);
             return s;
@@ -77,11 +77,11 @@ namespace VOXA
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
             // Header back button hit area centered at (18, 28) with radius 11
-            if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
+            if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
             {
                 app.navigateTo(ScreenId::Home);
             }
-            else if (Rect { 10.0f, 80.0f, 300.0f, 150.0f }.contains(point.x, point.y))
+            else if (Rect { 10.0f, 68.0f, 300.0f, 162.0f }.contains(point.x, point.y))
             {
                 m_isDragging = true;
                 m_dragStartY = point.y;
@@ -108,8 +108,8 @@ namespace VOXA
                     auto reminders = app.services().reminders->getAll();
                     for (std::size_t i = 0; i < reminders.size(); ++i)
                     {
-                        Rect tileRect { 15.0f, 80.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f };
-                        if (tileRect.contains(point.x, point.y))
+                        Rect tileRect { 10.0f, 68.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f };
+                        if (tileRect.contains(point.x, point.y) && point.y >= 68.0f && point.y <= 230.0f)
                         {
                             app.setSelectedItem("reminders", reminders[i].id);
                             app.navigateTo(ScreenId::Detail);
@@ -125,7 +125,7 @@ namespace VOXA
             float mx = 0.0f, my = 0.0f;
             SDL_GetMouseState(&mx, &my);
             const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 10.0f, 52.0f, 300.0f, 180.0f }.contains(mPt.x, mPt.y))
+            if (Rect { 10.0f, 68.0f, 300.0f, 162.0f }.contains(mPt.x, mPt.y))
             {
                 m_targetScrollY -= event.wheel.y * 20.0f;
             }
@@ -140,8 +140,8 @@ namespace VOXA
             numReminders = app.services().reminders->getAll().size();
         }
 
-        float contentHeight = std::max(0.0f, static_cast<float>(numReminders) * 42.0f - 10.0f);
-        float visibleHeight = 145.0f;
+        float contentHeight = std::max(0.0f, static_cast<float>(numReminders) * 54.0f);
+        float visibleHeight = 162.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
@@ -157,16 +157,8 @@ namespace VOXA
         ScreenCommon::renderSurface(renderer);
         ScreenCommon::renderHeader(renderer, "Reminders", true, true, Icon::Plus);
 
-        // Watch glass card container
-        Card container(Rect { 10.0f, 52.0f, 300.0f, 180.0f }, Colors::Card, 16.0f);
-        container.setShadow(Colors::Shadow, 4);
-        container.setBorder(Colors::GlassBorder);
-        container.render(renderer);
-
-        // Compact filters at the top of the watch card
-        Button(Rect { 15.0f, 56.0f, 60.0f, 20.0f }, "All", true).render(renderer);
-        Button(Rect { 80.0f, 56.0f, 70.0f, 20.0f }, "Today", false).render(renderer);
-        Button(Rect { 155.0f, 56.0f, 80.0f, 20.0f }, "Upcoming", false).render(renderer);
+        // Header sub-category label
+        renderer.drawText("Today", 12.0f, 50.0f, SDL_Color { 145, 105, 255, 255 }, 11);
 
         // Retrieve reminders from the backend service
         std::vector<Reminder> reminders;
@@ -175,8 +167,8 @@ namespace VOXA
             reminders = app.services().reminders->getAll();
         }
 
-        // Set clipping region to prevent scroll overlap with container borders
-        renderer.setClipRect(10.0f, 80.0f, 300.0f, 145.0f);
+        // Set clipping region to prevent scroll overlap with status bar or footer
+        renderer.setClipRect(5.0f, 68.0f, 310.0f, 162.0f);
 
         for (std::size_t i = 0; i < reminders.size(); ++i)
         {
@@ -185,12 +177,12 @@ namespace VOXA
             Icon icon = (r.dateTime.find(':') != std::string::npos) ? Icon::Bell : Icon::Calendar;
             std::string formattedDate = formatDateTime(r.dateTime);
 
-            ListTile tile(Rect { 15.0f, 80.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f }, 
+            ListTile tile(Rect { 10.0f, 68.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f }, 
                           icon, 
                           r.title.c_str(), 
                           formattedDate.c_str(), 
                           style.iconColor, 
-                          style.dotColor, 
+                          SDL_Color { 0, 0, 0, 0 }, 
                           false);
             tile.render(renderer);
         }

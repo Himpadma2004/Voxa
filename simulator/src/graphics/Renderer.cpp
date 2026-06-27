@@ -312,7 +312,14 @@ namespace VOXA
         for (int y = -ir; y <= ir; ++y)
         {
             const float span = std::sqrt(std::max(0.0f, radius * radius - static_cast<float>(y * y)));
-            SDL_RenderLine(m_renderer, centerX - span, centerY + static_cast<float>(y), centerX + span, centerY + static_cast<float>(y));
+            if (span > 0.5f)
+            {
+                SDL_RenderLine(m_renderer, centerX - span, centerY + static_cast<float>(y), centerX + span, centerY + static_cast<float>(y));
+            }
+            else
+            {
+                SDL_RenderPoint(m_renderer, centerX, centerY + static_cast<float>(y));
+            }
         }
     }
 

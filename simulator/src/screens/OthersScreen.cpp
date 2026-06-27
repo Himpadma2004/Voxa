@@ -1,6 +1,7 @@
 #include "OthersScreen.h"
 
 #include <vector>
+#include <array>
 #include <cmath>
 #include <algorithm>
 
@@ -13,6 +14,16 @@
 #include "../widgets/Card.h"
 #include "../widgets/ListTile.h"
 #include "ScreenCommon.h"
+
+namespace
+{
+    const std::array<SDL_Color, 4> colors { {
+        SDL_Color { 255, 105, 150, 255 },  // Pink
+        SDL_Color { 145, 105, 255, 255 },  // Purple
+        SDL_Color { 80, 185, 255, 255 },  // Blue
+        SDL_Color { 255, 180, 40, 255 }   // Yellow
+    } };
+}
 
 namespace VOXA
 {
@@ -27,11 +38,11 @@ namespace VOXA
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
             // Header back button hit area centered at (18, 28) with radius 11
-            if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
+            if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
             {
                 app.navigateTo(ScreenId::Home);
             }
-            else if (Rect { 10.0f, 54.0f, 300.0f, 175.0f }.contains(point.x, point.y))
+            else if (Rect { 10.0f, 48.0f, 300.0f, 182.0f }.contains(point.x, point.y))
             {
                 m_isDragging = true;
                 m_dragStartY = point.y;
@@ -58,8 +69,8 @@ namespace VOXA
                     auto memories = app.services().memoryService->getAll();
                     for (std::size_t i = 0; i < memories.size(); ++i)
                     {
-                        Rect tileRect { 15.0f, 58.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f };
-                        if (tileRect.contains(point.x, point.y))
+                        Rect tileRect { 10.0f, 50.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f };
+                        if (tileRect.contains(point.x, point.y) && point.y >= 48.0f && point.y <= 230.0f)
                         {
                             app.setSelectedItem("others", memories[i].id);
                             app.navigateTo(ScreenId::Detail);
@@ -75,7 +86,7 @@ namespace VOXA
             float mx = 0.0f, my = 0.0f;
             SDL_GetMouseState(&mx, &my);
             const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 10.0f, 52.0f, 300.0f, 180.0f }.contains(mPt.x, mPt.y))
+            if (Rect { 10.0f, 48.0f, 300.0f, 182.0f }.contains(mPt.x, mPt.y))
             {
                 m_targetScrollY -= event.wheel.y * 20.0f;
             }
@@ -90,8 +101,8 @@ namespace VOXA
             numMemories = app.services().memoryService->getAll().size();
         }
 
-        float contentHeight = std::max(0.0f, static_cast<float>(numMemories) * 42.0f - 10.0f);
-        float visibleHeight = 170.0f;
+        float contentHeight = std::max(0.0f, static_cast<float>(numMemories) * 54.0f);
+        float visibleHeight = 182.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
@@ -107,27 +118,22 @@ namespace VOXA
         ScreenCommon::renderSurface(renderer);
         ScreenCommon::renderHeader(renderer, "Others", true, true, Icon::Plus);
 
-        // Center glass card container
-        Card container(Rect { 10.0f, 52.0f, 300.0f, 180.0f }, Colors::Card, 16.0f);
-        container.setShadow(Colors::Shadow, 4);
-        container.setBorder(Colors::GlassBorder);
-        container.render(renderer);
-
         std::vector<Memory> memories;
         if (app.services().memoryService)
         {
             memories = app.services().memoryService->getAll();
         }
 
-        renderer.setClipRect(10.0f, 54.0f, 300.0f, 175.0f);
+        renderer.setClipRect(5.0f, 48.0f, 310.0f, 182.0f);
 
         for (std::size_t i = 0; i < memories.size(); ++i)
         {
-            ListTile tile(Rect { 15.0f, 58.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f }, 
-                          Icon::Folder, 
-                          memories[i].title.c_str(), 
-                          memories[i].timestamp.c_str(), 
-                          SDL_Color { 147, 108, 255, 255 }, 
+            const auto& mem = memories[i];
+            ListTile tile(Rect { 10.0f, 50.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f }, 
+                          Icon::Mic, 
+                          mem.title.c_str(), 
+                          mem.timestamp.c_str(), 
+                          colors[i % colors.size()], 
                           SDL_Color { 0, 0, 0, 0 }, 
                           true);
             tile.render(renderer);

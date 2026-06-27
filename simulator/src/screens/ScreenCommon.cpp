@@ -45,15 +45,18 @@ namespace VOXA::ScreenCommon
         renderer.fillCircleGradient(width * 0.90f, height * 0.10f, 80.0f, SDL_Color { 166, 123, 250, 6 }, SDL_Color { 248, 248, 249, 0 });
         renderer.fillCircleGradient(width * 0.10f, height * 0.90f, 80.0f, SDL_Color { 124, 92, 255, 5 }, SDL_Color { 248, 248, 249, 0 });
 
-        // 3. Compact status bar at the top
-        // Left: VOXA
-        renderer.drawText("VOXA", 8.0f, 4.0f, Colors::TextPrimary, 9);
-        // Center: Date & Time
+        // 3. Compact status bar at the top (watch-optimized)
+        // Force recompilation for smartwatch status bar updates
+        // Left: VOXA Brand Name
+        renderer.drawText("VOXA", 10.0f, 4.0f, Colors::TextPrimary, 9);
+        
+        // Center: Compact Watch Time (only hours/minutes, no day/date overlap)
         renderer.drawTextCentered(getCurrentTimeAndDate(), width * 0.5f, 4.0f, Colors::TextPrimary, 9);
-        // Right: Wifi and Battery status
-        drawIcon(renderer, Icon::Wifi, width - 42.0f, 4.0f, 10.0f, Colors::TextPrimary);
-        renderer.drawText("92%", width - 30.0f, 4.0f, Colors::TextPrimary, 8);
-        drawIcon(renderer, Icon::Battery, width - 14.0f, 4.0f, 10.0f, Colors::TextPrimary);
+        
+        // Right: Wifi icon, battery percentage, battery icon
+        drawIcon(renderer, Icon::Wifi, width - 48.0f, 4.0f, 10.0f, Colors::TextPrimary);
+        renderer.drawText("92%", width - 34.0f, 4.0f, Colors::TextPrimary, 8);
+        drawIcon(renderer, Icon::Battery, width - 16.0f, 4.0f, 10.0f, Colors::TextPrimary);
     }
 
     void renderPageDots(Renderer& renderer, int activeIndex, int count)
@@ -70,11 +73,11 @@ namespace VOXA::ScreenCommon
 
     void renderCircularButton(Renderer& renderer, float centerX, float centerY, Icon icon, SDL_Color fill, SDL_Color iconColor)
     {
-        // Compact circular button
-        renderer.drawSoftShadow(centerX - 11.0f, centerY - 11.0f, 22.0f, 22.0f, 11.0f, 3, SDL_Color { 0, 0, 0, 14 });
-        renderer.fillCircle(centerX, centerY, 11.0f, fill); // frosted fill or white
-        renderer.drawCircle(centerX, centerY, 11.0f, SDL_Color { 255, 255, 255, 180 }); // border highlight
-        drawIcon(renderer, icon, centerX - 5.5f, centerY - 5.5f, 11.0f, iconColor);
+        // Compact circular button - visually smaller, but hit-test will be kept large (40x40)
+        renderer.drawSoftShadow(centerX - 9.0f, centerY - 9.0f, 18.0f, 18.0f, 9.0f, 2, SDL_Color { 0, 0, 0, 14 });
+        renderer.fillCircle(centerX, centerY, 9.0f, fill); // white card fill
+        renderer.drawCircle(centerX, centerY, 9.0f, SDL_Color { 255, 255, 255, 180 }); // border highlight
+        drawIcon(renderer, icon, centerX - 4.5f, centerY - 4.5f, 9.0f, iconColor);
     }
 
     void renderHeader(Renderer& renderer, const std::string& title, bool showBack, bool showRightAction, Icon rightIcon)

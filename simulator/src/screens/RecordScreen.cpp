@@ -25,9 +25,20 @@ namespace VOXA
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-            // Header back button hit area centered at (18, 28) with radius 11
-            if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
+            
+            // Back button tap target (top-left 40x40)
+            if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
             {
+                app.audio().playSoftConfirm();
+                app.navigateTo(ScreenId::Home);
+                return;
+            }
+
+            // Right action home button tap target (top-right 40x40)
+            const float width = 320.0f;
+            if (Rect { width - 40.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
+            {
+                app.audio().playSoftConfirm();
                 app.navigateTo(ScreenId::Home);
                 return;
             }
@@ -49,42 +60,47 @@ namespace VOXA
     void RecordScreen::render(Application&, Renderer& renderer)
     {
         ScreenCommon::renderSurface(renderer);
+        // Header using spark action on the right (maps to home icon)
         ScreenCommon::renderHeader(renderer, "Voice Capture", true, true, Icon::Spark);
 
         const float cx = 160.0f;
-        const float cy = 105.0f;
-        const float pulse = std::sin(m_elapsed * 3.5f) * 4.0f;
+        const float cy = 100.0f;
         
-        // Pulsating glow and outer circle
-        renderer.drawGlowCircle(cx, cy, 38.0f + pulse, SDL_Color { 124, 92, 255, 14 }, 6);
-        renderer.fillCircleGradient(cx, cy, 30.0f + pulse * 0.15f, SDL_Color { 255, 255, 255, 180 }, SDL_Color { 244, 238, 250, 255 });
-        renderer.drawCircle(cx, cy, 30.0f + pulse * 0.15f, Colors::Primary);
+        // Sine wave pulse factor
+        const float pulse = std::sin(m_elapsed * 4.0f) * 0.5f + 0.5f; // 0.0 to 1.0
+        
+        // 1. Concentric pulsing halos around the mic button
+        renderer.drawCircle(cx, cy, 32.0f + pulse * 4.0f, SDL_Color { 124, 92, 255, static_cast<Uint8>(40 + pulse * 20) });
+        renderer.drawCircle(cx, cy, 38.0f + pulse * 8.0f, SDL_Color { 124, 92, 255, static_cast<Uint8>(15 + pulse * 10) });
 
-        // Pulse wave lines inside microphone circle
-        for (int i = 0; i < 7; ++i)
-        {
-            const float lx = cx - 21.0f + i * 7.0f;
-            const float amplitude = 6.0f + std::sin(m_elapsed * 4.2f + static_cast<float>(i) * 0.6f) * 14.0f;
-            renderer.drawLine(lx, cy - amplitude * 0.5f, lx, cy + amplitude * 0.5f, Colors::Primary);
-        }
+        // 2. Soft button shadow
+        renderer.drawSoftShadow(cx - 26.0f, cy - 26.0f, 52.0f, 52.0f, 26.0f, 3, SDL_Color { 0, 0, 0, 15 });
 
-        // Timer readout
-        const int totalSeconds = 12 + static_cast<int>(m_elapsed) % 48;
+        // 3. Central recording button circle
+        renderer.fillCircle(cx, cy, 26.0f, Colors::Primary);
+        renderer.drawCircle(cx, cy, 26.0f, SDL_Color { 255, 255, 255, 60 });
+
+        // 4. White microphone icon centered
+        const float micIconSz = 16.0f;
+        drawIcon(renderer, Icon::Mic, cx - micIconSz * 0.5f, cy - micIconSz * 0.5f, micIconSz, Colors::White);
+
+        // 5. Timer readout
+        const int totalSeconds = static_cast<int>(m_elapsed);
         const int displaySeconds = totalSeconds % 60;
         const int displayMinutes = totalSeconds / 60;
         char timer[16];
         SDL_snprintf(timer, sizeof(timer), "%02d:%02d", displayMinutes, displaySeconds);
 
-        renderer.drawTextCentered(timer, cx, 148.0f, Colors::TextPrimary, 22);
-        renderer.drawTextCentered("Recording...", cx, 172.0f, Colors::TextPrimary, 11);
-        renderer.drawTextCentered("Tap anywhere to save", cx, 186.0f, Colors::TextSecondary, 9);
+        renderer.drawTextCentered(timer, cx, 142.0f, Colors::TextPrimary, 22);
+        renderer.drawTextCentered("Recording...", cx, 166.0f, Colors::Primary, 11);
+        renderer.drawTextCentered("Tap anywhere to save", cx, 180.0f, Colors::TextSecondary, 9);
 
-        // Minimal live waveform
-        for (int i = 0; i < 20; ++i)
+        // 6. Premium full-width horizontal oscilloscope wave visualizer
+        for (int i = 0; i < 30; ++i)
         {
-            const float wx = cx - 70.0f + i * 7.0f;
-            const float amplitude = 4.0f + std::sin(m_elapsed * 5.0f + static_cast<float>(i) * 0.4f) * 12.0f;
-            renderer.drawLine(wx, 212.0f - amplitude * 0.5f, wx, 212.0f + amplitude * 0.5f, SDL_Color { 166, 123, 250, 180 });
+            const float wx = 15.0f + i * 10.0f;
+            const float amplitude = 4.0f + std::sin(m_elapsed * 6.0f + static_cast<float>(i) * 0.35f) * 16.0f;
+            renderer.drawLine(wx, 210.0f - amplitude * 0.5f, wx, 210.0f + amplitude * 0.5f, SDL_Color { 124, 92, 255, 180 });
         }
     }
 }

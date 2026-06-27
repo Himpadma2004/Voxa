@@ -1,8 +1,10 @@
+// DetailScreen.cpp — smartwatch detail editor for Waveshare 2.8" 320x240 display
 #include "DetailScreen.h"
 
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 
 #include "../core/Application.h"
 #include "../core/services/StorageService.h"
@@ -106,84 +108,84 @@ namespace
         std::vector<KeyDef> keys;
         if (mode == 0) // Alphabet
         {
-            // Row 1
+            // Row 1 (Q-P) - 10 keys: 26x20 size, spacing 4
             const char* row1[] = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
             for (int i = 0; i < 10; ++i) {
-                keys.push_back({row1[i], startX + 44.0f + i * 92.0f, startY + 54.0f, 84.0f, 54.0f, row1[i]});
+                keys.push_back({row1[i], startX + 5.0f + i * 30.0f, startY + 24.0f, 26.0f, 20.0f, row1[i]});
             }
             
-            // Row 2
+            // Row 2 (A-L) - 9 keys
             const char* row2[] = {"A", "S", "D", "F", "G", "H", "J", "K", "L"};
             for (int i = 0; i < 9; ++i) {
-                keys.push_back({row2[i], startX + 90.0f + i * 92.0f, startY + 120.0f, 84.0f, 54.0f, row2[i]});
+                keys.push_back({row2[i], startX + 20.0f + i * 30.0f, startY + 48.0f, 26.0f, 20.0f, row2[i]});
             }
             
             // Row 3
-            keys.push_back({"Shift", startX + 44.0f, startY + 186.0f, 100.0f, 54.0f, "shift"});
+            keys.push_back({"Shift", startX + 5.0f, startY + 72.0f, 32.0f, 20.0f, "shift"});
             const char* row3[] = {"Z", "X", "C", "V", "B", "N", "M"};
             for (int i = 0; i < 7; ++i) {
-                keys.push_back({row3[i], startX + 152.0f + i * 92.0f, startY + 186.0f, 84.0f, 54.0f, row3[i]});
+                keys.push_back({row3[i], startX + 41.0f + i * 30.0f, startY + 72.0f, 26.0f, 20.0f, row3[i]});
             }
-            keys.push_back({"Delete", startX + 796.0f, startY + 186.0f, 160.0f, 54.0f, "backspace"});
+            keys.push_back({"Del", startX + 255.0f, startY + 72.0f, 50.0f, 20.0f, "backspace"});
             
             // Row 4
-            keys.push_back({"?123", startX + 44.0f, startY + 252.0f, 140.0f, 54.0f, "mode_sym"});
-            keys.push_back({"Space", startX + 192.0f, startY + 252.0f, 612.0f, 54.0f, "space"});
-            keys.push_back({"Done", startX + 812.0f, startY + 252.0f, 144.0f, 54.0f, "close"});
+            keys.push_back({"?12", startX + 5.0f, startY + 96.0f, 45.0f, 20.0f, "mode_sym"});
+            keys.push_back({"Space", startX + 54.0f, startY + 96.0f, 182.0f, 20.0f, "space"});
+            keys.push_back({"Done", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "close"});
         }
         else if (mode == 1) // Numbers & Punctuation
         {
             // Row 1
             const char* row1[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
             for (int i = 0; i < 10; ++i) {
-                keys.push_back({row1[i], startX + 44.0f + i * 92.0f, startY + 54.0f, 84.0f, 54.0f, row1[i]});
+                keys.push_back({row1[i], startX + 5.0f + i * 30.0f, startY + 24.0f, 26.0f, 20.0f, row1[i]});
             }
             
             // Row 2
             const char* row2[] = {"-", "/", ":", ";", "(", ")", "$", "&", "@", "\""};
             for (int i = 0; i < 10; ++i) {
-                keys.push_back({row2[i], startX + 44.0f + i * 92.0f, startY + 120.0f, 84.0f, 54.0f, row2[i]});
+                keys.push_back({row2[i], startX + 5.0f + i * 30.0f, startY + 48.0f, 26.0f, 20.0f, row2[i]});
             }
             
             // Row 3
-            keys.push_back({"#+=", startX + 44.0f, startY + 186.0f, 100.0f, 54.0f, "mode_extra"});
+            keys.push_back({"#+=", startX + 5.0f, startY + 72.0f, 40.0f, 20.0f, "mode_extra"});
             const char* row3[] = {".", ",", "?", "!", "'", "_"};
             for (int i = 0; i < 6; ++i) {
-                keys.push_back({row3[i], startX + 152.0f + i * 92.0f, startY + 186.0f, 84.0f, 54.0f, row3[i]});
+                keys.push_back({row3[i], startX + 49.0f + i * 30.0f, startY + 72.0f, 26.0f, 20.0f, row3[i]});
             }
-            keys.push_back({"Delete", startX + 796.0f, startY + 186.0f, 160.0f, 54.0f, "backspace"});
+            keys.push_back({"Del", startX + 255.0f, startY + 72.0f, 50.0f, 20.0f, "backspace"});
             
             // Row 4
-            keys.push_back({"ABC", startX + 44.0f, startY + 252.0f, 140.0f, 54.0f, "mode_abc"});
-            keys.push_back({"Space", startX + 192.0f, startY + 252.0f, 612.0f, 54.0f, "space"});
-            keys.push_back({"Done", startX + 812.0f, startY + 252.0f, 144.0f, 54.0f, "close"});
+            keys.push_back({"ABC", startX + 5.0f, startY + 96.0f, 45.0f, 20.0f, "mode_abc"});
+            keys.push_back({"Space", startX + 54.0f, startY + 96.0f, 182.0f, 20.0f, "space"});
+            keys.push_back({"Done", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "close"});
         }
         else // Extra symbols
         {
             // Row 1
             const char* row1[] = {"[", "]", "{", "}", "#", "%", "^", "*", "+", "="};
             for (int i = 0; i < 10; ++i) {
-                keys.push_back({row1[i], startX + 44.0f + i * 92.0f, startY + 54.0f, 84.0f, 54.0f, row1[i]});
+                keys.push_back({row1[i], startX + 5.0f + i * 30.0f, startY + 24.0f, 26.0f, 20.0f, row1[i]});
             }
             
             // Row 2
-            const char* row2[] = {"_", "\\", "|", "~", "<", ">", "\u20AC", "\u00A3", "\u00A5", "\u2022"};
+            const char* row2[] = {"_", "\\", "|", "~", "<", ">", "$", "P", "Y", "."};
             for (int i = 0; i < 10; ++i) {
-                keys.push_back({row2[i], startX + 44.0f + i * 92.0f, startY + 120.0f, 84.0f, 54.0f, row2[i]});
+                keys.push_back({row2[i], startX + 5.0f + i * 30.0f, startY + 48.0f, 26.0f, 20.0f, row2[i]});
             }
             
             // Row 3
-            keys.push_back({"?123", startX + 44.0f, startY + 186.0f, 100.0f, 54.0f, "mode_sym"});
+            keys.push_back({"?12", startX + 5.0f, startY + 72.0f, 40.0f, 20.0f, "mode_sym"});
             const char* row3[] = {".", ",", "?", "!", "'", "_"};
             for (int i = 0; i < 6; ++i) {
-                keys.push_back({row3[i], startX + 152.0f + i * 92.0f, startY + 186.0f, 84.0f, 54.0f, row3[i]});
+                keys.push_back({row3[i], startX + 49.0f + i * 30.0f, startY + 72.0f, 26.0f, 20.0f, row3[i]});
             }
-            keys.push_back({"Delete", startX + 796.0f, startY + 186.0f, 160.0f, 54.0f, "backspace"});
+            keys.push_back({"Del", startX + 255.0f, startY + 72.0f, 50.0f, 20.0f, "backspace"});
             
             // Row 4
-            keys.push_back({"ABC", startX + 44.0f, startY + 252.0f, 140.0f, 54.0f, "mode_abc"});
-            keys.push_back({"Space", startX + 192.0f, startY + 252.0f, 612.0f, 54.0f, "space"});
-            keys.push_back({"Done", startX + 812.0f, startY + 252.0f, 144.0f, 54.0f, "close"});
+            keys.push_back({"ABC", startX + 5.0f, startY + 96.0f, 45.0f, 20.0f, "mode_abc"});
+            keys.push_back({"Space", startX + 54.0f, startY + 96.0f, 182.0f, 20.0f, "space"});
+            keys.push_back({"Done", startX + 240.0f, startY + 96.0f, 65.0f, 20.0f, "close"});
         }
         return keys;
     }
@@ -199,28 +201,28 @@ namespace VOXA
     void DetailScreen::onEnter(Application& app)
     {
         m_elapsed = 0.0f;
+        m_category = app.getSelectedItem().category;
+        m_itemId = app.getSelectedItem().id;
         m_focusedField = 0;
         m_keyboardOpen = false;
         m_keyboardAnim = 0.0f;
         m_keyboardShift = false;
-        m_editTitle = "";
-        m_editContent = "";
-        m_editComment = "";
-        m_commentsList.clear();
+        m_keyboardMode = 0;
         m_scrollY = 0.0f;
         m_targetScrollY = 0.0f;
         m_isDragging = false;
 
-        const auto& selected = app.getSelectedItem();
-        m_category = selected.category;
-        m_itemId = selected.id;
+        m_editTitle = "";
+        m_editContent = "";
+        m_editComment = "";
+        m_commentsList.clear();
 
         loadItem(app);
     }
 
     void DetailScreen::handleEvent(Application& app, const SDL_Event& event)
     {
-        // 1. Hardware keyboard support
+        // 1. Handle physical keyboard inputs
         if (m_keyboardOpen && event.type == SDL_EVENT_KEY_DOWN)
         {
             std::string* activeStr = nullptr;
@@ -234,7 +236,7 @@ namespace VOXA
                 {
                     app.audio().playClick();
                     char c = 'a' + (event.key.key - SDLK_A);
-                    if (event.key.mod & SDL_KMOD_SHIFT || m_keyboardShift) c = std::toupper(c);
+                    if (event.key.mod & SDL_KMOD_SHIFT) c = std::toupper(c);
                     *activeStr += c;
                     return;
                 }
@@ -260,20 +262,18 @@ namespace VOXA
             }
         }
 
-        // 2. Mouse Wheel Scroll on Comments Area
         if (event.type == SDL_EVENT_MOUSE_WHEEL)
         {
             float mx = 0.0f, my = 0.0f;
             SDL_GetMouseState(&mx, &my);
             const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 810.0f, 205.0f, 450.0f, 250.0f }.contains(mPt.x, mPt.y))
+            if (Rect { 10.0f, 48.0f, 300.0f, 182.0f }.contains(mPt.x, mPt.y))
             {
-                m_targetScrollY -= event.wheel.y * 38.0f;
+                m_targetScrollY -= event.wheel.y * 20.0f;
             }
             return;
         }
 
-        // 3. Mouse Drag Scroll on Comments Area
         if (event.type == SDL_EVENT_MOUSE_MOTION)
         {
             if (m_isDragging)
@@ -297,9 +297,9 @@ namespace VOXA
         }
 
         const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-
-        // Circular Back Button
-        if (Rect { 44.0f, 34.0f, 56.0f, 56.0f }.contains(point.x, point.y))
+        
+        // Circular Back Button (Large 40x40 tap target in top-left)
+        if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
         {
             app.audio().playSoftConfirm();
             if (m_category == "ideas") app.navigateTo(ScreenId::Ideas);
@@ -309,84 +309,99 @@ namespace VOXA
             return;
         }
 
-        // Tap inside comments scrollable area to drag
-        if (Rect { 810.0f, 205.0f, 450.0f, 250.0f }.contains(point.x, point.y))
+        // Tap inside main area to drag-scroll or focus fields
+        if (Rect { 10.0f, 48.0f, 300.0f, 182.0f }.contains(point.x, point.y))
         {
+            // Title Box click detection (adjust with scroll)
+            if (Rect { 10.0f, 64.0f - m_scrollY, 300.0f, 30.0f }.contains(point.x, point.y))
+            {
+                m_focusedField = 1;
+                m_keyboardOpen = true;
+                m_targetScrollY = 0.0f;
+                return;
+            }
+            // Content Box click detection
+            if (Rect { 10.0f, 114.0f - m_scrollY, 300.0f, 44.0f }.contains(point.x, point.y))
+            {
+                m_focusedField = 2;
+                m_keyboardOpen = true;
+                m_targetScrollY = 20.0f;
+                return;
+            }
+            // Update Button click detection
+            if (Rect { 10.0f, 168.0f - m_scrollY, 145.0f, 28.0f }.contains(point.x, point.y))
+            {
+                saveChanges(app);
+                return;
+            }
+            // Delete Button click detection
+            if (Rect { 165.0f, 168.0f - m_scrollY, 145.0f, 28.0f }.contains(point.x, point.y))
+            {
+                deleteItem(app);
+                return;
+            }
+
+            // Calculate comments start Y exactly like in render
+            float commStartY = 222.0f - m_scrollY;
+            if (m_commentsList.empty())
+            {
+                commStartY += 24.0f;
+            }
+            else
+            {
+                commStartY += static_cast<float>(m_commentsList.size()) * 32.0f;
+            }
+            float commentInputY = commStartY + 10.0f;
+
+            // New Comment input Box click detection
+            if (Rect { 10.0f, commentInputY, 230.0f, 30.0f }.contains(point.x, point.y))
+            {
+                m_focusedField = 3;
+                m_keyboardOpen = true;
+                m_targetScrollY = commentInputY - 60.0f;
+                return;
+            }
+
+            // Add Comment Button click detection
+            if (Rect { 250.0f, commentInputY, 60.0f, 30.0f }.contains(point.x, point.y))
+            {
+                addComment(app);
+                return;
+            }
+
+            // If we tapped outside input boxes/buttons but inside list area, start dragging
             m_isDragging = true;
             m_dragStartY = point.y;
             m_dragStartScrollY = m_targetScrollY;
         }
 
-        // Click inputs to focus & open keyboard
-        // 1. Title Input Box: [340, 205, 420, 54]
-        if (Rect { 340.0f, 205.0f, 420.0f, 54.0f }.contains(point.x, point.y))
-        {
-            m_focusedField = 1;
-            m_keyboardOpen = true;
-            return;
-        }
-        // 2. Content Input Box: [340, 315, 420, 94]
-        if (Rect { 340.0f, 315.0f, 420.0f, 94.0f }.contains(point.x, point.y))
-        {
-            m_focusedField = 2;
-            m_keyboardOpen = true;
-            return;
-        }
-        // 3. New Comment Box: [810, 470, 320, 48]
-        if (Rect { 810.0f, 470.0f, 320.0f, 48.0f }.contains(point.x, point.y))
-        {
-            m_focusedField = 3;
-            m_keyboardOpen = true;
-            return;
-        }
-
-        // Action Buttons Click detection
-        // Update Button: [340, 440, 195, 48]
-        if (Rect { 340.0f, 440.0f, 195.0f, 48.0f }.contains(point.x, point.y))
-        {
-            saveChanges(app);
-            return;
-        }
-        // Delete Button: [565, 440, 195, 48]
-        if (Rect { 565.0f, 440.0f, 195.0f, 48.0f }.contains(point.x, point.y))
-        {
-            deleteItem(app);
-            return;
-        }
-        // Add Comment Button: [1150, 470, 110, 48]
-        if (Rect { 1150.0f, 470.0f, 110.0f, 48.0f }.contains(point.x, point.y))
-        {
-            addComment(app);
-            return;
-        }
-
         // Virtual Keyboard Keys Click detection
         if (m_keyboardOpen && m_keyboardAnim > 0.8f)
         {
-            const float kbdY = 900.0f - m_keyboardAnim * 330.0f;
+            const float kbdY = 240.0f - m_keyboardAnim * 135.0f;
 
             std::string* activeStr = nullptr;
             if (m_focusedField == 1) activeStr = &m_editTitle;
             else if (m_focusedField == 2) activeStr = &m_editContent;
             else if (m_focusedField == 3) activeStr = &m_editComment;
 
-            // Check suggestion bar click: kbdY to kbdY + 44.0f
-            if (point.y >= kbdY && point.y <= kbdY + 44.0f && point.x >= 300.0f && point.x <= 1300.0f)
+            // Check suggestion bar click
+            if (point.y >= kbdY && point.y <= kbdY + 20.0f && point.x >= 5.0f && point.x <= 315.0f)
             {
                 if (activeStr)
                 {
                     auto suggestions = getWordSuggestions(*activeStr);
-                    if (point.x >= 350.0f && point.x <= 620.0f && suggestions.size() > 0)
+                    if (point.x >= 10.0f && point.x <= 100.0f && suggestions.size() > 0)
                     {
                         app.audio().playClick();
                         applySuggestion(*activeStr, suggestions[0]);
                     }
-                    else if (point.x >= 665.0f && point.x <= 935.0f && suggestions.size() > 1)
+                    else if (point.x >= 110.0f && point.x <= 200.0f && suggestions.size() > 1)
                     {
                         app.audio().playClick();
                         applySuggestion(*activeStr, suggestions[1]);
                     }
-                    else if (point.x >= 980.0f && point.x <= 1250.0f && suggestions.size() > 2)
+                    else if (point.x >= 210.0f && point.x <= 300.0f && suggestions.size() > 2)
                     {
                         app.audio().playClick();
                         applySuggestion(*activeStr, suggestions[2]);
@@ -395,7 +410,7 @@ namespace VOXA
                 return;
             }
 
-            auto keys = getKeyboardKeys(300.0f, kbdY, m_keyboardMode);
+            auto keys = getKeyboardKeys(5.0f, kbdY, m_keyboardMode);
             for (const auto& key : keys)
             {
                 if (Rect{ key.x, key.y, key.w, key.h }.contains(point.x, point.y))
@@ -450,7 +465,7 @@ namespace VOXA
             }
 
             // Click inside keyboard eats the event
-            if (Rect{ 300.0f, kbdY, 1000.0f, 330.0f }.contains(point.x, point.y))
+            if (Rect{ 5.0f, kbdY, 310.0f, 135.0f }.contains(point.x, point.y))
             {
                 return;
             }
@@ -474,9 +489,13 @@ namespace VOXA
             m_keyboardAnim = std::max(0.0f, m_keyboardAnim - deltaSeconds * 6.0f);
         }
 
-        // Smooth scroll limits for comments
-        float contentHeight = std::max(0.0f, static_cast<float>(m_commentsList.size()) * 48.0f);
-        float visibleHeight = 250.0f;
+        // Calculate total content height
+        float contentHeight = 202.0f + static_cast<float>(m_commentsList.size()) * 32.0f + 60.0f;
+        float visibleHeight = 182.0f;
+        if (m_keyboardOpen)
+        {
+            visibleHeight = 105.0f; // height is reduced when keyboard covers bottom of screen
+        }
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
@@ -496,106 +515,116 @@ namespace VOXA
         SDL_GetMouseState(&mx, &my);
         const SDL_FPoint mPt = app.windowToCanvas(mx, my);
 
-        // Center glass card container
-        Card container(Rect { 300.0f, 140.0f, 1000.0f, 640.0f }, Colors::Card, 32.0f);
-        container.setShadow(Colors::Shadow, 8);
-        container.setBorder(Colors::GlassBorder);
-        container.render(renderer);
+        // Content Y limit
+        float visibleHeight = m_keyboardOpen ? 105.0f : 182.0f;
+        renderer.setClipRect(5.0f, 48.0f, 310.0f, visibleHeight);
 
-        // --- LEFT COLUMN ---
-        renderer.drawText("Title", 340.0f, 175.0f, Colors::TextSecondary, 14);
-        Rect titleRect { 340.0f, 205.0f, 420.0f, 54.0f };
+        // --- 1. Title Input Box ---
+        Rect titleLabelRect { 12.0f, 52.0f - m_scrollY, 200.0f, 15.0f };
+        renderer.drawText("Title", 12.0f, 50.0f - m_scrollY, Colors::TextSecondary, 10);
+        
+        Rect titleRect { 10.0f, 64.0f - m_scrollY, 300.0f, 30.0f };
         bool titleHovered = titleRect.contains(mPt.x, mPt.y) || m_focusedField == 1;
-        renderer.fillRoundedRect(titleRect.x, titleRect.y, titleRect.w, titleRect.h, 12.0f, titleHovered ? SDL_Color{255,255,255,200} : SDL_Color{255,255,255,140});
-        renderer.drawRoundedRect(titleRect.x, titleRect.y, titleRect.w, titleRect.h, 12.0f, (m_focusedField == 1) ? Colors::PrimaryLight : Colors::GlassBorder);
-        renderer.drawText(m_editTitle + (m_focusedField == 1 && static_cast<int>(m_elapsed * 2.0f) % 2 == 0 ? "|" : ""), titleRect.x + 16.0f, titleRect.y + 16.0f, Colors::TextPrimary, 16);
+        renderer.fillRoundedRect(titleRect.x, titleRect.y, titleRect.w, titleRect.h, 8.0f, SDL_Color { 255, 255, 255, 255 });
+        renderer.drawRoundedRect(titleRect.x, titleRect.y, titleRect.w, titleRect.h, 8.0f, (m_focusedField == 1) ? Colors::Primary : SDL_Color { 230, 230, 235, 255 });
+        
+        std::string displayTitle = m_editTitle;
+        if (m_focusedField == 1 && static_cast<int>(m_elapsed * 2.0f) % 2 == 0) displayTitle += "|";
+        renderer.drawText(displayTitle, titleRect.x + 10.0f, titleRect.y + 8.0f, Colors::TextPrimary, 11);
 
-        // Content / Date / Answer Label
+        // --- 2. Content Input Box ---
         std::string contentLabel = "Content";
         if (m_category == "ideas") contentLabel = "Description";
         else if (m_category == "reminders") contentLabel = "Due Date / Time";
         else if (m_category == "questions") contentLabel = "AI Answer";
 
-        renderer.drawText(contentLabel, 340.0f, 285.0f, Colors::TextSecondary, 14);
-        Rect contentRect { 340.0f, 315.0f, 420.0f, 94.0f };
+        renderer.drawText(contentLabel, 12.0f, 100.0f - m_scrollY, Colors::TextSecondary, 10);
+        
+        Rect contentRect { 10.0f, 114.0f - m_scrollY, 300.0f, 44.0f };
         bool contentHovered = contentRect.contains(mPt.x, mPt.y) || m_focusedField == 2;
-        renderer.fillRoundedRect(contentRect.x, contentRect.y, contentRect.w, contentRect.h, 12.0f, contentHovered ? SDL_Color{255,255,255,200} : SDL_Color{255,255,255,140});
-        renderer.drawRoundedRect(contentRect.x, contentRect.y, contentRect.w, contentRect.h, 12.0f, (m_focusedField == 2) ? Colors::PrimaryLight : Colors::GlassBorder);
-        renderer.drawText(m_editContent + (m_focusedField == 2 && static_cast<int>(m_elapsed * 2.0f) % 2 == 0 ? "|" : ""), contentRect.x + 16.0f, contentRect.y + 16.0f, Colors::TextPrimary, 16);
+        renderer.fillRoundedRect(contentRect.x, contentRect.y, contentRect.w, contentRect.h, 8.0f, SDL_Color { 255, 255, 255, 255 });
+        renderer.drawRoundedRect(contentRect.x, contentRect.y, contentRect.w, contentRect.h, 8.0f, (m_focusedField == 2) ? Colors::Primary : SDL_Color { 230, 230, 235, 255 });
+        
+        std::string displayContent = m_editContent;
+        if (m_focusedField == 2 && static_cast<int>(m_elapsed * 2.0f) % 2 == 0) displayContent += "|";
+        renderer.drawText(displayContent, contentRect.x + 10.0f, contentRect.y + 8.0f, Colors::TextPrimary, 11);
 
-        // Update Button
-        Rect upBtn { 340.0f, 440.0f, 195.0f, 48.0f };
+        // --- 3. Update & Delete Buttons ---
+        Rect upBtn { 10.0f, 168.0f - m_scrollY, 145.0f, 28.0f };
         bool upBtnHovered = upBtn.contains(mPt.x, mPt.y);
-        renderer.fillRoundedRect(upBtn.x, upBtn.y, upBtn.w, upBtn.h, 14.0f, upBtnHovered ? Colors::PrimaryDark : Colors::Primary);
-        renderer.drawTextCentered("Update", upBtn.x + upBtn.w * 0.5f, upBtn.y + 14.0f, Colors::White, 16);
+        renderer.fillRoundedRect(upBtn.x, upBtn.y, upBtn.w, upBtn.h, 8.0f, upBtnHovered ? Colors::PrimaryDark : Colors::Primary);
+        renderer.drawTextCentered("Update", upBtn.x + upBtn.w * 0.5f, upBtn.y + 8.0f, Colors::White, 11);
 
-        // Delete Button
-        Rect delBtn { 565.0f, 440.0f, 195.0f, 48.0f };
+        Rect delBtn { 165.0f, 168.0f - m_scrollY, 145.0f, 28.0f };
         bool delBtnHovered = delBtn.contains(mPt.x, mPt.y);
-        renderer.fillRoundedRect(delBtn.x, delBtn.y, delBtn.w, delBtn.h, 14.0f, delBtnHovered ? SDL_Color{230, 70, 70, 255} : SDL_Color{200, 50, 50, 255});
-        renderer.drawTextCentered("Delete", delBtn.x + delBtn.w * 0.5f, delBtn.y + 14.0f, Colors::White, 16);
+        renderer.fillRoundedRect(delBtn.x, delBtn.y, delBtn.w, delBtn.h, 8.0f, delBtnHovered ? SDL_Color{220, 60, 60, 255} : SDL_Color{200, 50, 50, 255});
+        renderer.drawTextCentered("Delete", delBtn.x + delBtn.w * 0.5f, delBtn.y + 8.0f, Colors::White, 11);
 
-        // --- RIGHT COLUMN ---
-        renderer.drawText("Comments", 810.0f, 175.0f, Colors::TextSecondary, 14);
+        // --- 4. Comments Header ---
+        float commentsHeaderY = 206.0f - m_scrollY;
+        renderer.drawText("Comments", 12.0f, commentsHeaderY, Colors::TextSecondary, 10);
 
-        // Comments Card view container
-        Card commBox(Rect{ 810.0f, 205.0f, 450.0f, 250.0f }, SDL_Color { 255, 255, 255, 100 }, 16.0f);
-        commBox.setBorder(Colors::GlassBorder);
-        commBox.render(renderer);
-
-        // Clipped Comments List
-        renderer.setClipRect(810.0f, 210.0f, 450.0f, 240.0f);
+        // --- 5. Comments List ---
+        float commentsStartY = 222.0f - m_scrollY;
         if (m_commentsList.empty())
         {
-            renderer.drawText("No comments yet", 830.0f, 230.0f, Colors::TextSecondary, 14);
+            renderer.drawText("No comments yet", 12.0f, commentsStartY + 4.0f, Colors::TextDisabled, 11);
+            commentsStartY += 24.0f;
         }
         else
         {
             for (std::size_t i = 0; i < m_commentsList.size(); ++i)
             {
-                float cy = 220.0f + i * 48.0f - m_scrollY;
-                renderer.drawGlowCircle(832.0f, cy + 12.0f, 6.0f, SDL_Color { 124, 92, 255, 40 }, 4);
-                renderer.fillCircle(832.0f, cy + 12.0f, 4.0f, Colors::Primary);
-                renderer.drawText(m_commentsList[i], 854.0f, cy + 4.0f, Colors::TextPrimary, 14);
+                float cy = commentsStartY + i * 32.0f;
+                // Purple bullet
+                renderer.fillCircle(18.0f, cy + 12.0f, 3.5f, Colors::Primary);
+                // Comment text
+                renderer.drawText(m_commentsList[i], 32.0f, cy + 6.0f, Colors::TextPrimary, 11);
             }
+            commentsStartY += static_cast<float>(m_commentsList.size()) * 32.0f;
         }
-        renderer.clearClipRect();
 
-        // New Comment Input box
-        Rect newCommRect { 810.0f, 470.0f, 320.0f, 48.0f };
+        // --- 6. New Comment Box and Button ---
+        float commentInputY = commentsStartY + 10.0f;
+        Rect newCommRect { 10.0f, commentInputY, 230.0f, 30.0f };
         bool newCommHovered = newCommRect.contains(mPt.x, mPt.y) || m_focusedField == 3;
-        renderer.fillRoundedRect(newCommRect.x, newCommRect.y, newCommRect.w, newCommRect.h, 12.0f, newCommHovered ? SDL_Color{255,255,255,200} : SDL_Color{255,255,255,140});
-        renderer.drawRoundedRect(newCommRect.x, newCommRect.y, newCommRect.w, newCommRect.h, 12.0f, (m_focusedField == 3) ? Colors::PrimaryLight : Colors::GlassBorder);
+        renderer.fillRoundedRect(newCommRect.x, newCommRect.y, newCommRect.w, newCommRect.h, 8.0f, SDL_Color { 255, 255, 255, 255 });
+        renderer.drawRoundedRect(newCommRect.x, newCommRect.y, newCommRect.w, newCommRect.h, 8.0f, (m_focusedField == 3) ? Colors::Primary : SDL_Color { 230, 230, 235, 255 });
+        
+        std::string displayComment = m_editComment;
+        if (m_focusedField == 3 && static_cast<int>(m_elapsed * 2.0f) % 2 == 0) displayComment += "|";
+        
         if (m_editComment.empty() && m_focusedField != 3)
         {
-            renderer.drawText("Write a comment...", newCommRect.x + 16.0f, newCommRect.y + 13.0f, SDL_Color { 140, 140, 145, 255 }, 14);
+            renderer.drawText("Write a comment...", newCommRect.x + 10.0f, newCommRect.y + 8.0f, SDL_Color { 160, 160, 165, 255 }, 11);
         }
         else
         {
-            renderer.drawText(m_editComment + (m_focusedField == 3 && static_cast<int>(m_elapsed * 2.0f) % 2 == 0 ? "|" : ""), newCommRect.x + 16.0f, newCommRect.y + 13.0f, Colors::TextPrimary, 14);
+            renderer.drawText(displayComment, newCommRect.x + 10.0f, newCommRect.y + 8.0f, Colors::TextPrimary, 11);
         }
 
-        // Add Comment Button
-        Rect addCommBtn { 1150.0f, 470.0f, 110.0f, 48.0f };
+        Rect addCommBtn { 250.0f, commentInputY, 60.0f, 30.0f };
         bool addCommHovered = addCommBtn.contains(mPt.x, mPt.y);
-        renderer.fillRoundedRect(addCommBtn.x, addCommBtn.y, addCommBtn.w, addCommBtn.h, 12.0f, addCommHovered ? Colors::PrimaryDark : Colors::Primary);
-        renderer.drawTextCentered("Add", addCommBtn.x + addCommBtn.w * 0.5f, addCommBtn.y + 13.0f, Colors::White, 15);
+        renderer.fillRoundedRect(addCommBtn.x, addCommBtn.y, addCommBtn.w, addCommBtn.h, 8.0f, addCommHovered ? Colors::PrimaryDark : Colors::Primary);
+        renderer.drawTextCentered("Add", addCommBtn.x + addCommBtn.w * 0.5f, addCommBtn.y + 8.0f, Colors::White, 11);
+
+        renderer.clearClipRect();
 
         // --- VIRTUAL KEYBOARD PANEL ---
         if (m_keyboardAnim > 0.0f)
         {
-            const float kbdX = 300.0f;
-            const float kbdY = 900.0f - m_keyboardAnim * 330.0f;
-            const float kbdW = 1000.0f;
-            const float kbdH = 330.0f;
+            const float kbdX = 5.0f;
+            const float kbdY = 240.0f - m_keyboardAnim * 135.0f;
+            const float kbdW = 310.0f;
+            const float kbdH = 135.0f;
 
-            Card kbdPanel(Rect{ kbdX, kbdY, kbdW, kbdH }, SDL_Color { 255, 255, 255, 225 }, 28.0f);
-            kbdPanel.setShadow(Colors::Shadow, 12);
+            Card kbdPanel(Rect{ kbdX, kbdY, kbdW, kbdH }, SDL_Color { 255, 255, 255, 240 }, 12.0f);
+            kbdPanel.setShadow(Colors::Shadow, 6);
             kbdPanel.setBorder(Colors::PrimaryLight);
             kbdPanel.render(renderer);
 
-            // Draw Suggestion Bar above the QWERTY keys
-            renderer.drawLine(kbdX, kbdY + 44.0f, kbdX + kbdW, kbdY + 44.0f, Colors::GlassBorder);
+            // Suggestion bar
+            renderer.drawLine(kbdX, kbdY + 20.0f, kbdX + kbdW, kbdY + 20.0f, Colors::GlassBorder);
             std::string activeTextForSuggestions = "";
             if (m_focusedField == 1) activeTextForSuggestions = m_editTitle;
             else if (m_focusedField == 2) activeTextForSuggestions = m_editContent;
@@ -604,22 +633,21 @@ namespace VOXA
             auto suggestions = getWordSuggestions(activeTextForSuggestions);
             for (std::size_t i = 0; i < suggestions.size(); ++i)
             {
-                float sugX = kbdX + 50.0f + i * 315.0f;
-                Rect sugRect{ sugX, kbdY + 6.0f, 270.0f, 32.0f };
+                float sugX = kbdX + 10.0f + i * 100.0f;
+                Rect sugRect{ sugX, kbdY + 3.0f, 90.0f, 14.0f };
                 const bool sugHovered = sugRect.contains(mPt.x, mPt.y);
                 
-                renderer.fillRoundedRect(sugRect.x, sugRect.y, sugRect.w, sugRect.h, 16.0f, 
+                renderer.fillRoundedRect(sugRect.x, sugRect.y, sugRect.w, sugRect.h, 7.0f, 
                     sugHovered ? SDL_Color{ 235, 230, 250, 255 } : SDL_Color{ 245, 243, 248, 200 });
-                renderer.drawRoundedRect(sugRect.x, sugRect.y, sugRect.w, sugRect.h, 16.0f, Colors::GlassBorder);
+                renderer.drawRoundedRect(sugRect.x, sugRect.y, sugRect.w, sugRect.h, 7.0f, Colors::GlassBorder);
                 
-                renderer.drawTextCentered(suggestions[i], sugRect.x + sugRect.w * 0.5f, sugRect.y + 6.0f, Colors::Primary, 13);
+                renderer.drawTextCentered(suggestions[i], sugRect.x + sugRect.w * 0.5f, sugRect.y + 2.0f, Colors::Primary, 9);
             }
 
-            auto keys = getKeyboardKeys(kbdX, kbdY, m_keyboardMode);
+            auto keys = getKeyboardKeys(5.0f, kbdY, m_keyboardMode);
             for (const auto& key : keys)
             {
                 const bool keyHovered = Rect{ key.x, key.y, key.w, key.h }.contains(mPt.x, mPt.y);
-                
                 SDL_Color keyFill = keyHovered ? SDL_Color { 235, 230, 250, 255 } : SDL_Color { 248, 248, 250, 200 };
                 SDL_Color keyBorder = keyHovered ? Colors::Primary : Colors::GlassBorder;
                 
@@ -634,19 +662,18 @@ namespace VOXA
                     keyFill = Colors::Primary;
                 }
 
-                renderer.fillRoundedRect(key.x, key.y, key.w, key.h, 14.0f, keyFill);
-                renderer.drawRoundedRect(key.x, key.y, key.w, key.h, 14.0f, keyBorder);
+                renderer.fillRoundedRect(key.x, key.y, key.w, key.h, 6.0f, keyFill);
+                renderer.drawRoundedRect(key.x, key.y, key.w, key.h, 6.0f, keyBorder);
 
                 SDL_Color textColor = (keyHovered && (act == "space" || act == "backspace" || act == "close")) ? Colors::White : Colors::TextPrimary;
                 if (act == "shift" && m_keyboardShift) textColor = Colors::White;
 
-                // Adjust label case based on shift
                 std::string keyLabel = key.label;
                 if (m_keyboardMode == 0 && !m_keyboardShift && keyLabel.size() == 1 && std::isalpha(keyLabel[0]))
                 {
                     keyLabel[0] = std::tolower(keyLabel[0]);
                 }
-                renderer.drawTextCentered(keyLabel, key.x + key.w * 0.5f, key.y + key.h * 0.32f, textColor, 15);
+                renderer.drawTextCentered(keyLabel, key.x + key.w * 0.5f, key.y + key.h * 0.25f, textColor, 10);
             }
         }
     }
@@ -720,7 +747,7 @@ namespace VOXA
             item.title = m_editTitle;
             item.content = m_editContent;
             item.comments = joinComments(m_commentsList);
-            item.timestamp = "Just now"; // Default timestamp update
+            item.timestamp = "Just now";
             app.services().storage->saveIdea(item);
         }
         else if (m_category == "reminders")
@@ -814,7 +841,6 @@ namespace VOXA
         {
             Idea item;
             item.id = m_itemId;
-            // Need to retrieve remaining fields so we don't overwrite with empty
             auto list = app.services().storage->loadAllIdeas();
             for (const auto& it : list) {
                 if (it.id == m_itemId) { item = it; break; }

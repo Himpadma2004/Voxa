@@ -38,13 +38,13 @@ namespace VOXA
         {
             const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
             // Header back button hit area centered at (18, 28) with radius 11
-            if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
+            if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
             {
                 app.navigateTo(ScreenId::Home);
                 return;
             }
 
-            if (Rect { 10.0f, 54.0f, 300.0f, 175.0f }.contains(point.x, point.y))
+            if (Rect { 10.0f, 48.0f, 300.0f, 182.0f }.contains(point.x, point.y))
             {
                 m_isDragging = true;
                 m_dragStartY = point.y;
@@ -68,9 +68,9 @@ namespace VOXA
                 float diffY = std::abs(point.y - m_dragStartY);
                 if (diffY < 6.0f)
                 {
-                    // Wi-Fi tile (index 0, y = 58.0f)
-                    Rect wifiRect { 15.0f, 58.0f - m_scrollY, 290.0f, 38.0f };
-                    if (wifiRect.contains(point.x, point.y))
+                    // Wi-Fi tile (index 0, y = 50.0f)
+                    Rect wifiRect { 10.0f, 50.0f - m_scrollY, 300.0f, 48.0f };
+                    if (wifiRect.contains(point.x, point.y) && point.y >= 48.0f && point.y <= 230.0f)
                     {
                         if (app.services().settings)
                         {
@@ -82,10 +82,10 @@ namespace VOXA
                         m_isDragging = false;
                         return;
                     }
-
-                    // Sync & Backup tile (index 1, y = 100.0f)
-                    Rect syncRect { 15.0f, 100.0f - m_scrollY, 290.0f, 38.0f };
-                    if (syncRect.contains(point.x, point.y))
+ 
+                    // Sync & Backup tile (index 1, y = 104.0f)
+                    Rect syncRect { 10.0f, 104.0f - m_scrollY, 300.0f, 48.0f };
+                    if (syncRect.contains(point.x, point.y) && point.y >= 48.0f && point.y <= 230.0f)
                     {
                         app.navigateTo(ScreenId::SyncStatus);
                         m_isDragging = false;
@@ -100,7 +100,7 @@ namespace VOXA
             float mx = 0.0f, my = 0.0f;
             SDL_GetMouseState(&mx, &my);
             const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 10.0f, 52.0f, 300.0f, 180.0f }.contains(mPt.x, mPt.y))
+            if (Rect { 10.0f, 48.0f, 300.0f, 182.0f }.contains(mPt.x, mPt.y))
             {
                 m_targetScrollY -= event.wheel.y * 20.0f;
             }
@@ -109,8 +109,8 @@ namespace VOXA
 
     void SettingsScreen::update(Application& app, float deltaSeconds)
     {
-        float contentHeight = 5.0f * 42.0f - 10.0f;
-        float visibleHeight = 170.0f;
+        float contentHeight = 5.0f * 54.0f;
+        float visibleHeight = 182.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
@@ -124,13 +124,7 @@ namespace VOXA
     void SettingsScreen::render(Application& app, Renderer& renderer)
     {
         ScreenCommon::renderSurface(renderer);
-        ScreenCommon::renderHeader(renderer, "Settings", true, true, Icon::Plus);
-
-        // Center glass card container
-        Card container(Rect { 10.0f, 52.0f, 300.0f, 180.0f }, Colors::Card, 16.0f);
-        container.setShadow(Colors::Shadow, 4);
-        container.setBorder(Colors::GlassBorder);
-        container.render(renderer);
+        ScreenCommon::renderHeader(renderer, "Settings", true, false, Icon::Plus);
 
         Settings settings;
         if (app.services().settings)
@@ -159,11 +153,11 @@ namespace VOXA
             { Icon::Star, "About VOXA", "AI Companion", Colors::Primary, ScreenId::Settings },
         } };
 
-        renderer.setClipRect(10.0f, 54.0f, 300.0f, 175.0f);
+        renderer.setClipRect(5.0f, 48.0f, 310.0f, 182.0f);
 
         for (std::size_t i = 0; i < items.size(); ++i)
         {
-            ListTile tile(Rect { 15.0f, 58.0f + i * 42.0f - m_scrollY, 290.0f, 38.0f }, 
+            ListTile tile(Rect { 10.0f, 50.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f }, 
                            items[i].icon, 
                            items[i].title, 
                            items[i].subtitle, 
