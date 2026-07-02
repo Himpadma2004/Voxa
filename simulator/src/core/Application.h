@@ -24,6 +24,7 @@ namespace VOXA
         void navigateTo(ScreenId screenId);
         void navigateBack();          ///< Go to the previous screen (history stack)
         void requestQuit();
+        [[nodiscard]] ScreenId getPreviousScreenId() const;
 
         [[nodiscard]] bool isRunning() const;
         [[nodiscard]] bool quitRequested() const;
@@ -75,6 +76,7 @@ namespace VOXA
         std::vector<ScreenId> m_navHistory; ///< Stack of visited screens for back navigation
 
         Screen* m_prevScreen { nullptr };
+        ScreenId m_prevScreenId { ScreenId::Boot }; ///< Tracks the ID of the exited screen
         bool m_inTransition { false };
         float m_transitionElapsed { 0.0f };
         float m_transitionDuration { 0.35f };

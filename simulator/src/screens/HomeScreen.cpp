@@ -40,12 +40,23 @@ namespace VOXA
         return ScreenId::Home;
     }
 
-    void HomeScreen::onEnter(Application&)
+    void HomeScreen::onEnter(Application& app)
     {
         m_elapsed = 0.0f;
         m_isDragging = false;
         m_isScrollDragging = false;
         m_swipeOffset = 0.0f;
+
+        // If returning from any of the sub-pages opened from the Menu list,
+        // automatically show the Menu list (Page 1) instead of resetting to Page 0.
+        const ScreenId prev = app.getPreviousScreenId();
+        if (prev == ScreenId::Reminders || prev == ScreenId::Ideas ||
+            prev == ScreenId::Questions || prev == ScreenId::Search ||
+            prev == ScreenId::Others || prev == ScreenId::Settings ||
+            prev == ScreenId::Detail)
+        {
+            m_page = 1;
+        }
     }
 
     void HomeScreen::handleEvent(Application& app, const SDL_Event& event)

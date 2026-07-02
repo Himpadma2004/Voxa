@@ -338,12 +338,18 @@ namespace VOXA
         }
 
         m_prevScreen = m_currentScreen;
+        m_prevScreenId = m_currentScreenId; // Store previous screen ID
         m_inTransition = true;
         m_transitionElapsed = 0.0f;
 
         m_currentScreenId = m_pendingScreenId;
         m_currentScreen = m_screens.at(m_currentScreenId).get();
         m_currentScreen->onEnter(*this);
+    }
+
+    ScreenId Application::getPreviousScreenId() const
+    {
+        return m_prevScreenId;
     }
 
     Services& Application::services()
