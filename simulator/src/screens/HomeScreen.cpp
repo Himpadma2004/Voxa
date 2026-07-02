@@ -57,6 +57,8 @@ namespace VOXA
         {
             m_page = 1;
         }
+        
+        m_scrollOffset = static_cast<float>(m_page) * CW;
     }
 
     void HomeScreen::handleEvent(Application& app, const SDL_Event& event)
@@ -201,6 +203,21 @@ namespace VOXA
     {
         m_elapsed += deltaSeconds;
 
+        // Smoothly animate horizontal page transitions
+        if (m_isDragging)
+        {
+            m_scrollOffset = static_cast<float>(m_page) * CW - m_swipeOffset;
+        }
+        else
+        {
+            const float target = static_cast<float>(m_page) * CW;
+            m_scrollOffset += (target - m_scrollOffset) * 12.0f * deltaSeconds;
+            if (std::abs(target - m_scrollOffset) < 0.1f)
+            {
+                m_scrollOffset = target;
+            }
+        }
+
         if (m_page == 1)
         {
             // Calculate scroll limits
@@ -219,12 +236,10 @@ namespace VOXA
 
     void HomeScreen::render(Application& app, Renderer& renderer)
     {
-        const float offset = m_isDragging ? m_swipeOffset : 0.0f;
-
         // Render Page 0 & Page 1 with horizontal sliding transitions
         for (int p = 0; p < kNumPages; ++p)
         {
-            float drawX = static_cast<float>(p - m_page) * CW + offset;
+            float drawX = static_cast<float>(p) * CW - m_scrollOffset;
             if (drawX <= -CW || drawX >= CW) continue;
 
             renderer.setLogicalOffset(drawX, 0.0f);
@@ -241,8 +256,9 @@ namespace VOXA
             renderer.resetLogicalOffset();
         }
 
-        // Draw page dots always at the bottom
-        ScreenCommon::renderPageDots(renderer, m_page, kNumPages);
+        // Draw page dots dynamically tracking the transition
+        int dotActive = static_cast<int>(std::round(m_scrollOffset / CW));
+        ScreenCommon::renderPageDots(renderer, std::clamp(dotActive, 0, kNumPages - 1), kNumPages);
     }
 
     // Page 0 — Voice Assistant Home screen (mockup style)

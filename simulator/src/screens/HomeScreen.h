@@ -27,6 +27,7 @@ namespace VOXA
         float m_dragStartX { 0.0f };
         float m_dragStartY { 0.0f };
         float m_swipeOffset { 0.0f };
+        float m_scrollOffset { 0.0f };  // Horizontal visual page offset for transitions
 
         // Menu scroll state (vertical)
         bool  m_isScrollDragging { false };
