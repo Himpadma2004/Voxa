@@ -232,6 +232,18 @@ namespace VOXA
             return;
         }
 
+        // Prevent mouse/touch input bleedthrough or double-triggers during screen transitions
+        if (m_inTransition)
+        {
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                event.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                event.type == SDL_EVENT_MOUSE_MOTION ||
+                event.type == SDL_EVENT_MOUSE_WHEEL)
+            {
+                return;
+            }
+        }
+
         if (event.type == SDL_EVENT_KEY_DOWN)
         {
             switch (event.key.key)
