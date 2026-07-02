@@ -115,20 +115,63 @@ namespace VOXA
             {
                 float t = m_transitionElapsed / m_transitionDuration;
                 if (t > 1.0f) t = 1.0f;
-                // Ease out cubic curves for phone-like physics
-                t = 1.0f - std::pow(1.0f - t, 3.0f);
+                
+                // Buttery Ease-in-out cubic curve
+                t = t < 0.5f ? 4.0f * t * t * t : 1.0f - std::pow(-2.0f * t + 2.0f, 3.0f) / 2.0f;
 
                 const float width = static_cast<float>(m_renderer.canvasWidth());
-                const float offsetPrev = m_transitionForward ? (-t * width) : (t * width);
-                const float offsetCurr = m_transitionForward ? ((1.0f - t) * width) : (-(1.0f - t) * width);
+                const float height = static_cast<float>(m_renderer.canvasHeight());
 
-                // Draw previous screen translated
-                m_renderer.setLogicalOffset(offsetPrev, 0.0f);
-                m_prevScreen->render(*this, m_renderer);
+                if (m_transitionForward)
+                {
+                    // Forward Navigation: Outgoing slides left slowly, Incoming slides in from right
+                    const float offsetPrev = -t * (width * 0.3f);
+                    const float offsetCurr = (1.0f - t) * width;
 
-                // Draw current screen translated
-                m_renderer.setLogicalOffset(offsetCurr, 0.0f);
-                m_currentScreen->render(*this, m_renderer);
+                    // 1. Draw outgoing screen (lower layer)
+                    m_renderer.setLogicalOffset(offsetPrev, 0.0f);
+                    m_prevScreen->render(*this, m_renderer);
+                    
+                    // 2. Draw dimming overlay on outgoing screen
+                    m_renderer.fillRect(0.0f, 0.0f, width, height, SDL_Color { 0, 0, 0, static_cast<Uint8>(t * 120) });
+
+                    // 3. Draw incoming screen (upper layer)
+                    m_renderer.setLogicalOffset(offsetCurr, 0.0f);
+                    m_currentScreen->render(*this, m_renderer);
+
+                    // 4. Draw soft drop shadow on left edge of incoming screen
+                    for (int i = 0; i < 16; ++i)
+                    {
+                        float sx = -static_cast<float>(i);
+                        Uint8 alpha = static_cast<Uint8>((1.0f - (static_cast<float>(i) / 16.0f)) * 48.0f);
+                        m_renderer.drawLine(sx, 0.0f, sx, height, SDL_Color { 0, 0, 0, alpha });
+                    }
+                }
+                else
+                {
+                    // Backward Navigation: Incoming slides in from left slowly, Outgoing slides out to right
+                    const float offsetPrev = -(1.0f - t) * (width * 0.3f);
+                    const float offsetCurr = t * width;
+
+                    // 1. Draw incoming screen (lower layer)
+                    m_renderer.setLogicalOffset(offsetPrev, 0.0f);
+                    m_prevScreen->render(*this, m_renderer);
+
+                    // 2. Draw dimming overlay on incoming screen
+                    m_renderer.fillRect(0.0f, 0.0f, width, height, SDL_Color { 0, 0, 0, static_cast<Uint8>((1.0f - t) * 120) });
+
+                    // 3. Draw outgoing screen (upper layer)
+                    m_renderer.setLogicalOffset(offsetCurr, 0.0f);
+                    m_currentScreen->render(*this, m_renderer);
+
+                    // 4. Draw soft drop shadow on left edge of outgoing screen
+                    for (int i = 0; i < 16; ++i)
+                    {
+                        float sx = -static_cast<float>(i);
+                        Uint8 alpha = static_cast<Uint8>((1.0f - (static_cast<float>(i) / 16.0f)) * 48.0f);
+                        m_renderer.drawLine(sx, 0.0f, sx, height, SDL_Color { 0, 0, 0, alpha });
+                    }
+                }
 
                 m_renderer.resetLogicalOffset();
             }
