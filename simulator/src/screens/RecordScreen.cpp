@@ -81,9 +81,8 @@ namespace VOXA
         renderer.fillCircle(cx, cy, 26.0f, Colors::Primary);
         renderer.drawCircle(cx, cy, 26.0f, SDL_Color { 255, 255, 255, 60 });
 
-        // 4. White microphone icon centered
-        const float micIconSz = 16.0f;
-        drawIcon(renderer, Icon::Mic, cx - micIconSz * 0.5f, cy - micIconSz * 0.5f, micIconSz, Colors::White);
+        // 4. Proper curved microphone icon using punch-out technique
+        ScreenCommon::drawMicShape(renderer, cx, cy, 24.0f, Colors::White, Colors::Primary);
 
         // 5. Timer readout
         const int totalSeconds = static_cast<int>(m_elapsed);

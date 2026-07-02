@@ -282,9 +282,8 @@ namespace VOXA
         // 4. Clean white border highlight around the circle
         renderer.drawCircle(micCx, micCy, micR, SDL_Color { 255, 255, 255, 180 });
 
-        // 5. Microphone icon in centered white (high-contrast, neutral, premium)
-        const float micIconSz = 22.0f;
-        drawIcon(renderer, Icon::Mic, micCx - micIconSz * 0.5f, micCy - micIconSz * 0.5f, micIconSz, Colors::White);
+        // 5. Microphone icon — proper curved shape using punch-out technique
+        ScreenCommon::drawMicShape(renderer, micCx, micCy, 32.0f, Colors::White, Colors::Primary);
 
         // Tap to Record helper text centered below the button
         renderer.drawTextCentered("Tap to Record", 160.0f, 178.0f, Colors::Primary, 11);
