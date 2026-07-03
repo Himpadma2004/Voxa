@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"name": "firmware",
+			"path": "../.."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"Arduino.h": "cpp"
+		}
+	}
+}
