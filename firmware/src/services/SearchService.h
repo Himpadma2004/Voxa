@@ -14,6 +14,10 @@ namespace VOXA
         std::string category;   ///< "reminder" | "memory" | "idea" | "question"
         std::string timestamp;
         uint32_t    sourceId { 0 };
+
+        SearchResult() = default;
+        SearchResult(std::string t, std::string c, std::string ts, uint32_t sId)
+            : title(std::move(t)), category(std::move(c)), timestamp(std::move(ts)), sourceId(sId) {}
     };
 
     /// Full-text search across all VOXA data categories.

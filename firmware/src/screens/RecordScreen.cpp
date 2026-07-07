@@ -1,106 +1,189 @@
 #include "RecordScreen.h"
-
+#include "../display/Display.h"
+#include "../ui/Theme.h"
+#include "../services/RecordingService.h"
 #include <cmath>
-
-#include "../core/Application.h"
-#include "../graphics/Colors.h"
-#include "../graphics/Renderer.h"
-#include "../widgets/Card.h"
-#include "ScreenCommon.h"
 
 namespace VOXA
 {
-    ScreenId RecordScreen::id() const
-    {
-        return ScreenId::Record;
-    }
+    extern RecordingService recordingService;
 
-    void RecordScreen::onEnter(Application&)
+    ScreenId RecordScreen::show(Touch& touch)
     {
-        m_elapsed = 0.0f;
-    }
+        uint16_t w = Display::width();
+        uint16_t h = Display::height();
 
-    void RecordScreen::handleEvent(Application& app, const SDL_Event& event)
-    {
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+        LGFX_Sprite canvas(&Display::lcd);
+        canvas.setColorDepth(16);
+        if (!canvas.createSprite(w, h))
         {
-            const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
+            return ScreenId::Home;
+        }
+
+        ScreenId targetScreen = ScreenId::Record;
+        uint32_t lastMs = millis();
+        float elapsed = 0.0f;
+
+        bool isRecording = false;
+        float recordingDuration = 0.0f;
+
+        while (targetScreen == ScreenId::Record)
+        {
+            uint32_t nowMs = millis();
+            float deltaSecs = (nowMs - lastMs) / 1000.0f;
+            lastMs = nowMs;
+
+            elapsed += deltaSecs;
+            if (isRecording)
+            {
+                recordingDuration += deltaSecs;
+            }
+
+            // 1. Process Touch
+            uint16_t tx = 0, ty = 0;
+            bool touched = touch.getPoint(tx, ty);
+
+            if (touched)
+            {
+                m_lastDragX = tx;
+                m_lastDragY = ty;
+                if (!m_wasTouched)
+                {
+                    m_wasTouched = true;
+
+                    // Back button bounds Y = 45
+                    if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    {
+                        m_isBackPressed = true;
+                    }
+
+                    // Mic button bounds
+                    float micCx = w * 0.5f;
+                    float micCy = h * 0.52f;
+                    if (std::sqrt((tx - micCx)*(tx - micCx) + (ty - micCy)*(ty - micCy)) <= 42.0f)
+                    {
+                        m_isMicPressed = true;
+                    }
+                }
+            }
+            else
+            {
+                if (m_wasTouched)
+                {
+                    m_wasTouched = false;
+                    float rx = m_lastDragX;
+                    float ry = m_lastDragY;
+
+                    if (m_isBackPressed)
+                    {
+                        // If recording, stop it first
+                        if (isRecording)
+                        {
+                            isRecording = false;
+                            recordingService.add("Voice Memo", "filePath.wav", (uint32_t)recordingDuration, "Jul 07");
+                        }
+                        targetScreen = ScreenId::Home;
+                    }
+                    else if (m_isMicPressed)
+                    {
+                        // Toggle recording
+                        isRecording = !isRecording;
+                        if (!isRecording)
+                        {
+                            // Save recording
+                            recordingService.add("Voice Memo", "filePath.wav", (uint32_t)recordingDuration, "Jul 07");
+                            Serial.println("[Recorder] Saved recording");
+                        }
+                        else
+                        {
+                            recordingDuration = 0.0f;
+                            Serial.println("[Recorder] Started recording");
+                        }
+                    }
+                    m_isBackPressed = false;
+                    m_isMicPressed = false;
+                }
+            }
+
+            // Dimensions re-query
+            w = Display::width();
+            h = Display::height();
+
+            // 2. Render
+            ScreenCommon::renderSurface(canvas, w, h);
+            ScreenCommon::renderHeader(canvas, "Voice Recorder", true, false, Icon::Plus, w, h);
+
+            // Render Back button pressed state
+            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
+                                              backFill, backColor, w, h);
+
+            float cx = w * 0.5f;
+            float cy = h * 0.52f;
+
+            // Concentric ambient halos (pulsating if recording)
+            float micR = m_isMicPressed ? 26.0f : 30.0f;
+            float pulse = isRecording ? (std::sin(elapsed * 8.0f) * 0.5f + 0.5f) : 0.0f;
+
+            uint16_t bg = VoxaTheme::getBackground();
+            uint8_t bg_r = (bg >> 11) << 3;
+            uint8_t bg_g = ((bg >> 5) & 0x3F) << 2;
+            uint8_t bg_b = (bg & 0x1F) << 3;
             
-            // Back button tap target (top-left 40x40)
-            if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
+            float alpha1 = isRecording ? ((30.0f + pulse * 25.0f) / 255.0f) : 0.08f;
+            
+            uint16_t haloColor = canvas.color565(
+                (uint8_t)((1.0f - alpha1) * bg_r + alpha1 * 255), // red halo if recording
+                (uint8_t)((1.0f - alpha1) * bg_g + alpha1 * (isRecording ? 80 : 92)),
+                (uint8_t)((1.0f - alpha1) * bg_b + alpha1 * (isRecording ? 80 : 255))
+            );
+
+            canvas.drawCircle((int)cx, (int)cy, (int)(micR + 6.0f + pulse * 6.0f), haloColor);
+            canvas.drawCircle((int)cx, (int)cy, (int)(micR + 12.0f + pulse * 12.0f), haloColor);
+
+            uint16_t btnColor = isRecording ? 0xF800 : (m_isMicPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getPrimary());
+            canvas.fillCircle((int)cx, (int)cy, (int)micR, btnColor);
+            canvas.drawCircle((int)cx, (int)cy, (int)micR, VoxaTheme::getTextPrimary());
+
+            // Mic icon inside
+            ScreenCommon::drawMicShape(canvas, cx, cy, micR * 0.85f * 2.0f, VoxaTheme::getTextPrimary(), btnColor);
+
+            // Timer & Status Details
+            canvas.setFont(&fonts::DejaVu18);
+            canvas.setTextColor(VoxaTheme::getTextPrimary());
+            canvas.setTextDatum(textdatum_t::middle_center);
+
+            if (isRecording)
             {
-                app.audio().playSoftConfirm();
-                app.navigateBack();
-                return;
+                int mins = (int)recordingDuration / 60;
+                int secs = (int)recordingDuration % 60;
+                char timeStr[32];
+                sprintf(timeStr, "%02d:%02d", mins, secs);
+                canvas.drawString(timeStr, cx, h * 0.82f);
+
+                canvas.setFont(&fonts::DejaVu12);
+                canvas.setTextColor(0xF800); // red recording tag
+                canvas.drawString("RECORDING", cx, h * 0.90f);
+            }
+            else
+            {
+                canvas.drawString("00:00", cx, h * 0.82f);
+
+                canvas.setFont(&fonts::DejaVu12);
+                canvas.setTextColor(VoxaTheme::getTextSecondary());
+                canvas.drawString("TAP TO RECORD", cx, h * 0.90f);
             }
 
-            // Right action home button tap target (top-right 40x40)
-            const float width = 320.0f;
-            if (Rect { width - 40.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
-            {
-                app.audio().playSoftConfirm();
-                app.navigateTo(ScreenId::Home);
-                return;
-            }
+            canvas.pushSprite(0, 0);
 
-            // Generous tap target for central microphone button area (covers button, halos, timer, and labels)
-            // X range: 100 to 220 (120px wide), Y range: 50 to 190 (140px tall)
-            if (point.x >= 100.0f && point.x <= 220.0f && point.y >= 50.0f && point.y <= 190.0f)
+            uint32_t frameMs = millis() - nowMs;
+            if (frameMs < 16)
             {
-                app.audio().playSoftConfirm();
-                app.navigateTo(ScreenId::Home);
+                delay(16 - frameMs);
             }
         }
-    }
 
-    void RecordScreen::update(Application&, float deltaSeconds)
-    {
-        m_elapsed += deltaSeconds;
-    }
-
-    void RecordScreen::render(Application&, Renderer& renderer)
-    {
-        ScreenCommon::renderSurface(renderer);
-        // Header using spark action on the right (maps to home icon)
-        ScreenCommon::renderHeader(renderer, "Voice Capture", true, true, Icon::Spark);
-
-        const float cx = 160.0f;
-        const float cy = 100.0f;
-        
-        // Sine wave pulse factor
-        const float pulse = std::sin(m_elapsed * 4.0f) * 0.5f + 0.5f; // 0.0 to 1.0
-        
-        // 1. Concentric pulsing halos around the mic button
-        renderer.drawCircle(cx, cy, 32.0f + pulse * 4.0f, SDL_Color { 124, 92, 255, static_cast<Uint8>(40 + pulse * 20) });
-        renderer.drawCircle(cx, cy, 38.0f + pulse * 8.0f, SDL_Color { 124, 92, 255, static_cast<Uint8>(15 + pulse * 10) });
-
-        // 2. Soft button shadow
-        renderer.drawSoftShadow(cx - 26.0f, cy - 26.0f, 52.0f, 52.0f, 26.0f, 3, SDL_Color { 0, 0, 0, 15 });
-
-        // 3. Central recording button circle
-        renderer.fillCircle(cx, cy, 26.0f, Colors::Primary);
-        renderer.drawCircle(cx, cy, 26.0f, SDL_Color { 255, 255, 255, 60 });
-
-        // 4. Proper curved microphone icon using punch-out technique
-        ScreenCommon::drawMicShape(renderer, cx, cy, 24.0f, Colors::White, Colors::Primary);
-
-        // 5. Timer readout
-        const int totalSeconds = static_cast<int>(m_elapsed);
-        const int displaySeconds = totalSeconds % 60;
-        const int displayMinutes = totalSeconds / 60;
-        char timer[16];
-        SDL_snprintf(timer, sizeof(timer), "%02d:%02d", displayMinutes, displaySeconds);
-
-        renderer.drawTextCentered(timer, cx, 142.0f, Colors::TextPrimary, 22);
-        renderer.drawTextCentered("Recording...", cx, 166.0f, Colors::Primary, 11);
-        renderer.drawTextCentered("Tap button to save", cx, 180.0f, Colors::TextSecondary, 9);
-
-        // 6. Premium full-width horizontal oscilloscope wave visualizer
-        for (int i = 0; i < 30; ++i)
-        {
-            const float wx = 15.0f + i * 10.0f;
-            const float amplitude = 4.0f + std::sin(m_elapsed * 6.0f + static_cast<float>(i) * 0.35f) * 16.0f;
-            renderer.drawLine(wx, 210.0f - amplitude * 0.5f, wx, 210.0f + amplitude * 0.5f, SDL_Color { 124, 92, 255, 180 });
-        }
+        return targetScreen;
     }
 }

@@ -1,192 +1,242 @@
 #include "ReminderScreen.h"
-
-#include <algorithm>
-#include <array>
+#include "../display/Display.h"
+#include "../ui/Theme.h"
+#include "../services/ReminderService.h"
+#include "DetailScreen.h"
 #include <cmath>
-#include <cstdio>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
-#include <vector>
-
-#include "../core/Application.h"
-#include "../core/services/ReminderService.h"
-#include "../graphics/Colors.h"
-#include "../graphics/Renderer.h"
-#include "../widgets/Button.h"
-#include "../widgets/Card.h"
-#include "../widgets/ListTile.h"
-#include "ScreenCommon.h"
-
-namespace
-{
-    struct ReminderStyle
-    {
-        SDL_Color iconColor;
-        SDL_Color dotColor;
-    };
-
-    const std::array<ReminderStyle, 4> styles { {
-        { SDL_Color { 145, 105, 255, 255 }, SDL_Color { 145, 105, 255, 255 } },
-        { SDL_Color { 255, 95, 150, 255 }, SDL_Color { 255, 95, 150, 255 } },
-        { SDL_Color { 255, 180, 40, 255 }, SDL_Color { 255, 180, 40, 255 } },
-        { SDL_Color { 80, 185, 255, 255 }, SDL_Color { 80, 185, 255, 255 } }
-    } };
-
-    std::string formatDateTime(const std::string& raw)
-    {
-        int y = 0, m = 0, d = 0, hr = 0, min = 0;
-        if (std::sscanf(raw.c_str(), "%d-%d-%d %d:%d", &y, &m, &d, &hr, &min) == 5)
-        {
-            std::tm tm {};
-            tm.tm_year = y - 1900;
-            tm.tm_mon = m - 1;
-            tm.tm_mday = d;
-            tm.tm_hour = hr;
-            tm.tm_min = min;
-            char buf[64];
-            std::strftime(buf, sizeof(buf), "%I:%M %p", &tm);
-            std::string s(buf);
-            if (!s.empty() && s[0] == '0') s = s.substr(1);
-            return s;
-        }
-        else if (std::sscanf(raw.c_str(), "%d-%d-%d", &y, &m, &d) == 3)
-        {
-            std::tm tm {};
-            tm.tm_year = y - 1900;
-            tm.tm_mon = m - 1;
-            tm.tm_mday = d;
-            char buf[64];
-            std::strftime(buf, sizeof(buf), "%b %d", &tm);
-            return std::string(buf);
-        }
-        return raw;
-    }
-}
+#include <algorithm>
 
 namespace VOXA
 {
-    ScreenId ReminderScreen::id() const
-    {
-        return ScreenId::Reminders;
-    }
+    extern ReminderService reminderService;
 
-    void ReminderScreen::handleEvent(Application& app, const SDL_Event& event)
+    ScreenId ReminderScreen::show(Touch& touch)
     {
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+        uint16_t w = Display::width();
+        uint16_t h = Display::height();
+
+        LGFX_Sprite canvas(&Display::lcd);
+        canvas.setColorDepth(16);
+        if (!canvas.createSprite(w, h))
         {
-            const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-            // Header back button hit area centered at (18, 28) with radius 11
-            if (Rect { 0.0f, 0.0f, 40.0f, 40.0f }.contains(point.x, point.y))
-            {
-                app.navigateBack();
-            }
-            else if (Rect { 10.0f, 68.0f, 300.0f, 162.0f }.contains(point.x, point.y))
-            {
-                m_isDragging = true;
-                m_dragStartY = point.y;
-                m_dragStartScrollY = m_targetScrollY;
-            }
+            return ScreenId::Home;
         }
-        else if (event.type == SDL_EVENT_MOUSE_MOTION)
+
+        ScreenId targetScreen = ScreenId::Reminders;
+        uint32_t lastMs = millis();
+
+        auto reminders = reminderService.getAll();
+        float contentHeight = reminders.size() * 50.0f + 10.0f;
+        float visibleHeight = h - 70.0f - 18.0f;
+        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+        while (targetScreen == ScreenId::Reminders)
         {
-            if (m_isDragging)
+            uint32_t nowMs = millis();
+            float deltaSecs = (nowMs - lastMs) / 1000.0f;
+            lastMs = nowMs;
+
+            reminders = reminderService.getAll();
+            contentHeight = reminders.size() * 50.0f + 10.0f;
+
+            // 1. Process Touch
+            uint16_t tx = 0, ty = 0;
+            bool touched = touch.getPoint(tx, ty);
+
+            if (touched)
             {
-                const SDL_FPoint point = app.windowToCanvas(event.motion.x, event.motion.y);
-                float diffY = point.y - m_dragStartY;
-                m_targetScrollY = m_dragStartScrollY - diffY;
-            }
-        }
-        else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
-        {
-            if (m_isDragging)
-            {
-                const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-                float diffY = std::abs(point.y - m_dragStartY);
-                if (diffY < 6.0f)
+                m_lastDragX = tx;
+                m_lastDragY = ty;
+
+                if (!m_wasTouched)
                 {
-                    auto reminders = app.services().reminders->getAll();
-                    for (std::size_t i = 0; i < reminders.size(); ++i)
+                    m_wasTouched = true;
+                    m_dragStartY = ty;
+                    m_dragStartScrollY = m_targetScrollY;
+                    m_lastTouchSampleMs = nowMs;
+                    m_isDragging = false;
+                    m_scrollVelocity = 0.0f;
+
+                    // Back button bounds centered at Y = 45.0f
+                    if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
                     {
-                        Rect tileRect { 10.0f, 68.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f };
-                        if (tileRect.contains(point.x, point.y) && point.y >= 68.0f && point.y <= 230.0f)
+                        m_isBackPressed = true;
+                    }
+
+                    // Add button bounds centered at Y = 45.0f
+                    if (std::sqrt((tx - (w - 20.0f))*(tx - (w - 20.0f)) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    {
+                        m_isAddPressed = true;
+                    }
+
+                    // Card checks
+                    if (ty >= 70.0f && ty <= (h - 18.0f))
+                    {
+                        float leftX = w * 0.04f;
+                        float cardW = w * 0.92f;
+                        for (std::size_t i = 0; i < reminders.size(); ++i)
                         {
-                            app.setSelectedItem("reminders", reminders[i].id);
-                            app.navigateTo(ScreenId::Detail);
-                            break;
+                            float itemY = 72.0f + i * 50.0f - m_scrollY;
+                            if (tx >= leftX && tx <= (leftX + cardW) &&
+                                ty >= itemY && ty <= (itemY + 44.0f))
+                            {
+                                m_pressedItemIndex = i;
+                            }
                         }
                     }
                 }
-                m_isDragging = false;
+                else
+                {
+                    float dy = ty - m_dragStartY;
+                    if (!m_isDragging && std::abs(dy) > 10.0f)
+                    {
+                        m_isDragging = true;
+                        m_isBackPressed = false;
+                        m_isAddPressed = false;
+                        m_pressedItemIndex = -1;
+                    }
+
+                    if (m_isDragging)
+                    {
+                        m_targetScrollY = m_dragStartScrollY - dy;
+                        m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
+
+                        uint32_t dt = nowMs - m_lastTouchSampleMs;
+                        if (dt > 0)
+                        {
+                            m_scrollVelocity = -dy / (dt / 1000.0f);
+                        }
+                        m_lastTouchSampleMs = nowMs;
+                    }
+                }
             }
-        }
-        else if (event.type == SDL_EVENT_MOUSE_WHEEL)
-        {
-            float mx = 0.0f, my = 0.0f;
-            SDL_GetMouseState(&mx, &my);
-            const SDL_FPoint mPt = app.windowToCanvas(mx, my);
-            if (Rect { 10.0f, 68.0f, 300.0f, 162.0f }.contains(mPt.x, mPt.y))
+            else
             {
-                m_targetScrollY -= event.wheel.y * 20.0f;
+                if (m_wasTouched)
+                {
+                    m_wasTouched = false;
+                    float rx = m_lastDragX;
+                    float ry = m_lastDragY;
+
+                    if (m_isDragging)
+                    {
+                        m_isDragging = false;
+                    }
+                    else
+                    {
+                        if (m_isBackPressed)
+                        {
+                            targetScreen = ScreenId::Home;
+                        }
+                        else if (m_isAddPressed)
+                        {
+                            // Add a new reminder for test
+                            int count = reminders.size() + 1;
+                            std::string title = "New Reminder " + std::to_string(count);
+                            reminderService.add(title, "18:00");
+                            Serial.println("[Reminders] Added new reminder");
+                        }
+                        else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)reminders.size())
+                        {
+                            DetailScreen::setItem("reminders", reminders[m_pressedItemIndex].id, ScreenId::Reminders);
+                            targetScreen = ScreenId::Detail;
+                        }
+                    }
+                    m_isBackPressed = false;
+                    m_isAddPressed = false;
+                    m_pressedItemIndex = -1;
+                }
+            }
+
+            // Dimensions re-query
+            w = Display::width();
+            h = Display::height();
+            visibleHeight = h - 70.0f - 18.0f;
+            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+            // 2. Perform Scroll Inertia
+            if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
+            {
+                m_targetScrollY += m_scrollVelocity * deltaSecs;
+                m_scrollVelocity *= std::pow(0.85f, deltaSecs * 60.0f);
+                if (std::abs(m_scrollVelocity) < 5.0f)
+                {
+                    m_scrollVelocity = 0.0f;
+                }
+            }
+
+            m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
+            m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
+            if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
+            {
+                m_scrollY = m_targetScrollY;
+            }
+
+            // 3. Render Reminders Screen
+            ScreenCommon::renderSurface(canvas, w, h);
+            
+            // Header showing Back button & Add Plus button (centered at Y = 45.0f)
+            ScreenCommon::renderHeader(canvas, "Reminders", true, true, Icon::Plus, w, h);
+
+            // Render header buttons showing pressed highlights
+            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
+                                              backFill, backColor, w, h);
+
+            uint16_t addFill = m_isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+            uint16_t addColor = m_isAddPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, Icon::Plus, 
+                                              addFill, addColor, w, h);
+
+            float leftX = w * 0.04f;
+            float cardW = w * 0.92f;
+
+            canvas.setClipRect(0, 70, w, h - 70 - 18);
+
+            for (std::size_t i = 0; i < reminders.size(); ++i)
+            {
+                float itemY = 72.0f + i * 50.0f - m_scrollY;
+                if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
+                    continue;
+
+                bool isPressed = (m_pressedItemIndex == (int)i);
+                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
+                uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
+
+                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
+                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
+
+                float cy = itemY + 22.0f;
+                float iconCx = leftX + 22.0f;
+                canvas.fillCircle((int)iconCx, (int)cy, 12, 0x79CF);
+                ScreenCommon::drawIcon(canvas, Icon::Bell, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+
+                canvas.setFont(&fonts::DejaVu12);
+                canvas.setTextDatum(textdatum_t::middle_left);
+                
+                canvas.setTextColor(labelColor);
+                canvas.drawString(reminders[i].title.c_str(), leftX + 42.0f, cy - 8.0f);
+
+                canvas.setTextColor(subColor);
+                canvas.drawString(reminders[i].dateTime.c_str(), leftX + 42.0f, cy + 8.0f);
+
+                float chevX = leftX + cardW - 16.0f;
+                ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+            }
+
+            canvas.clearClipRect();
+            canvas.pushSprite(0, 0);
+
+            uint32_t frameMs = millis() - nowMs;
+            if (frameMs < 16)
+            {
+                delay(16 - frameMs);
             }
         }
-    }
 
-    void ReminderScreen::update(Application& app, float deltaSeconds)
-    {
-        std::size_t numReminders = 0;
-        if (app.services().reminders)
-        {
-            numReminders = app.services().reminders->getAll().size();
-        }
-
-        float contentHeight = std::max(0.0f, static_cast<float>(numReminders) * 54.0f);
-        float visibleHeight = 162.0f;
-        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
-
-        m_targetScrollY = std::clamp(m_targetScrollY, 0.0f, maxScrollY);
-        m_scrollY += (m_targetScrollY - m_scrollY) * 12.0f * deltaSeconds;
-        if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
-        {
-            m_scrollY = m_targetScrollY;
-        }
-    }
-
-    void ReminderScreen::render(Application& app, Renderer& renderer)
-    {
-        ScreenCommon::renderSurface(renderer);
-        ScreenCommon::renderHeader(renderer, "Reminders", true, true, Icon::Plus);
-
-        // Header sub-category label
-        renderer.drawText("Today", 12.0f, 50.0f, SDL_Color { 145, 105, 255, 255 }, 11);
-
-        // Retrieve reminders from the backend service
-        std::vector<Reminder> reminders;
-        if (app.services().reminders)
-        {
-            reminders = app.services().reminders->getAll();
-        }
-
-        // Set clipping region to prevent scroll overlap with status bar or footer
-        renderer.setClipRect(5.0f, 68.0f, 310.0f, 162.0f);
-
-        for (std::size_t i = 0; i < reminders.size(); ++i)
-        {
-            const auto& r = reminders[i];
-            const ReminderStyle& style = styles[i % styles.size()];
-            Icon icon = (r.dateTime.find(':') != std::string::npos) ? Icon::Bell : Icon::Calendar;
-            std::string formattedDate = formatDateTime(r.dateTime);
-
-            ListTile tile(Rect { 10.0f, 68.0f + i * 54.0f - m_scrollY, 300.0f, 48.0f }, 
-                          icon, 
-                          r.title.c_str(), 
-                          formattedDate.c_str(), 
-                          style.iconColor, 
-                          SDL_Color { 0, 0, 0, 0 }, 
-                          false);
-            tile.render(renderer);
-        }
-
-        renderer.clearClipRect();
+        return targetScreen;
     }
 }

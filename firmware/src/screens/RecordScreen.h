@@ -1,19 +1,19 @@
 #pragma once
-
-#include "../core/Screen.h"
+#include "ScreenCommon.h"
+#include "../touch/Touch.h"
 
 namespace VOXA
 {
-    class RecordScreen : public Screen
+    class RecordScreen
     {
     public:
-        ScreenId id() const override;
-        void onEnter(Application& app) override;
-        void handleEvent(Application& app, const SDL_Event& event) override;
-        void update(Application& app, float deltaSeconds) override;
-        void render(Application& app, Renderer& renderer) override;
+        ScreenId show(Touch& touch);
 
     private:
-        float m_elapsed { 0.0f };
+        bool m_isBackPressed { false };
+        bool m_isMicPressed { false };
+        bool m_wasTouched { false };
+        float m_lastDragX { 0.0f };
+        float m_lastDragY { 0.0f };
     };
 }

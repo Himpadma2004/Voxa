@@ -1,78 +1,109 @@
 #include "SyncStatusScreen.h"
-
-#include "../core/Application.h"
-#include "../graphics/Colors.h"
-#include "../graphics/Renderer.h"
-#include "../widgets/Button.h"
-#include "../widgets/Card.h"
-#include "ScreenCommon.h"
+#include "../display/Display.h"
+#include "../ui/Theme.h"
+#include <cmath>
 
 namespace VOXA
 {
-    ScreenId SyncStatusScreen::id() const
+    ScreenId SyncStatusScreen::show(Touch& touch)
     {
-        return ScreenId::SyncStatus;
-    }
+        uint16_t w = Display::width();
+        uint16_t h = Display::height();
 
-    void SyncStatusScreen::handleEvent(Application& app, const SDL_Event& event)
-    {
-        if (event.type != SDL_EVENT_MOUSE_BUTTON_DOWN)
+        LGFX_Sprite canvas(&Display::lcd);
+        canvas.setColorDepth(16);
+        if (!canvas.createSprite(w, h))
         {
-            return;
+            return ScreenId::Settings;
         }
 
-        const SDL_FPoint point = app.windowToCanvas(event.button.x, event.button.y);
-        // Header back button hit area centered at (18, 28) with radius 11
-        if (Rect { 5.0f, 15.0f, 26.0f, 26.0f }.contains(point.x, point.y))
+        ScreenId targetScreen = ScreenId::SyncStatus;
+        float elapsed = 0.0f;
+        uint32_t lastMs = millis();
+
+        while (targetScreen == ScreenId::SyncStatus)
         {
-            app.navigateBack();
-            return;
+            uint32_t nowMs = millis();
+            float deltaSecs = (nowMs - lastMs) / 1000.0f;
+            lastMs = nowMs;
+
+            elapsed += deltaSecs;
+
+            // 1. Process Touch
+            uint16_t tx = 0, ty = 0;
+            bool touched = touch.getPoint(tx, ty);
+
+            if (touched)
+            {
+                m_lastDragX = tx;
+                m_lastDragY = ty;
+                if (!m_wasTouched)
+                {
+                    m_wasTouched = true;
+                    if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    {
+                        m_isBackPressed = true;
+                    }
+                }
+            }
+            else
+            {
+                if (m_wasTouched)
+                {
+                    m_wasTouched = false;
+                    if (m_isBackPressed)
+                    {
+                        targetScreen = ScreenId::Settings; // returns to Settings Screen
+                    }
+                    m_isBackPressed = false;
+                }
+            }
+
+            // Dimensions re-query
+            w = Display::width();
+            h = Display::height();
+
+            // 2. Render
+            ScreenCommon::renderSurface(canvas, w, h);
+            ScreenCommon::renderHeader(canvas, "Sync Status", true, false, Icon::Plus, w, h);
+
+            float cx = w * 0.5f;
+            float cy = h * 0.52f;
+
+            // Pulsating sync check animation
+            float angle = elapsed * 3.0f;
+            float pulse = std::sin(elapsed * 2.0f) * 4.0f;
+
+            // Outer circle
+            canvas.drawCircle((int)cx, (int)cy, (int)(40 + pulse), VoxaTheme::getPrimaryLight());
+            
+            // Spinning arc inside circle
+            canvas.drawArc((int)cx, (int)cy, 28, 34, (int)(angle * 57.3f), (int)((angle + 2.0f) * 57.3f), VoxaTheme::getPrimary());
+
+            // Check icon in center
+            canvas.setFont(&fonts::DejaVu18);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.setTextColor(VoxaTheme::getPrimary());
+            canvas.drawString("OK", cx, cy);
+
+            // Details
+            canvas.setFont(&fonts::DejaVu12);
+            canvas.setTextSize(1);
+            canvas.setTextColor(VoxaTheme::getTextPrimary());
+            canvas.drawString("Cloud Sync: Up to Date", cx, h * 0.82f);
+            
+            canvas.setTextColor(VoxaTheme::getTextSecondary());
+            canvas.drawString("Last Sync: Just Now", cx, h * 0.90f);
+
+            canvas.pushSprite(0, 0);
+
+            uint32_t frameMs = millis() - nowMs;
+            if (frameMs < 16)
+            {
+                delay(16 - frameMs);
+            }
         }
 
-        // Tap "Sync Now" button
-        if (Rect { 110.0f, 182.0f, 100.0f, 22.0f }.contains(point.x, point.y))
-        {
-            app.audio().playSoftConfirm();
-            app.navigateBack();
-        }
-    }
-
-    void SyncStatusScreen::update(Application&, float)
-    {
-    }
-
-    void SyncStatusScreen::render(Application&, Renderer& renderer)
-    {
-        ScreenCommon::renderSurface(renderer);
-        ScreenCommon::renderHeader(renderer, "Sync Status", true, false, Icon::Plus);
-
-        // Center glass card container
-        const float cardX = 40.0f;
-        const float cardY = 52.0f;
-        const float cardW = 240.0f;
-        const float cardH = 180.0f;
-        
-        Card container(Rect { cardX, cardY, cardW, cardH }, Colors::Card, 16.0f);
-        container.setShadow(Colors::Shadow, 4);
-        container.setBorder(Colors::GlassBorder);
-        container.render(renderer);
-
-        const float cx = cardX + cardW * 0.5f;
-        const float cy = cardY + 45.0f;
-
-        renderer.drawGlowCircle(cx, cy, 32.0f, SDL_Color { 124, 92, 255, 18 }, 5);
-        renderer.fillCircleGradient(cx, cy, 26.0f, SDL_Color { 255, 255, 255, 180 }, SDL_Color { 245, 240, 250, 255 });
-        renderer.drawCircle(cx, cy, 26.0f, Colors::Primary);
-        drawIcon(renderer, Icon::Cloud, cx - 12.0f, cy - 12.0f, 24.0f, Colors::Primary);
-        
-        // Upward arrow inside cloud
-        renderer.drawLine(cx, cy + 8.0f, cx, cy - 5.0f, Colors::Primary);
-        renderer.drawLine(cx, cy - 5.0f, cx - 4.0f, cy - 1.0f, Colors::Primary);
-        renderer.drawLine(cx, cy - 5.0f, cx + 4.0f, cy - 1.0f, Colors::Primary);
-
-        renderer.drawTextCentered("3 files waiting to sync", cx, cardY + 90.0f, Colors::TextPrimary, 11);
-        renderer.drawTextCentered("Last synced: 2 hours ago", cx, cardY + 108.0f, Colors::TextSecondary, 9);
-
-        Button(Rect { cx - 50.0f, cardY + 130.0f, 100.0f, 22.0f }, "Sync Now", true).render(renderer);
+        return targetScreen;
     }
 }
