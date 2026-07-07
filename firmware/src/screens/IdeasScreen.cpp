@@ -42,7 +42,6 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            ideas = ideaService.getAll();
             contentHeight = ideas.size() * 50.0f + 10.0f;
 
             // 1. Process Touch
@@ -152,6 +151,7 @@ namespace VOXA
                             std::string title = "New Idea " + std::to_string(count);
                             ideaService.add(title, "Creative idea notes go here.", "Jul 07");
                             Serial.println("[Ideas] Added new idea");
+                            ideas = ideaService.getAll();
                         }
                         else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)ideas.size())
                         {
@@ -229,7 +229,7 @@ namespace VOXA
                 canvas.fillCircle((int)iconCx, (int)cy, 12, 0xFD20);
                 ScreenCommon::drawIcon(canvas, Icon::Lightbulb, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                canvas.setFont(&fonts::DejaVu12);
+                canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 
                 canvas.setTextColor(labelColor);

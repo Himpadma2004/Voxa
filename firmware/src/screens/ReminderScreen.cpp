@@ -42,7 +42,6 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            reminders = reminderService.getAll();
             contentHeight = reminders.size() * 50.0f + 10.0f;
 
             // 1. Process Touch
@@ -152,6 +151,7 @@ namespace VOXA
                             std::string title = "New Reminder " + std::to_string(count);
                             reminderService.add(title, "18:00");
                             Serial.println("[Reminders] Added new reminder");
+                            reminders = reminderService.getAll();
                         }
                         else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)reminders.size())
                         {
@@ -231,7 +231,7 @@ namespace VOXA
                 canvas.fillCircle((int)iconCx, (int)cy, 12, 0x79CF);
                 ScreenCommon::drawIcon(canvas, Icon::Bell, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                canvas.setFont(&fonts::DejaVu12);
+                canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 
                 canvas.setTextColor(labelColor);

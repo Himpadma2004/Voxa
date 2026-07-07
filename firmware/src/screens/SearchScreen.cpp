@@ -42,7 +42,6 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            searchItems = searchService.getRecent(10);
             contentHeight = searchItems.size() * 50.0f + 10.0f;
 
             // 1. Process Touch
@@ -229,7 +228,7 @@ namespace VOXA
                 canvas.fillCircle((int)iconCx, (int)cy, 12, itemColor);
                 ScreenCommon::drawIcon(canvas, itemIcon, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                canvas.setFont(&fonts::DejaVu12);
+                canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 
                 canvas.setTextColor(labelColor);

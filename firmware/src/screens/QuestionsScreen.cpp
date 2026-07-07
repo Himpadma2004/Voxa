@@ -42,7 +42,6 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            questions = questionService.getAll();
             contentHeight = questions.size() * 50.0f + 10.0f;
 
             // 1. Process Touch
@@ -152,6 +151,7 @@ namespace VOXA
                             std::string text = "New Question " + std::to_string(count);
                             questionService.add(text, "No answer yet.", "Jul 07");
                             Serial.println("[Questions] Added new question");
+                            questions = questionService.getAll();
                         }
                         else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)questions.size())
                         {
@@ -229,7 +229,7 @@ namespace VOXA
                 canvas.fillCircle((int)iconCx, (int)cy, 12, 0x067F);
                 ScreenCommon::drawIcon(canvas, Icon::Question, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                canvas.setFont(&fonts::DejaVu12);
+                canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 
                 canvas.setTextColor(labelColor);

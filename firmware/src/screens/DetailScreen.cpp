@@ -199,7 +199,7 @@ namespace VOXA
 
             float tagX = w * 0.04f;
             float tagY = 74.0f;
-            canvas.setFont(&fonts::DejaVu12);
+            canvas.setFont(&fonts::FreeSans9pt7b);
             float tw = canvas.textWidth(tagText.c_str());
             canvas.fillRoundRect((int)tagX, (int)tagY, (int)(tw + 12.0f), 20, 4, tagColor);
             canvas.setTextColor(VoxaTheme::getBackground());
@@ -207,13 +207,13 @@ namespace VOXA
             canvas.drawString(tagText.c_str(), tagX + tw * 0.5f + 6.0f, tagY + 10.0f);
 
             // Title block
-            canvas.setFont(&fonts::DejaVu18);
+            canvas.setFont(&fonts::FreeSansBold12pt7b);
             canvas.setTextColor(VoxaTheme::getTextPrimary());
             canvas.setTextDatum(textdatum_t::top_left);
             canvas.drawString(titleStr.c_str(), w * 0.04f, 102.0f);
 
             // Content block
-            canvas.setFont(&fonts::DejaVu12);
+            canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextColor(VoxaTheme::getTextSecondary());
             canvas.drawString(contentStr.c_str(), w * 0.04f, 134.0f);
 
@@ -231,7 +231,7 @@ namespace VOXA
             canvas.fillRoundRect((int)(delCx - 60.0f), (int)(delCy - 13.0f), 120, 26, 6, delBg);
             canvas.drawRoundRect((int)(delCx - 60.0f), (int)(delCy - 13.0f), 120, 26, 6, delBorder);
             
-            canvas.setFont(&fonts::DejaVu12);
+            canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextColor(delText);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.drawString("Delete", delCx, delCy);

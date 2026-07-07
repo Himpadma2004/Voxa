@@ -43,6 +43,8 @@ namespace VOXA
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
+        Settings settings = settingsService.getSettings();
+
         while (targetScreen == ScreenId::Settings)
         {
             uint32_t nowMs = millis();
@@ -223,8 +225,6 @@ namespace VOXA
             // 3. Render Settings
             ScreenCommon::renderSurface(canvas, w, h);
             ScreenCommon::renderHeader(canvas, "Settings", true, false, Icon::Plus, w, h);
-
-            Settings settings = settingsService.getSettings();
             
             std::string wifiStatus = settings.wifiEnabled ? "Connected" : "Disconnected";
             std::string syncStatus = settings.autoSync ? "Auto Sync: On" : "Auto Sync: Off";
@@ -237,7 +237,7 @@ namespace VOXA
                 { Icon::Folder,     "Storage",        storageInfo, 0x52AA },
                 { Icon::Question,   "Device Info",    deviceInfo,  0xAD55 },
                 { Icon::Settings,   "About VOXA",     "AI Companion", 0x79CF },
-                { Icon::Settings,   "Restart",        "Reboot Device", 0xFD20 },
+                { Icon::Rotate,     "Restart",        "Reboot Device", 0xFD20 },
                 { Icon::Star,       "Power Off",      "Deep Sleep Mode", 0xF800 },
                 { Icon::Star,       "Shut Down",      "Turn off device", 0xF800 },
                 { Icon::Folder,     "Factory Reset",  "Clear all data", 0xD000 }
@@ -268,7 +268,7 @@ namespace VOXA
                 canvas.fillCircle((int)iconCx, (int)cy, 12, rows[i].color);
                 ScreenCommon::drawIcon(canvas, rows[i].icon, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                canvas.setFont(&fonts::DejaVu12);
+                canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 
                 canvas.setTextColor(labelColor);

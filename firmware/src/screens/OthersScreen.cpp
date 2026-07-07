@@ -202,7 +202,7 @@ namespace VOXA
                 canvas.fillCircle((int)iconCx, (int)cy, 12, 0xAD55);
                 ScreenCommon::drawIcon(canvas, Icon::Folder, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                canvas.setFont(&fonts::DejaVu12);
+                canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 
                 canvas.setTextColor(labelColor);

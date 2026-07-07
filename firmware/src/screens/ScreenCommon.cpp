@@ -94,8 +94,8 @@ namespace VOXA::ScreenCommon
             canvas.fillCircle((int)bl_cx, (int)bl_cy, (int)radius, canvas.color565(blend_r, blend_g, blend_b));
         }
 
-        // 3. Compact status bar at the top (using anti-aliased DejaVu12 font)
-        canvas.setFont(&fonts::DejaVu12);
+        // 3. Compact status bar at the top (using anti-aliased FreeSans9pt7b font)
+        canvas.setFont(&fonts::FreeSans9pt7b);
         canvas.setTextSize(1);
         canvas.setTextColor(VoxaTheme::getTextPrimary());
         
@@ -149,8 +149,8 @@ namespace VOXA::ScreenCommon
             renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, VoxaTheme::getSurface(), VoxaTheme::getTextPrimary(), w, h);
         }
 
-        // Header Title in anti-aliased DejaVu18
-        canvas.setFont(&fonts::DejaVu18);
+        // Header Title in anti-aliased FreeSansBold12pt7b
+        canvas.setFont(&fonts::FreeSansBold12pt7b);
         canvas.setTextSize(1);
         canvas.setTextDatum(textdatum_t::middle_center);
         canvas.setTextColor(VoxaTheme::getTextPrimary());
@@ -170,42 +170,46 @@ namespace VOXA::ScreenCommon
         switch (icon)
         {
             case Icon::ChevronRight:
-                canvas.drawLine((int)(x + size * 0.35f), (int)(y + size * 0.2f), 
-                                (int)(x + size * 0.65f), (int)(cy), color);
-                canvas.drawLine((int)(x + size * 0.65f), (int)(cy), 
-                                (int)(x + size * 0.35f), (int)(y + size * 0.8f), color);
+                for (int t = -1; t <= 1; t++) {
+                    canvas.drawLine(x+size*0.35f, y+size*0.2f+t, x+size*0.65f, cy+t, color);
+                    canvas.drawLine(x+size*0.65f, cy+t, x+size*0.35f, y+size*0.8f+t, color);
+                }
                 break;
 
             case Icon::Back:
-                canvas.drawLine((int)(x + size * 0.65f), (int)(y + size * 0.2f), 
-                                (int)(x + size * 0.35f), (int)(cy), color);
-                canvas.drawLine((int)(x + size * 0.35f), (int)(cy), 
-                                (int)(x + size * 0.65f), (int)(y + size * 0.8f), color);
+                for (int t = -1; t <= 1; t++) {
+                    canvas.drawLine(x+size*0.65f, y+size*0.2f+t, x+size*0.35f, cy+t, color);
+                    canvas.drawLine(x+size*0.35f, cy+t, x+size*0.65f, y+size*0.8f+t, color);
+                }
                 break;
 
             case Icon::Plus:
-                canvas.drawLine((int)(x + size * 0.2f), (int)(cy), 
-                                (int)(x + size * 0.8f), (int)(cy), color);
-                canvas.drawLine((int)(cx), (int)(y + size * 0.2f), 
-                                (int)(cx), (int)(y + size * 0.8f), color);
+                {
+                    int barW = std::max(2, (int)(size*0.15f));
+                    canvas.fillRect(cx-barW/2, y+size*0.15f, barW, size*0.7f, color);
+                    canvas.fillRect(x+size*0.15f, cy-barW/2, size*0.7f, barW, color);
+                }
                 break;
 
             case Icon::Wifi:
-                canvas.fillCircle((int)cx, (int)(y + size * 0.85f), 1, color);
-                canvas.drawArc((int)cx, (int)(y + size * 0.85f), (int)(size * 0.35f), (int)(size * 0.45f), 225, 315, color);
-                canvas.drawArc((int)cx, (int)(y + size * 0.85f), (int)(size * 0.65f), (int)(size * 0.75f), 225, 315, color);
+                canvas.fillCircle(cx, y+size*0.82f, size*0.07f, color);
+                canvas.drawArc(cx, y+size*0.82f, size*0.25f, size*0.33f, 220, 320, color);
+                canvas.drawArc(cx, y+size*0.82f, size*0.48f, size*0.56f, 220, 320, color);
+                canvas.drawArc(cx, y+size*0.82f, size*0.70f, size*0.78f, 220, 320, color);
                 break;
 
             case Icon::Battery:
-                canvas.drawRoundRect((int)x, (int)(y + size * 0.2f), (int)(size * 0.85f), (int)(size * 0.6f), 1, color);
-                canvas.fillRect((int)(x + size * 0.85f), (int)(y + size * 0.35f), (int)(size * 0.15f), (int)(size * 0.3f), color);
-                canvas.fillRect((int)(x + 2), (int)(y + size * 0.2f + 2), (int)((size * 0.85f - 4) * 0.9f), (int)(size * 0.6f - 4), color);
+                {
+                    int bx=x+size*0.05f, by=y+size*0.25f, bw=size*0.80f, bh=size*0.50f;
+                    canvas.drawRoundRect(bx, by, bw, bh, 2, color);
+                    canvas.fillRect(bx+bw, by+bh*0.30f, size*0.10f, bh*0.40f, color);
+                    canvas.fillRoundRect(bx+2, by+2, (bw-4)*0.88f, bh-4, 1, color);
+                }
                 break;
 
             case Icon::Search:
-                canvas.drawCircle((int)(x + size * 0.45f), (int)(y + size * 0.45f), (int)(size * 0.25f), color);
-                canvas.drawLine((int)(x + size * 0.6f), (int)(y + size * 0.6f), 
-                                (int)(x + size * 0.85f), (int)(y + size * 0.85f), color);
+                for(int r=0;r<2;r++) canvas.drawCircle(x+size*0.43f, y+size*0.43f, size*0.26f-r, color);
+                for(int t=-1;t<=1;t++) canvas.drawLine(x+size*0.61f+t, y+size*0.61f, x+size*0.85f+t, y+size*0.85f, color);
                 break;
 
             case Icon::Mic:
@@ -213,46 +217,134 @@ namespace VOXA::ScreenCommon
                 break;
 
             case Icon::Bell:
-                canvas.fillCircle((int)cx, (int)(cy - size * 0.08f), (int)(size * 0.22f), color);
-                canvas.fillRect((int)(cx - size * 0.32f), (int)(cy + size * 0.14f), (int)(size * 0.64f), (int)(size * 0.10f), color);
-                canvas.drawCircle((int)cx, (int)(cy - size * 0.32f), (int)(size * 0.08f), color);
-                canvas.fillCircle((int)cx, (int)(cy + size * 0.28f), (int)(size * 0.08f), color);
+                canvas.fillCircle(cx, cy-size*0.12f, size*0.28f, color);
+                canvas.fillRect(cx-size*0.28f, cy-size*0.12f, size*0.56f, size*0.28f, color);
+                canvas.fillRoundRect(cx-size*0.34f, cy+size*0.16f, size*0.68f, size*0.12f, 2, color);
+                canvas.fillCircle(cx, cy+size*0.36f, size*0.09f, color);
+                canvas.fillRect(cx-size*0.05f, cy-size*0.44f, size*0.10f, size*0.14f, color);
                 break;
 
             case Icon::Lightbulb:
-                canvas.drawCircle((int)cx, (int)(cy - size * 0.10f), (int)(size * 0.24f), color);
-                canvas.fillRect((int)(cx - size * 0.12f), (int)(cy + size * 0.14f), (int)(size * 0.24f), (int)(size * 0.06f), color);
-                canvas.fillRect((int)(cx - size * 0.08f), (int)(cy + size * 0.22f), (int)(size * 0.16f), (int)(size * 0.06f), color);
-                canvas.drawLine((int)cx, (int)(cy - size * 0.46f), (int)cx, (int)(cy - size * 0.38f), color);
-                canvas.drawLine((int)(cx - size * 0.32f), (int)(cy - size * 0.32f), 
-                                (int)(cx - size * 0.22f), (int)(cy - size * 0.22f), color);
-                canvas.drawLine((int)(cx + size * 0.32f), (int)(cy - size * 0.32f), 
-                                (int)(cx + size * 0.22f), (int)(cy - size * 0.22f), color);
+                canvas.fillCircle(cx, cy-size*0.08f, size*0.26f, color);
+                canvas.fillRect(cx-size*0.14f, cy+size*0.17f, size*0.28f, size*0.08f, color);
+                canvas.fillRect(cx-size*0.11f, cy+size*0.25f, size*0.22f, size*0.08f, color);
+                canvas.fillRect(cx-size*0.04f, cy-size*0.44f, size*0.08f, size*0.12f, color);
                 break;
 
             case Icon::Question:
-                canvas.setFont(&fonts::DejaVu12);
-                canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.setTextColor(color);
-                canvas.setTextSize(size >= 14.0f ? 2 : 1);
-                canvas.drawString("?", cx, cy);
+                canvas.drawArc(cx, cy-size*0.18f, size*0.18f, size*0.24f, 200, 360+60, color);
+                for(int t=-1;t<=1;t++) canvas.drawLine(cx+t, cy-size*0.02f, cx+t, cy+size*0.18f, color);
+                canvas.fillCircle(cx, cy+size*0.30f, size*0.07f, color);
                 break;
 
             case Icon::Folder:
-                canvas.drawRoundRect((int)x, (int)(y + size * 0.25f), (int)(size * 0.9f), (int)(size * 0.6f), 1, color);
-                canvas.fillRoundRect((int)(x + size * 0.1f), (int)(y + size * 0.12f), 
-                                     (int)(size * 0.35f), (int)(size * 0.2f), 1, color);
+                canvas.fillRoundRect(x+size*0.05f, y+size*0.28f, size*0.90f, size*0.58f, 3, color);
+                canvas.fillRoundRect(x+size*0.05f, y+size*0.16f, size*0.38f, size*0.18f, 3, color);
                 break;
 
             case Icon::Settings:
-                canvas.drawCircle((int)cx, (int)cy, (int)(size * 0.12f), color);
-                canvas.drawCircle((int)cx, (int)cy, (int)(size * 0.3f), color);
-                for (int i = 0; i < 6; ++i)
-                {
-                    float angle = i * (kPi / 3.0f);
-                    canvas.drawLine((int)(cx + cos(angle) * size * 0.3f), (int)(cy + sin(angle) * size * 0.3f),
-                                    (int)(cx + cos(angle) * size * 0.42f), (int)(cy + sin(angle) * size * 0.42f), color);
+                canvas.fillCircle(cx, cy, size*0.16f, color);
+                for (int i=0; i<8; i++) {
+                    float angle = i * (kPi/4.0f);
+                    float tx = cx + cos(angle)*size*0.32f;
+                    float ty = cy + sin(angle)*size*0.32f;
+                    canvas.fillCircle(tx, ty, size*0.09f, color);
                 }
+                for(int r=0;r<3;r++) canvas.drawCircle(cx, cy, size*0.22f+r, color);
+                break;
+
+            case Icon::Star:
+                for (int i=0; i<5; i++) {
+                    float a1 = -kPi*0.5f + i*(2*kPi/5.0f);
+                    float a2 = a1 + kPi/5.0f;
+                    float a3 = a1 + 2*kPi/5.0f;
+                    int x1=cx+cos(a1)*size*0.42f, y1=cy+sin(a1)*size*0.42f;
+                    int x2=cx+cos(a2)*size*0.18f, y2=cy+sin(a2)*size*0.18f;
+                    int x3=cx+cos(a3)*size*0.42f, y3=cy+sin(a3)*size*0.42f;
+                    canvas.fillTriangle(cx,cy, x1,y1, x2,y2, color);
+                    canvas.fillTriangle(cx,cy, x2,y2, x3,y3, color);
+                }
+                break;
+
+            case Icon::Upload:
+                canvas.fillRect(cx-size*0.06f, cy-size*0.10f, size*0.12f, size*0.40f, color);
+                canvas.fillTriangle(cx, cy-size*0.42f, cx-size*0.22f, cy-size*0.16f, cx+size*0.22f, cy-size*0.16f, color);
+                canvas.fillRect(cx-size*0.30f, cy+size*0.34f, size*0.60f, size*0.10f, color);
+                break;
+
+            case Icon::Rotate:
+                canvas.drawArc(cx, cy, size*0.28f, size*0.38f, 60, 340, color);
+                {
+                    float ah = 60.0f * kPi/180.0f;
+                    int arx = cx + cos(ah)*size*0.33f;
+                    int ary = cy - sin(ah)*size*0.33f;
+                    for(int t=-1;t<=1;t++) {
+                        canvas.drawLine(arx, ary, arx+size*0.12f, ary-size*0.10f, color);
+                        canvas.drawLine(arx, ary, arx+size*0.14f, ary+size*0.08f, color);
+                    }
+                }
+                break;
+
+            case Icon::Cloud:
+                canvas.fillCircle(cx - size * 0.18f, cy + size * 0.08f, size * 0.16f, color);
+                canvas.fillCircle(cx + size * 0.18f, cy + size * 0.08f, size * 0.16f, color);
+                canvas.fillCircle(cx, cy - size * 0.06f, size * 0.22f, color);
+                canvas.fillRect(cx - size * 0.18f, cy - size * 0.08f, size * 0.36f, size * 0.32f, color);
+                break;
+
+            case Icon::Storage:
+                canvas.fillRoundRect(x + size * 0.10f, y + size * 0.15f, size * 0.80f, size * 0.20f, 2, color);
+                canvas.fillRoundRect(x + size * 0.10f, y + size * 0.40f, size * 0.80f, size * 0.20f, 2, color);
+                canvas.fillRoundRect(x + size * 0.10f, y + size * 0.65f, size * 0.80f, size * 0.20f, 2, color);
+                break;
+
+            case Icon::Info:
+                canvas.drawCircle(cx, cy, size * 0.45f, color);
+                canvas.drawCircle(cx, cy, size * 0.40f, color);
+                canvas.fillCircle(cx, cy - size * 0.16f, size * 0.08f, color);
+                canvas.fillRect(cx - size * 0.06f, cy - size * 0.04f, size * 0.12f, size * 0.32f, color);
+                break;
+
+            case Icon::Note:
+                canvas.drawRoundRect(x + size * 0.15f, y + size * 0.10f, size * 0.70f, size * 0.80f, 2, color);
+                canvas.fillRect(x + size * 0.28f, y + size * 0.30f, size * 0.44f, size * 0.08f, color);
+                canvas.fillRect(x + size * 0.28f, y + size * 0.48f, size * 0.44f, size * 0.08f, color);
+                canvas.fillRect(x + size * 0.28f, y + size * 0.66f, size * 0.30f, size * 0.08f, color);
+                break;
+
+            case Icon::Chat:
+                canvas.fillRoundRect(x + size * 0.10f, y + size * 0.15f, size * 0.80f, size * 0.55f, 3, color);
+                canvas.fillTriangle(x + size * 0.25f, y + size * 0.70f, x + size * 0.40f, y + size * 0.70f, x + size * 0.25f, y + size * 0.88f, color);
+                break;
+
+            case Icon::Spark:
+                for (int i = 0; i < 4; i++) {
+                    float angle = i * (kPi / 2.0f);
+                    int x1 = cx + cos(angle) * size * 0.45f;
+                    int y1 = cy + sin(angle) * size * 0.45f;
+                    int x2 = cx + cos(angle + kPi/4.0f) * size * 0.12f;
+                    int y2 = cy + sin(angle + kPi/4.0f) * size * 0.12f;
+                    int x3 = cx + cos(angle - kPi/4.0f) * size * 0.12f;
+                    int y3 = cy + sin(angle - kPi/4.0f) * size * 0.12f;
+                    canvas.fillTriangle(cx, cy, x1, y1, x2, y2, color);
+                    canvas.fillTriangle(cx, cy, x1, y1, x3, y3, color);
+                }
+                break;
+
+            case Icon::Calendar:
+                canvas.drawRoundRect(x + size * 0.10f, y + size * 0.20f, size * 0.80f, size * 0.70f, 2, color);
+                canvas.fillRect(x + size * 0.10f, y + size * 0.20f, size * 0.80f, size * 0.18f, color);
+                canvas.fillRect(x + size * 0.25f, y + size * 0.08f, size * 0.08f, size * 0.20f, color);
+                canvas.fillRect(x + size * 0.67f, y + size * 0.08f, size * 0.08f, size * 0.20f, color);
+                canvas.fillRect(x + size * 0.25f, y + size * 0.48f, size * 0.12f, size * 0.12f, color);
+                canvas.fillRect(x + size * 0.63f, y + size * 0.48f, size * 0.12f, size * 0.12f, color);
+                canvas.fillRect(x + size * 0.25f, y + size * 0.68f, size * 0.12f, size * 0.12f, color);
+                canvas.fillRect(x + size * 0.63f, y + size * 0.68f, size * 0.12f, size * 0.12f, color);
+                break;
+
+            case Icon::Filter:
+                canvas.fillTriangle(cx, cy + size * 0.35f, x + size * 0.15f, y + size * 0.15f, x + size * 0.85f, y + size * 0.15f, color);
+                canvas.fillRect(cx - size * 0.08f, cy, size * 0.16f, size * 0.38f, color);
                 break;
 
             default:

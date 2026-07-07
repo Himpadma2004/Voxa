@@ -100,13 +100,13 @@ namespace VOXA
             canvas.drawArc((int)cx, (int)cy, 28, 34, (int)(angle * 57.3f), (int)((angle + 2.0f) * 57.3f), VoxaTheme::getPrimary());
 
             // Check icon in center
-            canvas.setFont(&fonts::DejaVu18);
+            canvas.setFont(&fonts::FreeSansBold12pt7b);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setTextColor(VoxaTheme::getPrimary());
             canvas.drawString("OK", cx, cy);
 
             // Details
-            canvas.setFont(&fonts::DejaVu12);
+            canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextSize(1);
             canvas.setTextColor(VoxaTheme::getTextPrimary());
             canvas.drawString("Cloud Sync: Up to Date", cx, h * 0.82f);

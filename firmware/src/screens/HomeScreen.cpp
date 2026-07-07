@@ -15,14 +15,14 @@ namespace VOXA
     {
         float cx = w * 0.5f + offsetX;
         
-        // Brand Title (DejaVu18)
-        canvas.setFont(&fonts::DejaVu18);
+        // Brand Title (FreeSansBold12pt7b)
+        canvas.setFont(&fonts::FreeSansBold12pt7b);
         canvas.setTextSize(1);
         canvas.setTextDatum(textdatum_t::middle_center);
         canvas.setTextColor(VoxaTheme::getPrimaryLight());
-        canvas.drawString("VOXA", cx, h * 0.125f);
+        canvas.drawString("VOXA", cx, h * 0.20f);
         
-        // Greeting based on RTC time (DejaVu12)
+        // Greeting based on RTC time (FreeSans9pt7b)
         std::string greeting = "Good Morning";
         std::time_t tNow = std::time(nullptr);
         std::tm local_tm;
@@ -36,19 +36,19 @@ namespace VOXA
         else if (hour >= 17 && hour < 21) greeting = "Good Evening";
         else if (hour >= 21 || hour < 5) greeting = "Good Night";
 
-        canvas.setFont(&fonts::DejaVu12);
+        canvas.setFont(&fonts::FreeSans9pt7b);
         canvas.setTextColor(VoxaTheme::getTextPrimary());
         canvas.setTextSize(2);
-        canvas.drawString(greeting.c_str(), cx, h * 0.23f);
+        canvas.drawString(greeting.c_str(), cx, h * 0.33f);
         
-        // Subtitle (DejaVu12)
+        // Subtitle (FreeSans9pt7b)
         canvas.setTextColor(VoxaTheme::getTextSecondary());
         canvas.setTextSize(1);
-        canvas.drawString("How can I help today?", cx, h * 0.33f);
+        canvas.drawString("How can I help today?", cx, h * 0.44f);
 
         // Pulsating voice assistant microphone button
         float micCx = w * 0.5f + offsetX;
-        float micCy = h * 0.54f;
+        float micCy = h * 0.65f;
         
         // Pressed button animation: scales down slightly when pressed
         float micR = m_isMicPressed ? 26.0f : 30.0f;
@@ -86,14 +86,14 @@ namespace VOXA
         ScreenCommon::drawMicShape(canvas, micCx, micCy, micR * 0.85f * 2.0f, VoxaTheme::getTextPrimary(), btnColor);
 
         // Helper label
-        canvas.setFont(&fonts::DejaVu12);
+        canvas.setFont(&fonts::FreeSans9pt7b);
         canvas.setTextColor(VoxaTheme::getPrimary());
         canvas.setTextSize(1);
-        canvas.drawString("Tap to Record", cx, h * 0.74f);
+        canvas.drawString("Tap to Record", cx, h * 0.83f);
 
         // Chevron navigation button (scales down or highlights on press)
         float btnCx = w * 0.90f + offsetX;
-        float btnCy = h * 0.54f;
+        float btnCy = h * 0.65f;
         uint16_t chevFill = m_isChevronPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
         uint16_t chevColor = m_isChevronPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimary();
         ScreenCommon::renderCircularButton(canvas, btnCx, btnCy, Icon::ChevronRight, 
@@ -104,7 +104,7 @@ namespace VOXA
                                  int remCount, int ideaCount, int qCount, int memCount, float offsetX)
     {
         // Title Header shifted to Y = 45.0f to prevent overlapping
-        canvas.setFont(&fonts::DejaVu18);
+        canvas.setFont(&fonts::FreeSansBold12pt7b);
         canvas.setTextSize(1);
         canvas.setTextDatum(textdatum_t::middle_center);
         canvas.setTextColor(VoxaTheme::getTextPrimary());
@@ -119,7 +119,7 @@ namespace VOXA
         // Header Rotation toggle button at Y = 45.0f
         uint16_t rotFill = m_isRotatePressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
         uint16_t rotColor = m_isRotatePressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-        ScreenCommon::renderCircularButton(canvas, w - 20.0f + offsetX, 45.0f, Icon::Plus, 
+        ScreenCommon::renderCircularButton(canvas, w - 20.0f + offsetX, 45.0f, Icon::Rotate, 
                                           rotFill, rotColor, w, h);
 
         struct MenuItem
@@ -173,8 +173,8 @@ namespace VOXA
             canvas.fillCircle((int)iconCx, (int)cy, 12, menuItems[i].color);
             ScreenCommon::drawIcon(canvas, menuItems[i].icon, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-            // Label text (DejaVu12)
-            canvas.setFont(&fonts::DejaVu12);
+            // Label text (FreeSans9pt7b)
+            canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextDatum(textdatum_t::middle_left);
             canvas.setTextColor(labelColor);
             canvas.setTextSize(1);
@@ -238,7 +238,7 @@ namespace VOXA
                 {
                     // Microphone button bounds (Hit circle radius 42)
                     float micCx = w * 0.5f;
-                    float micCy = h * 0.54f;
+                    float micCy = h * 0.65f;
                     if (std::sqrt((tx - micCx)*(tx - micCx) + (ty - micCy)*(ty - micCy)) <= 42.0f)
                     {
                         m_isMicPressed = true;
@@ -246,7 +246,7 @@ namespace VOXA
                     
                     // Page chevron button bounds
                     float btnCx = w * 0.90f;
-                    float btnCy = h * 0.54f;
+                    float btnCy = h * 0.65f;
                     if (std::sqrt((tx - btnCx)*(tx - btnCx) + (ty - btnCy)*(ty - btnCy)) <= 20.0f)
                     {
                         m_isChevronPressed = true;

@@ -45,7 +45,8 @@ namespace VOXA
         Note,
         Chat,
         Spark,
-        Upload
+        Upload,
+        Rotate
     };
 
     namespace ScreenCommon
