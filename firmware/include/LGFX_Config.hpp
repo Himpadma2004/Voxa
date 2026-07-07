@@ -1,6 +1,6 @@
 #pragma once
 
-#define LGFX_USE_V1
+// #define LGFX_USE_V1
 
 #include <LovyanGFX.hpp>
 

@@ -1,26 +1,36 @@
-#pragma once
+#ifndef VOXA_HOMESCREEN_H
+#define VOXA_HOMESCREEN_H
 
-#include <SDL3/SDL.h>
-#include "../core/Screen.h"
+#include <Arduino.h>
+#include <LovyanGFX.hpp>
+#include "../display/Display.h"
+#include "../touch/Touch.h"
+#include "../services/TimeService.h"
+#include "ScreenCommon.h"
 
 namespace VOXA
 {
-    class HomeScreen : public Screen
+    class HomeScreen
     {
     public:
-        ScreenId id() const override;
-        void onEnter(Application& app) override;
-        void handleEvent(Application& app, const SDL_Event& event) override;
-        void update(Application& app, float deltaSeconds) override;
-        void render(Application& app, Renderer& renderer) override;
+        HomeScreen();
+
+        ScreenId show(Touch& touch);
 
     private:
-        void renderPage0(Application& app, Renderer& renderer);
-        void renderPage1(Application& app, Renderer& renderer);
+        void renderPage0(LGFX_Sprite& canvas, uint16_t w, uint16_t h, float offsetX);
+        
+        void renderPage1(LGFX_Sprite& canvas, uint16_t w, uint16_t h, 
+                         int remCount, int ideaCount, int qCount, int memCount, float offsetX);
+                         
+        void processTouch(Touch& touch, uint16_t w, uint16_t h, 
+                          int remCount, int ideaCount, int qCount, int memCount, 
+                          ScreenId& targetScreen);
+
+        TimeService m_timeService;
 
         float m_elapsed { 0.0f };
-        static constexpr int kNumPages = 2;
-        int m_page { 0 };               // 0 = Assistant Home, 1 = Menu list
+        int   m_page { 0 };               // 0 = Assistant Home, 1 = Menu list
 
         // Swipe & transition page state (horizontal)
         bool  m_isDragging { false };
@@ -33,5 +43,21 @@ namespace VOXA
         bool  m_isScrollDragging { false };
         float m_menuScrollY { 0.0f };
         float m_menuTargetScrollY { 0.0f };
+        float m_scrollVelocity { 0.0f }; // Vertical scroll inertia velocity
+        float m_lastDragX { 0.0f };       // Previous touch X coordinate for release tracking
+        float m_lastDragY { 0.0f };       // Previous touch Y coordinate for scroll delta
+        uint32_t m_lastTouchSampleMs { 0 }; // Timestamp for drag velocity calculation
+
+        // Touch feedback tracking
+        int   m_pressedItemIndex { -1 };  // Pressed index of menu list items (-1 if none)
+        bool  m_isMicPressed { false };
+        bool  m_isChevronPressed { false };
+        bool  m_isBackPressed { false };
+        bool  m_isRotatePressed { false }; // Action button on page 1 header
+
+        // Touch tracking state
+        bool  m_wasTouched { false };
     };
 }
+
+#endif // VOXA_HOMESCREEN_H

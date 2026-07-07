@@ -168,7 +168,7 @@ void CSE_CST328:: readData() {
       case 1: // 90 degrees clockwise
         {
           int16_t temp = touchPoints [i].y;
-          touchPoints [i].y = width - touchPoints [i].x - 1;
+          touchPoints [i].y = height - touchPoints [i].x - 1;
           touchPoints [i].x = temp;
         }
         break;
@@ -180,7 +180,7 @@ void CSE_CST328:: readData() {
         {
           int16_t temp = touchPoints [i].y;
           touchPoints [i].y = touchPoints [i].x;
-          touchPoints [i].x = height - temp - 1;
+          touchPoints [i].x = width - temp - 1;
         }
         break;
     }

@@ -1,14 +1,16 @@
 #include "Display.h"
 
+LGFX Display::lcd;
+
 bool Display::begin()
 {
-    Serial.println("[Display] Initializing...");
+    Serial.begin(115200);
 
-    // TODO:
-    // Initialize LovyanGFX
-    // Initialize LVGL
-    // Configure display
-    // Configure touch
+    lcd.init();
+
+    lcd.setRotation(1);
+
+    lcd.fillScreen(TFT_BLACK);
 
     Serial.println("[Display] Ready");
 
@@ -17,20 +19,29 @@ bool Display::begin()
 
 void Display::update()
 {
-    // LVGL task handler will go here
 }
 
 void Display::clear()
 {
-    // Screen clear implementation
+    lcd.fillScreen(TFT_BLACK);
 }
 
 uint16_t Display::width()
 {
-    return 320;
+    return lcd.width();
 }
 
 uint16_t Display::height()
 {
-    return 240;
+    return lcd.height();
 }
+
+uint8_t Display::getRotation()
+{
+    return lcd.getRotation();
+}
+
+void Display::setRotation(uint8_t rotation)
+{
+    lcd.setRotation(rotation);
+}

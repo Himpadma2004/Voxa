@@ -1,22 +1,72 @@
-#pragma once
+#ifndef VOXA_SCREENCOMMON_H
+#define VOXA_SCREENCOMMON_H
 
+#include <Arduino.h>
+#include <LovyanGFX.hpp>
 #include <string>
-
-#include "../graphics/Icons.h"
 
 namespace VOXA
 {
-    class Renderer;
+    enum class ScreenId
+    {
+        Boot,
+        Home,
+        Record,
+        Search,
+        Reminders,
+        Questions,
+        Ideas,
+        Others,
+        Settings,
+        SyncStatus,
+        Detail
+    };
+
+    enum class Icon
+    {
+        Mic,
+        Bell,
+        Lightbulb,
+        Question,
+        Search,
+        Folder,
+        Settings,
+        ChevronRight,
+        Back,
+        Plus,
+        Filter,
+        Wifi,
+        Battery,
+        Calendar,
+        Cloud,
+        Storage,
+        Info,
+        Star,
+        Note,
+        Chat,
+        Spark,
+        Upload
+    };
 
     namespace ScreenCommon
     {
-        void renderSurface(Renderer& renderer);
-        void renderPageDots(Renderer& renderer, int activeIndex, int count = 3);
-        void renderCircularButton(Renderer& renderer, float centerX, float centerY, Icon icon, SDL_Color fill, SDL_Color iconColor);
-        void renderHeader(Renderer& renderer, const std::string& title, bool showBack, bool showRightAction, Icon rightIcon);
+        // Shared Screen Layout Drawings
+        void renderSurface(LGFX_Sprite& canvas, uint16_t w, uint16_t h);
+        
+        void renderPageDots(LGFX_Sprite& canvas, int activeIndex, int count, uint16_t w, uint16_t h);
+        
+        void renderCircularButton(LGFX_Sprite& canvas, float centerX, float centerY, Icon icon, 
+                                  uint16_t fill, uint16_t iconColor, uint16_t w, uint16_t h);
+                                  
+        void renderHeader(LGFX_Sprite& canvas, const std::string& title, bool showBack, 
+                          bool showRightAction, Icon rightIcon, uint16_t w, uint16_t h);
 
-        /// Draw a proper curved microphone icon (capsule + U-arc + post + base) centered at (cx, cy).
-        /// size controls the overall height of the icon. bgColor is used to punch out the arc interior.
-        void drawMicShape(Renderer& renderer, float cx, float cy, float size, SDL_Color color, SDL_Color bgColor);
+        // Pixel-perfect Geometric Icon Drawing (replaces desktop fonts)
+        void drawIcon(LGFX_Sprite& canvas, Icon icon, float x, float y, float size, uint16_t color);
+        
+        // Microphone geometric shape
+        void drawMicShape(LGFX_Sprite& canvas, float cx, float cy, float size, uint16_t color, uint16_t bgColor);
     }
 }
+
+#endif // VOXA_SCREENCOMMON_H
