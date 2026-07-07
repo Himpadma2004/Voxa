@@ -59,7 +59,7 @@ namespace VoxaTheme
 
     uint16_t getTextSecondary()
     {
-        return (currentMode == ThemeMode::Dark) ? 0xAD55 : 0x7BEF;
+        return (currentMode == ThemeMode::Dark) ? 0xFCC6 : 0xD260;
     }
 
     uint16_t getDivider()

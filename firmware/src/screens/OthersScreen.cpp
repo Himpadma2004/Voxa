@@ -3,6 +3,7 @@
 #include "../ui/Theme.h"
 #include "../services/MemoryService.h"
 #include "Transition.h"
+#include "DetailScreen.h"
 #include <cmath>
 #include <algorithm>
 
@@ -35,13 +36,14 @@ namespace VOXA
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
+        bool isAddPressed = false;
+
         while (targetScreen == ScreenId::Others)
         {
             uint32_t nowMs = millis();
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            memories = memoryService.getAll();
             contentHeight = memories.size() * 50.0f + 10.0f;
 
             // 1. Process Touch
@@ -69,6 +71,12 @@ namespace VOXA
                     if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
                     {
                         m_isBackPressed = true;
+                    }
+
+                    // Add button bounds Y = 45
+                    if (std::sqrt((tx - (w - 20.0f))*(tx - (w - 20.0f)) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    {
+                        isAddPressed = true;
                     }
 
                     // Card checks
@@ -137,8 +145,27 @@ namespace VOXA
                         {
                             targetScreen = ScreenId::Home;
                         }
+                        else if (isAddPressed)
+                        {
+                            // Add a new placeholder memory
+                            int count = memories.size() + 1;
+                            Memory m;
+                            m.title = "New Memory " + std::to_string(count);
+                            m.content = "Memory details go here.";
+                            m.timestamp = "Jul 07";
+                            m.category = "note";
+                            memoryService.add(m);
+                            Serial.println("[Others] Added new memory");
+                            memories = memoryService.getAll();
+                        }
+                        else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)memories.size())
+                        {
+                            DetailScreen::setItem("memories", memories[m_pressedItemIndex].id, ScreenId::Others);
+                            targetScreen = ScreenId::Detail;
+                        }
                     }
                     m_isBackPressed = false;
+                    isAddPressed = false;
                     m_pressedItemIndex = -1;
                 }
             }
@@ -169,13 +196,18 @@ namespace VOXA
 
             // 3. Render Others Screen
             ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Others", true, false, Icon::Plus, w, h);
+            ScreenCommon::renderHeader(canvas, "Others", true, true, Icon::Plus, w, h);
 
-            // Back button highlight
+            // Header highlights
             uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
             uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
             ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
                                               backFill, backColor, w, h);
+
+            uint16_t addFill = isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+            uint16_t addColor = isAddPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, Icon::Plus, 
+                                              addFill, addColor, w, h);
 
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;

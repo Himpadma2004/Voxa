@@ -4,6 +4,7 @@
 #include "../services/ReminderService.h"
 #include "../services/IdeaService.h"
 #include "../services/QuestionService.h"
+#include "../services/MemoryService.h"
 #include "Transition.h"
 #include <cmath>
 
@@ -12,6 +13,7 @@ namespace VOXA
     extern ReminderService reminderService;
     extern IdeaService ideaService;
     extern QuestionService questionService;
+    extern MemoryService memoryService;
 
     std::string DetailScreen::s_category = "";
     uint32_t    DetailScreen::s_itemId = 0;
@@ -91,6 +93,21 @@ namespace VOXA
                     contentStr = q.answered ? q.answer : "Awaiting AI answer...";
                     statusStr = q.answered ? "Status: Answered" : "Status: Pending";
                     tagColor = 0x067F;
+                    break;
+                }
+            }
+        }
+        else if (s_category == "memories")
+        {
+            auto memories = memoryService.getAll();
+            for (const auto& mem : memories)
+            {
+                if (mem.id == s_itemId)
+                {
+                    titleStr = mem.title;
+                    contentStr = mem.content.empty() ? "No description" : mem.content;
+                    statusStr = "Timestamp: " + mem.timestamp;
+                    tagColor = 0xA27A;
                     break;
                 }
             }
