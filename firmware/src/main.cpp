@@ -15,6 +15,7 @@
 #include "screens/SettingsScreen.h"
 #include "screens/SyncStatusScreen.h"
 #include "screens/DetailScreen.h"
+#include "screens/Transition.h"
 #include "services/TimeService.h"
 #include "storage/JsonStorage.h"
 #include "storage/MemoryStorage.h"
@@ -97,50 +98,58 @@ void setup()
 
 void loop()
 {
+  ScreenId nextScreen = activeScreen;
+
   switch (activeScreen)
   {
     case ScreenId::Home:
-      activeScreen = home.show(touch);
+      nextScreen = home.show(touch);
       break;
     case ScreenId::Reminders:
       Serial.println("Opening Reminder Screen...");
-      activeScreen = reminderScreen.show(touch);
+      nextScreen = reminderScreen.show(touch);
       break;
     case ScreenId::Ideas:
       Serial.println("Opening Ideas Screen...");
-      activeScreen = ideasScreen.show(touch);
+      nextScreen = ideasScreen.show(touch);
       break;
     case ScreenId::Questions:
       Serial.println("Opening Questions Screen...");
-      activeScreen = questionsScreen.show(touch);
+      nextScreen = questionsScreen.show(touch);
       break;
     case ScreenId::Search:
       Serial.println("Opening Search Screen...");
-      activeScreen = searchScreen.show(touch);
+      nextScreen = searchScreen.show(touch);
       break;
     case ScreenId::Record:
       Serial.println("Opening Record Screen...");
-      activeScreen = recordScreen.show(touch);
+      nextScreen = recordScreen.show(touch);
       break;
     case ScreenId::Others:
       Serial.println("Opening Others Screen...");
-      activeScreen = othersScreen.show(touch);
+      nextScreen = othersScreen.show(touch);
       break;
     case ScreenId::Settings:
       Serial.println("Opening Settings Screen...");
-      activeScreen = settingsScreen.show(touch);
+      nextScreen = settingsScreen.show(touch);
       break;
     case ScreenId::SyncStatus:
       Serial.println("Opening Sync Status Screen...");
-      activeScreen = syncStatusScreen.show(touch);
+      nextScreen = syncStatusScreen.show(touch);
       break;
     case ScreenId::Detail:
       Serial.println("Opening Detail Screen...");
-      activeScreen = detailScreen.show(touch);
+      nextScreen = detailScreen.show(touch);
       break;
     default:
-      activeScreen = ScreenId::Home;
+      nextScreen = ScreenId::Home;
       break;
+  }
+
+  if (nextScreen != activeScreen)
+  {
+    g_lastScreenId = activeScreen;
+    activeScreen = nextScreen;
   }
 
   delay(10);

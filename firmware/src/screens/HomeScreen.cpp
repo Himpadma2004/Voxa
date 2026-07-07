@@ -1,5 +1,6 @@
 #include "HomeScreen.h"
 #include "../ui/Theme.h"
+#include "Transition.h"
 #include <cmath>
 #include <algorithm>
 #include <ctime>
@@ -464,6 +465,7 @@ namespace VOXA
 
         ScreenId targetScreen = ScreenId::Home;
         uint32_t lastMs = millis();
+        int entryFrame = 0;
 
         while (targetScreen == ScreenId::Home)
         {
@@ -474,7 +476,10 @@ namespace VOXA
             m_elapsed += deltaSecs;
 
             // 1. Process touch gestures and pressed feedback updates
-            processTouch(touch, w, h, remCount, ideaCount, qCount, memCount, targetScreen);
+            if (entryFrame >= 10)
+            {
+                processTouch(touch, w, h, remCount, ideaCount, qCount, memCount, targetScreen);
+            }
 
             // Re-query dimensions inside the loop since rotation changes width and height on-the-fly!
             w = Display::width();
@@ -546,7 +551,15 @@ namespace VOXA
             ScreenCommon::renderPageDots(canvas, dotActive, 2, w, h);
 
             // 7. Push render buffer sprite to screen
-            canvas.pushSprite(0, 0);
+            if (entryFrame < 10)
+            {
+                VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Home), entryFrame, 10);
+                entryFrame++;
+            }
+            else
+            {
+                canvas.pushSprite(0, 0);
+            }
 
             // Throttle to roughly 60 FPS
             uint32_t frameMs = millis() - nowMs;

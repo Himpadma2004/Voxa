@@ -3,6 +3,7 @@
 #include "../ui/Theme.h"
 #include "../services/QuestionService.h"
 #include "DetailScreen.h"
+#include "Transition.h"
 #include <cmath>
 #include <algorithm>
 
@@ -12,6 +13,11 @@ namespace VOXA
 
     ScreenId QuestionsScreen::show(Touch& touch)
     {
+        int entryFrame = 0;
+        float dragStartX = 0.0f;
+        float dragStartY = 0.0f;
+        bool swipeBackCandidate = false;
+
         uint16_t w = Display::width();
         uint16_t h = Display::height();
 
@@ -43,7 +49,7 @@ namespace VOXA
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
 
-            if (touched)
+            if (touched && entryFrame >= 10)
             {
                 m_lastDragX = tx;
                 m_lastDragY = ty;
@@ -51,6 +57,9 @@ namespace VOXA
                 if (!m_wasTouched)
                 {
                     m_wasTouched = true;
+                    dragStartX = tx;
+                    dragStartY = ty;
+                    swipeBackCandidate = (tx < 50);
                     m_dragStartY = ty;
                     m_dragStartScrollY = m_targetScrollY;
                     m_lastTouchSampleMs = nowMs;
@@ -87,6 +96,14 @@ namespace VOXA
                 }
                 else
                 {
+                    float dx = tx - dragStartX;
+                    float dyLocal = ty - dragStartY;
+                    if (swipeBackCandidate && dx > 60 && std::abs(dyLocal) < 40)
+                    {
+                        targetScreen = ScreenId::Home;
+                        swipeBackCandidate = false;
+                    }
+
                     float dy = ty - m_dragStartY;
                     if (!m_isDragging && std::abs(dy) > 10.0f)
                     {
@@ -226,7 +243,15 @@ namespace VOXA
             }
 
             canvas.clearClipRect();
-            canvas.pushSprite(0, 0);
+            if (entryFrame < 10)
+            {
+                VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Questions), entryFrame, 10);
+                entryFrame++;
+            }
+            else
+            {
+                canvas.pushSprite(0, 0);
+            }
 
             uint32_t frameMs = millis() - nowMs;
             if (frameMs < 16)
