@@ -1,4 +1,5 @@
 #include "TimeService.h"
+#include <Arduino.h>
 
 #include <chrono>
 #include <ctime>
@@ -25,6 +26,12 @@ namespace
 
 namespace VOXA
 {
+    void TimeService::begin()
+    {
+        configTime(19800, 0, "pool.ntp.org", "time.nist.gov");
+        Serial.println("[TimeService] NTP Configured for Asia/Kolkata (GMT+5:30)");
+    }
+
     std::string TimeService::getCurrentTime() const
     {
         std::tm local = localNow();

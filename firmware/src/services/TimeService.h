@@ -10,6 +10,9 @@ namespace VOXA
     public:
         TimeService() = default;
 
+        /// Initialize NTP configuration (GMT+5:30 for Asia/Kolkata).
+        void begin();
+
         /// Returns the current local time as "HH:MM AM/PM", e.g. "11:44 AM".
         [[nodiscard]] std::string getCurrentTime() const;
 
@@ -25,4 +28,6 @@ namespace VOXA
         /// Set system/RTC time (easy synchronization hook).
         void setTime(int hour, int minute, int second, int day, int month, int year);
     };
+
+    extern TimeService timeService;
 }

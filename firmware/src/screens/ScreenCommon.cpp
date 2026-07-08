@@ -1,5 +1,7 @@
 #include "ScreenCommon.h"
 #include "../ui/Theme.h"
+#include "../services/TimeService.h"
+#include "../services/WiFiManager.h"
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -10,18 +12,7 @@ namespace
 
     std::string getCurrentTimeStr()
     {
-        std::time_t tNow = std::time(nullptr);
-        std::tm local_tm;
-#if defined(_MSC_VER)
-        localtime_s(&local_tm, &tNow);
-#else
-        localtime_r(&tNow, &local_tm);
-#endif
-        char buffer[32];
-        std::strftime(buffer, sizeof(buffer), "%I:%M %p", &local_tm);
-        std::string s(buffer);
-        if (!s.empty() && s[0] == '0') s = s.substr(1);
-        return s;
+        return VOXA::timeService.getCurrentTime();
     }
 }
 
@@ -106,7 +97,8 @@ namespace VOXA::ScreenCommon
         canvas.drawString(getCurrentTimeStr().c_str(), w * 0.5f, 4);
 
         // Status bar icons (Wifi, Battery)
-        drawIcon(canvas, Icon::Wifi, w - 48, 4, 10, VoxaTheme::getTextPrimary());
+        uint16_t wifiColor = VOXA::wifiManager.isConnected() ? VoxaTheme::getTextPrimary() : VoxaTheme::getDivider();
+        drawIcon(canvas, Icon::Wifi, w - 48, 4, 10, wifiColor);
         
         canvas.setTextDatum(textdatum_t::top_right);
         canvas.drawString("92%", w - 20, 4);

@@ -17,6 +17,7 @@
 #include "screens/DetailScreen.h"
 #include "screens/Transition.h"
 #include "services/TimeService.h"
+#include "services/WiFiManager.h"
 #include "storage/JsonStorage.h"
 #include "storage/MemoryStorage.h"
 #include "services/StorageService.h"
@@ -44,6 +45,8 @@ namespace VOXA
     SettingsService settingsService(&storageService);
     MemoryService memoryService(&memoryStorage);
     SearchService searchService(&storageService);
+    TimeService timeService;
+    WiFiManager wifiManager;
 }
 
 Touch touch;
@@ -70,6 +73,15 @@ void setup()
   Serial.println("VOXA Firmware Starting...");
   Serial.println("================================");
 
+  // Initialize hardware display and touch first
+  Display::begin();
+  touch.begin();
+  Serial.println("Display Initialized");
+  Serial.println("Touch Initialized");
+
+  // Show boot screen immediately to give visual feedback
+  boot.show();
+
   // Mount local SPIFFS filesystem
   if (!SPIFFS.begin(true))
   {
@@ -81,17 +93,15 @@ void setup()
   }
 
   // Initialize system/RTC clock time to match compile/user baseline local time
-  TimeService timeService;
+  timeService.begin();
   timeService.setTime(12, 39, 41, 7, 7, 2026);
 
-  Display::begin();
-
-  touch.begin();
-
-  Serial.println("Display Initialized");
-  Serial.println("Touch Initialized");
-
-  boot.show();
+  // Auto-connect Wi-Fi if enabled in saved settings
+  Settings settings = settingsService.getSettings();
+  if (settings.wifiEnabled)
+  {
+      wifiManager.connect();
+  }
 
   Serial.println("Boot Screen Finished. Starting main screen loop...");
 }

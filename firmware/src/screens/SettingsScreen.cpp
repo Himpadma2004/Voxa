@@ -2,6 +2,7 @@
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../services/SettingsService.h"
+#include "../services/WiFiManager.h"
 #include "Transition.h"
 #include <SPIFFS.h>
 #include <cmath>
@@ -153,6 +154,14 @@ namespace VOXA
                                 // Toggle Wi-Fi
                                 currentSettings.wifiEnabled = !currentSettings.wifiEnabled;
                                 settingsService.updateSettings(currentSettings);
+                                if (currentSettings.wifiEnabled)
+                                {
+                                    wifiManager.connect();
+                                }
+                                else
+                                {
+                                    wifiManager.disconnect();
+                                }
                                 Serial.println("[Settings] Toggle Wi-Fi");
                             }
                             else if (m_pressedItemIndex == 1)
