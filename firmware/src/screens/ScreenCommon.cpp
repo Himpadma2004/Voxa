@@ -18,7 +18,7 @@ namespace
 
 namespace VOXA::ScreenCommon
 {
-    void renderSurface(LGFX_Sprite& canvas, uint16_t w, uint16_t h)
+    void renderSurface(LovyanGFX& canvas, uint16_t w, uint16_t h)
     {
         bool isLight = (VoxaTheme::getThemeMode() == VoxaTheme::ThemeMode::Light);
 
@@ -106,7 +106,7 @@ namespace VOXA::ScreenCommon
         drawIcon(canvas, Icon::Battery, w - 16, 4, 10, VoxaTheme::getTextPrimary());
     }
 
-    void renderPageDots(LGFX_Sprite& canvas, int activeIndex, int count, uint16_t w, uint16_t h)
+    void renderPageDots(LovyanGFX& canvas, int activeIndex, int count, uint16_t w, uint16_t h)
     {
         float dotY = h - 12.0f;
         float spacing = 12.0f;
@@ -123,7 +123,7 @@ namespace VOXA::ScreenCommon
         }
     }
 
-    void renderCircularButton(LGFX_Sprite& canvas, float centerX, float centerY, Icon icon, 
+    void renderCircularButton(LovyanGFX& canvas, float centerX, float centerY, Icon icon, 
                               uint16_t fill, uint16_t iconColor, uint16_t w, uint16_t h)
     {
         float radius = 12.0f;
@@ -132,7 +132,7 @@ namespace VOXA::ScreenCommon
         drawIcon(canvas, icon, centerX - 5.0f, centerY - 5.0f, 10.0f, iconColor);
     }
 
-    void renderHeader(LGFX_Sprite& canvas, const std::string& title, bool showBack, 
+    void renderHeader(LovyanGFX& canvas, const std::string& title, bool showBack, 
                       bool showRightAction, Icon rightIcon, uint16_t w, uint16_t h)
     {
         // Safe spacing: shift Y coordinates down to 45.0f to prevent status bar overlap
@@ -154,7 +154,7 @@ namespace VOXA::ScreenCommon
         }
     }
 
-    void drawIcon(LGFX_Sprite& canvas, Icon icon, float x, float y, float size, uint16_t color)
+    void drawIcon(LovyanGFX& canvas, Icon icon, float x, float y, float size, uint16_t color)
     {
         float cx = x + size * 0.5f;
         float cy = y + size * 0.5f;
@@ -345,7 +345,7 @@ namespace VOXA::ScreenCommon
         }
     }
 
-    void drawMicShape(LGFX_Sprite& canvas, float cx, float cy, float size, uint16_t color, uint16_t bgColor)
+    void drawMicShape(LovyanGFX& canvas, float cx, float cy, float size, uint16_t color, uint16_t bgColor)
     {
         const float bW      = size * 0.32f;
         const float bH      = size * 0.52f;

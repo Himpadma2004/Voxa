@@ -26,13 +26,26 @@ bool Touch::isTouched()
 
 bool Touch::getPoint(uint16_t &x, uint16_t &y)
 {
-    if (!isTouched())
+    bool touched = isTouched();
+    if (!touched)
+    {
+        if (m_wasTouched)
+        {
+            m_wasTouched = false;
+            Serial.println("[Touch] Release");
+        }
         return false;
+    }
 
     auto p = touch.getPoint(0);
-
     x = p.x;
     y = p.y;
+
+    if (!m_wasTouched)
+    {
+        m_wasTouched = true;
+        Serial.printf("[Touch] Press: x=%d, y=%d\n", x, y);
+    }
 
     return true;
 }

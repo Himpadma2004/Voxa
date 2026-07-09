@@ -69,9 +69,13 @@ void setup()
   Serial.begin(115200);
   delay(500);
 
-  Serial.println("================================");
+  Serial.println("=================================");
   Serial.println("VOXA Firmware Starting...");
-  Serial.println("================================");
+  Serial.printf("PSRAM Found: %s\n", psramFound() ? "YES" : "NO");
+  Serial.printf("PSRAM Total Size: %d bytes\n", ESP.getPsramSize());
+  Serial.printf("PSRAM Free Size: %d bytes\n", ESP.getFreePsram());
+  Serial.printf("SRAM Free Heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.println("=================================");
 
   // Initialize hardware display and touch first
   Display::begin();
@@ -92,18 +96,14 @@ void setup()
     Serial.println("[SPIFFS] Mounted successfully.");
   }
 
-  // Initialize system/RTC clock time to match compile/user baseline local time
+  // Initialize system/RTC clock (NTP will sync once WiFi connects)
   timeService.begin();
-  timeService.setTime(12, 39, 41, 7, 7, 2026);
 
-  // Auto-connect Wi-Fi if enabled in saved settings
-  Settings settings = settingsService.getSettings();
-  if (settings.wifiEnabled)
-  {
-      wifiManager.connect();
-  }
+  // Wi-Fi is available via Settings. Auto-connect is disabled by default on
+  // real hardware since the default credential "Wokwi-GUEST" does not exist.
+  // To enable: go to Settings > Wi-Fi and toggle it ON.
 
-  Serial.println("Boot Screen Finished. Starting main screen loop...");
+  Serial.println("Boot complete. Starting main screen loop...");
 }
 
 void loop()

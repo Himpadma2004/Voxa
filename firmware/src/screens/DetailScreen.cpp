@@ -37,6 +37,7 @@ namespace VOXA
         uint16_t h = Display::height();
 
         LGFX_Sprite canvas(&Display::lcd);
+        canvas.setPsram(true);
         canvas.setColorDepth(16);
         if (!canvas.createSprite(w, h))
         {
@@ -186,6 +187,10 @@ namespace VOXA
                         {
                             questionService.remove(s_itemId);
                         }
+                        else if (s_category == "memories")
+                        {
+                            memoryService.remove(s_itemId);
+                        }
                         Serial.print("[Detail] Deleted item: ");
                         Serial.println(s_itemId);
                         targetScreen = s_backRoute;
@@ -270,6 +275,7 @@ namespace VOXA
             }
         }
 
+        canvas.deleteSprite();
         return targetScreen;
     }
 }

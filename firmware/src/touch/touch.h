@@ -17,6 +17,7 @@ public:
     void setRotation(uint8_t rotation);
 
 private:
+    bool m_wasTouched = false;
     CSE_CST328 touch =
         CSE_CST328(
             240,

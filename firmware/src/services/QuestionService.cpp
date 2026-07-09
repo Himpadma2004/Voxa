@@ -14,7 +14,7 @@ namespace VOXA
     {
         auto questions = m_storage->loadAllQuestions();
         std::sort(questions.begin(), questions.end(),
-                  [](const Question& a, const Question& b) { return a.id < b.id; });
+                [](const Question& a, const Question& b) { return a.id < b.id; });
         return questions;
     }
 

@@ -24,7 +24,7 @@ namespace VOXA
         const int level = getBatteryLevel();
         const bool charging = isCharging();
         std::snprintf(buf, sizeof(buf),
-                      "%d%%%s", level, charging ? " — Charging" : " — Not charging");
+                    "%d%%%s", level, charging ? " — Charging" : " — Not charging");
         return buf;
     }
 }

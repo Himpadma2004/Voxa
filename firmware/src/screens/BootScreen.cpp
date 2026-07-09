@@ -121,6 +121,7 @@ void BootScreen::show()
 
     // Initialize double-buffering canvas sprite
     LGFX_Sprite canvas(&Display::lcd);
+    canvas.setPsram(true);
     canvas.setColorDepth(16);
     if (!canvas.createSprite(w, h))
     {
@@ -215,5 +216,12 @@ void BootScreen::show()
         }
     }
 
-    delay(400);
+    delay(300);
+
+    // Explicitly free the sprite buffer before returning so the HomeScreen
+    // can allocate its own full-screen sprite without running out of heap.
+    canvas.deleteSprite();
+
+    // Clear display to black so there are no leftover pixels from the boot animation.
+    Display::lcd.fillScreen(TFT_BLACK);
 }

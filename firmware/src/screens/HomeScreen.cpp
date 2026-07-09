@@ -11,7 +11,7 @@ namespace VOXA
     {
     }
 
-    void HomeScreen::renderPage0(LGFX_Sprite& canvas, uint16_t w, uint16_t h, float offsetX)
+    void HomeScreen::renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX)
     {
         float cx = w * 0.5f + offsetX;
         
@@ -100,7 +100,7 @@ namespace VOXA
                                           chevFill, chevColor, w, h);
     }
 
-    void HomeScreen::renderPage1(LGFX_Sprite& canvas, uint16_t w, uint16_t h, 
+    void HomeScreen::renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h, 
                                  int remCount, int ideaCount, int qCount, int memCount, float offsetX)
     {
         // Title Header shifted to Y = 45.0f to prevent overlapping
@@ -450,12 +450,14 @@ namespace VOXA
 
         // Create double-buffering canvas sprite
         LGFX_Sprite canvas(&Display::lcd);
+        canvas.setPsram(true); // Allocate from 8MB PSRAM
         canvas.setColorDepth(16);
-        if (!canvas.createSprite(w, h))
+        bool useSprite = canvas.createSprite(w, h);
+        if (!useSprite)
         {
-            Serial.println("[HomeScreen] Error creating canvas double-buffer!");
-            return ScreenId::Home;
+            Serial.println("[HomeScreen] WARN: sprite allocation failed, drawing directly to LCD.");
         }
+        LovyanGFX& target = useSprite ? (LovyanGFX&)canvas : (LovyanGFX&)Display::lcd;
 
         // Mock badge counts
         int remCount = 3;
@@ -524,7 +526,7 @@ namespace VOXA
             }
 
             // 4. Draw static dark mode background linear gradient and status bar clock
-            ScreenCommon::renderSurface(canvas, w, h);
+            ScreenCommon::renderSurface(target, w, h);
 
             // 5. Draw sliding page contents
             for (int p = 0; p < 2; ++p)
@@ -537,28 +539,31 @@ namespace VOXA
 
                 if (p == 0)
                 {
-                    renderPage0(canvas, w, h, drawX);
+                    renderPage0(target, w, h, drawX);
                 }
                 else
                 {
-                    renderPage1(canvas, w, h, remCount, ideaCount, qCount, memCount, drawX);
+                    renderPage1(target, w, h, remCount, ideaCount, qCount, memCount, drawX);
                 }
             }
 
             // 6. Draw page dot indicators (stays static at bottom center)
             int dotActive = (int)round(m_scrollOffset / width_f);
             dotActive = std::max(0, std::min(1, dotActive));
-            ScreenCommon::renderPageDots(canvas, dotActive, 2, w, h);
+            ScreenCommon::renderPageDots(target, dotActive, 2, w, h);
 
             // 7. Push render buffer sprite to screen
-            if (entryFrame < 10)
+            if (useSprite)
             {
-                VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Home), entryFrame, 10);
-                entryFrame++;
-            }
-            else
-            {
-                canvas.pushSprite(0, 0);
+                if (entryFrame < 10)
+                {
+                    VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Home), entryFrame, 10);
+                    entryFrame++;
+                }
+                else
+                {
+                    canvas.pushSprite(0, 0);
+                }
             }
 
             // Throttle to roughly 60 FPS
@@ -567,6 +572,12 @@ namespace VOXA
             {
                 delay(16 - frameMs);
             }
+        }
+
+        // Free sprite memory before navigating so the next screen can allocate its own.
+        if (useSprite)
+        {
+            canvas.deleteSprite();
         }
 
         return targetScreen;

@@ -14,7 +14,7 @@ namespace
             needle.begin(),   needle.end(),
             [](char a, char b) {
                 return std::tolower(static_cast<unsigned char>(a)) ==
-                       std::tolower(static_cast<unsigned char>(b));
+                    std::tolower(static_cast<unsigned char>(b));
             });
         return it != haystack.end();
     }

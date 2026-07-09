@@ -22,6 +22,7 @@ namespace VOXA
         uint16_t h = Display::height();
 
         LGFX_Sprite canvas(&Display::lcd);
+        canvas.setPsram(true);
         canvas.setColorDepth(16);
         if (!canvas.createSprite(w, h))
         {
@@ -262,6 +263,7 @@ namespace VOXA
             }
         }
 
+        canvas.deleteSprite();
         return targetScreen;
     }
 }

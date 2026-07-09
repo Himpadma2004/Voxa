@@ -52,21 +52,21 @@ namespace VOXA
     namespace ScreenCommon
     {
         // Shared Screen Layout Drawings
-        void renderSurface(LGFX_Sprite& canvas, uint16_t w, uint16_t h);
+        void renderSurface(LovyanGFX& canvas, uint16_t w, uint16_t h);
         
-        void renderPageDots(LGFX_Sprite& canvas, int activeIndex, int count, uint16_t w, uint16_t h);
+        void renderPageDots(LovyanGFX& canvas, int activeIndex, int count, uint16_t w, uint16_t h);
         
-        void renderCircularButton(LGFX_Sprite& canvas, float centerX, float centerY, Icon icon, 
+        void renderCircularButton(LovyanGFX& canvas, float centerX, float centerY, Icon icon, 
                                   uint16_t fill, uint16_t iconColor, uint16_t w, uint16_t h);
                                   
-        void renderHeader(LGFX_Sprite& canvas, const std::string& title, bool showBack, 
+        void renderHeader(LovyanGFX& canvas, const std::string& title, bool showBack, 
                           bool showRightAction, Icon rightIcon, uint16_t w, uint16_t h);
 
         // Pixel-perfect Geometric Icon Drawing (replaces desktop fonts)
-        void drawIcon(LGFX_Sprite& canvas, Icon icon, float x, float y, float size, uint16_t color);
+        void drawIcon(LovyanGFX& canvas, Icon icon, float x, float y, float size, uint16_t color);
         
         // Microphone geometric shape
-        void drawMicShape(LGFX_Sprite& canvas, float cx, float cy, float size, uint16_t color, uint16_t bgColor);
+        void drawMicShape(LovyanGFX& canvas, float cx, float cy, float size, uint16_t color, uint16_t bgColor);
     }
 }
 
