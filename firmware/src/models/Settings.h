@@ -16,5 +16,6 @@ namespace VOXA
         std::string deviceName      { "VOXA Device" };
         std::string firmwareVersion { "1.0.0" };
         std::string lastSyncTime    { "" };
+        std::string backendUrl      { "http://192.168.1.100:8000" };
     };
 }

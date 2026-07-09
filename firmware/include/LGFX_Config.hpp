@@ -8,6 +8,7 @@ class LGFX : public lgfx::LGFX_Device
 {
     lgfx::Panel_ST7789 _panel;
     lgfx::Bus_SPI _bus;
+    lgfx::Light_PWM _light;
 
 public:
     LGFX()
@@ -80,6 +81,16 @@ public:
             cfg.bus_shared = true;
 
             _panel.config(cfg);
+        }
+
+        {
+            auto cfg = _light.config();
+            cfg.pin_bl = 3;
+            cfg.freq = 12000;
+            cfg.pwm_channel = 7;
+            cfg.invert = false;
+            _light.config(cfg);
+            _panel.setLight(&_light);
         }
 
         setPanel(&_panel);

@@ -7,10 +7,10 @@ bool Display::begin()
     Serial.begin(115200);
 
     lcd.init();
-
+    lcd.setBrightness(255);
     lcd.setRotation(1);
-
     lcd.fillScreen(TFT_BLACK);
+
 
     Serial.println("[Display] Ready");
 

@@ -10,10 +10,9 @@ namespace VOXA
         ScreenId show(Touch& touch);
 
     private:
-        bool m_isBackPressed { false };
-        bool m_isMicPressed { false };
-        bool m_wasTouched { false };
-        float m_lastDragX { 0.0f };
-        float m_lastDragY { 0.0f };
+        bool  m_isBackPressed { false };
+        bool  m_wasTouched    { false };
+        float m_lastDragX     { 0.0f };
+        float m_lastDragY     { 0.0f };
     };
 }

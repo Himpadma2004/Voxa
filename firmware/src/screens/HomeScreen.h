@@ -6,57 +6,76 @@
 #include "../display/Display.h"
 #include "../touch/Touch.h"
 #include "../services/TimeService.h"
+#include "../services/MicrophoneService.h"
 #include "ScreenCommon.h"
+#include <string>
 
 namespace VOXA
 {
     class HomeScreen
     {
     public:
-        HomeScreen();
+        /// Recording + upload state machine states.
+        enum class RecordState
+        {
+            Idle,       ///< Mic button visible, idle
+            Recording,  ///< Capturing audio (stub or real mic)
+            Uploading,  ///< WAV file being uploaded to backend (background task)
+            Result,     ///< Transcribed text received — showing result card
+            Error,      ///< Upload or server error — showing error card
+        };
 
+        HomeScreen();
         ScreenId show(Touch& touch);
 
     private:
         void renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX);
-        
-        void renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h, 
+
+        void renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h,
                          int remCount, int ideaCount, int qCount, int memCount, float offsetX);
-                         
-        void processTouch(Touch& touch, uint16_t w, uint16_t h, 
-                          int remCount, int ideaCount, int qCount, int memCount, 
+
+        void processTouch(Touch& touch, uint16_t w, uint16_t h,
+                          int remCount, int ideaCount, int qCount, int memCount,
                           ScreenId& targetScreen);
 
-        TimeService m_timeService;
+        // ── Services ────────────────────────────────────────────────────
+        TimeService       m_timeService;
 
+
+
+        // ── Recording state machine ──────────────────────────────────────
+        RecordState m_recState      { RecordState::Idle };
+        std::string m_resultText;     ///< Transcribed text from backend
+        std::string m_errorText;      ///< Error message to display
+        uint32_t    m_resultShownMs { 0 }; ///< Timestamp when result/error was set
+
+        // ── Animation ───────────────────────────────────────────────────
         float m_elapsed { 0.0f };
-        int   m_page { 0 };               // 0 = Assistant Home, 1 = Menu list
+        int   m_page    { 0 };    // 0 = Assistant Home, 1 = Menu list
 
-        // Swipe & transition page state (horizontal)
-        bool  m_isDragging { false };
-        float m_dragStartX { 0.0f };
-        float m_dragStartY { 0.0f };
-        float m_swipeOffset { 0.0f };
-        float m_scrollOffset { 0.0f };  // Horizontal visual page offset for transitions
+        // ── Swipe & horizontal page transition ───────────────────────────
+        bool  m_isDragging   { false };
+        float m_dragStartX   { 0.0f };
+        float m_dragStartY   { 0.0f };
+        float m_swipeOffset  { 0.0f };
+        float m_scrollOffset { 0.0f };
 
-        // Menu scroll state (vertical)
-        bool  m_isScrollDragging { false };
-        float m_menuScrollY { 0.0f };
-        float m_menuTargetScrollY { 0.0f };
-        float m_scrollVelocity { 0.0f }; // Vertical scroll inertia velocity
-        float m_lastDragX { 0.0f };       // Previous touch X coordinate for release tracking
-        float m_lastDragY { 0.0f };       // Previous touch Y coordinate for scroll delta
-        uint32_t m_lastTouchSampleMs { 0 }; // Timestamp for drag velocity calculation
+        // ── Menu vertical scroll ─────────────────────────────────────────
+        bool     m_isScrollDragging    { false };
+        float    m_menuScrollY         { 0.0f };
+        float    m_menuTargetScrollY   { 0.0f };
+        float    m_scrollVelocity      { 0.0f };
+        float    m_lastDragX           { 0.0f };
+        float    m_lastDragY           { 0.0f };
+        uint32_t m_lastTouchSampleMs   { 0 };
 
-        // Touch feedback tracking
-        int   m_pressedItemIndex { -1 };  // Pressed index of menu list items (-1 if none)
-        bool  m_isMicPressed { false };
-        bool  m_isChevronPressed { false };
-        bool  m_isBackPressed { false };
-        bool  m_isRotatePressed { false }; // Action button on page 1 header
-
-        // Touch tracking state
-        bool  m_wasTouched { false };
+        // ── Touch feedback ───────────────────────────────────────────────
+        int  m_pressedItemIndex  { -1 };
+        bool m_isMicPressed      { false };
+        bool m_isChevronPressed  { false };
+        bool m_isBackPressed     { false };
+        bool m_isRotatePressed   { false };
+        bool m_wasTouched        { false };
     };
 }
 

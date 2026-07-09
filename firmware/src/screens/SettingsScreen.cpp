@@ -4,7 +4,9 @@
 #include "../services/SettingsService.h"
 #include "../services/WiFiManager.h"
 #include "Transition.h"
+#include "../services/ApiClient.h"
 #include <SPIFFS.h>
+
 #include <cmath>
 #include <algorithm>
 
@@ -41,7 +43,7 @@ namespace VOXA
         ScreenId targetScreen = ScreenId::Settings;
         uint32_t lastMs = millis();
 
-        float contentHeight = 9.0f * 50.0f + 10.0f; // 9 settings items
+        float contentHeight = 10.0f * 50.0f + 10.0f; // 10 settings items
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
@@ -85,7 +87,7 @@ namespace VOXA
                     {
                         float leftX = w * 0.04f;
                         float cardW = w * 0.92f;
-                        for (int i = 0; i < 9; ++i)
+                        for (int i = 0; i < 10; ++i)
                         {
                             float itemY = 72.0f + i * 50.0f - m_scrollY;
                             if (tx >= leftX && tx <= (leftX + cardW) &&
@@ -94,6 +96,7 @@ namespace VOXA
                                 m_pressedItemIndex = i;
                             }
                         }
+
                     }
                 }
                 else
@@ -157,7 +160,16 @@ namespace VOXA
                                 settingsService.updateSettings(currentSettings);
                                 if (currentSettings.wifiEnabled)
                                 {
-                                    wifiManager.connect();
+                                    if (wifiManager.hasSavedCredentials())
+                                    {
+                                        wifiManager.connect();
+                                    }
+                                    else
+                                    {
+                                        Serial.println("[Settings] Entering Wi-Fi Setup Mode via reboot...");
+                                        delay(500);
+                                        ESP.restart();
+                                    }
                                 }
                                 else
                                 {
@@ -170,25 +182,32 @@ namespace VOXA
                                 // Open Sync & Backup page
                                 targetScreen = ScreenId::SyncStatus;
                             }
-                            else if (m_pressedItemIndex == 5)
+                            else if (m_pressedItemIndex == 2)
+                            {
+                                // Reboot to Setup Mode (same as Wi-Fi toggle when no credentials)
+                                Serial.println("[Settings] Entering Portal Setup Mode via reboot to configure API URL...");
+                                delay(500);
+                                ESP.restart();
+                            }
+                            else if (m_pressedItemIndex == 6)
                             {
                                 Serial.println("[Settings] Restarting...");
                                 delay(200);
                                 ESP.restart();
                             }
-                            else if (m_pressedItemIndex == 6)
+                            else if (m_pressedItemIndex == 7)
                             {
                                 Serial.println("[Settings] Powering Off...");
                                 delay(200);
                                 esp_deep_sleep_start();
                             }
-                            else if (m_pressedItemIndex == 7)
+                            else if (m_pressedItemIndex == 8)
                             {
                                 Serial.println("[Settings] Shutting Down...");
                                 delay(200);
                                 esp_deep_sleep_start();
                             }
-                            else if (m_pressedItemIndex == 8)
+                            else if (m_pressedItemIndex == 9)
                             {
                                 Serial.println("[Settings] Factory Resetting...");
                                 SPIFFS.remove("/reminders.json");
@@ -201,6 +220,7 @@ namespace VOXA
                                 delay(500);
                                 ESP.restart();
                             }
+
                         }
                     }
                     m_isBackPressed = false;
@@ -236,14 +256,31 @@ namespace VOXA
             ScreenCommon::renderSurface(canvas, w, h);
             ScreenCommon::renderHeader(canvas, "Settings", true, false, Icon::Plus, w, h);
             
-            std::string wifiStatus = settings.wifiEnabled ? "Connected" : "Disconnected";
+            std::string wifiStatus = "Disconnected";
+            if (settings.wifiEnabled)
+            {
+                if (wifiManager.isConnected())
+                {
+                    wifiStatus = wifiManager.getSSID();
+                }
+                else if (wifiManager.hasSavedCredentials())
+                {
+                    wifiStatus = "Connecting...";
+                }
+                else
+                {
+                    wifiStatus = "No Saved Wi-Fi";
+                }
+            }
             std::string syncStatus = settings.autoSync ? "Auto Sync: On" : "Auto Sync: Off";
             std::string storageInfo = "12.4 GB / 32 GB";
             std::string deviceInfo = settings.deviceName + " (v" + settings.firmwareVersion + ")";
+            std::string backendUrl = VOXA::apiClient.getBaseUrl();
 
-            SettingRow rows[9] = {
+            SettingRow rows[10] = {
                 { Icon::Wifi,       "Wi-Fi",          wifiStatus,  0x266C },
                 { Icon::Wifi,       "Sync & Backup",  syncStatus,  0x067F },
+                { Icon::Folder,     "Backend URL",    backendUrl,  0x1BE0 },
                 { Icon::Folder,     "Storage",        storageInfo, 0x52AA },
                 { Icon::Question,   "Device Info",    deviceInfo,  0xAD55 },
                 { Icon::Settings,   "About VOXA",     "AI Companion", 0x79CF },
@@ -258,7 +295,7 @@ namespace VOXA
 
             canvas.setClipRect(0, 70, w, h - 70 - 18);
 
-            for (int i = 0; i < 9; ++i)
+            for (int i = 0; i < 10; ++i)
             {
                 float itemY = 72.0f + i * 50.0f - m_scrollY;
                 if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
@@ -285,7 +322,15 @@ namespace VOXA
                 canvas.drawString(rows[i].title, leftX + 42.0f, cy - 8.0f);
 
                 canvas.setTextColor(subColor);
-                canvas.drawString(rows[i].subtitle.c_str(), leftX + 42.0f, cy + 8.0f);
+                
+                // Truncate URL if too long for card display
+                std::string dispSubtitle = rows[i].subtitle;
+                if (i == 2 && dispSubtitle.length() > 24)
+                {
+                    dispSubtitle = dispSubtitle.substr(0, 21) + "...";
+                }
+                canvas.drawString(dispSubtitle.c_str(), leftX + 42.0f, cy + 8.0f);
+
 
                 if (i == 1) // Sync & Backup has a navigation chevron
                 {

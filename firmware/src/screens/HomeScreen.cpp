@@ -1,14 +1,41 @@
 #include "HomeScreen.h"
 #include "../ui/Theme.h"
 #include "Transition.h"
+#include "../services/ApiClient.h"
+#include "../services/RecordingService.h"
 #include <cmath>
 #include <algorithm>
 #include <ctime>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+// ── Upload background task shared state ──────────────────────────────────────
+namespace
+{
+    volatile bool s_uploadDone  = false;
+    volatile bool s_uploadOk    = false;
+    char          s_uploadText [256] = {};
+    char          s_uploadError[128] = {};
+    std::string   s_uploadPath;
+
+    void uploadTaskFn(void* /*param*/)
+    {
+        VOXA::ApiResult res = VOXA::apiClient.uploadVoice(s_uploadPath);
+        s_uploadOk = res.success;
+        strncpy(s_uploadText,  res.text.c_str(),  255);
+        strncpy(s_uploadError, res.error.c_str(), 127);
+        s_uploadDone = true;
+        vTaskDelete(nullptr);
+    }
+}
 
 namespace VOXA
 {
+    extern RecordingService recordingService;
+
     HomeScreen::HomeScreen()
     {
+        microphoneService.begin();
     }
 
     void HomeScreen::renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX)
@@ -94,11 +121,123 @@ namespace VOXA
         // Chevron navigation button (scales down or highlights on press)
         float btnCx = w * 0.90f + offsetX;
         float btnCy = h * 0.65f;
-        uint16_t chevFill = m_isChevronPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+        uint16_t chevFill  = m_isChevronPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
         uint16_t chevColor = m_isChevronPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimary();
-        ScreenCommon::renderCircularButton(canvas, btnCx, btnCy, Icon::ChevronRight, 
+        ScreenCommon::renderCircularButton(canvas, btnCx, btnCy, Icon::ChevronRight,
                                           chevFill, chevColor, w, h);
+
+        // ── Recording / Upload / Result overlay ───────────────────────────────
+        if (m_recState != RecordState::Idle)
+        {
+            constexpr float kCardX = 10.0f;
+            constexpr float kCardH = 68.0f;
+            float cardY = h * 0.78f;
+            float cardW = w - 20.0f;
+            float cxCard = kCardX + offsetX + cardW * 0.5f;
+            float cyCard = cardY + kCardH * 0.5f;
+
+            // Card background with colored left accent
+            canvas.fillRoundRect((int)(kCardX + offsetX), (int)cardY,
+                                 (int)cardW, (int)kCardH, 8,
+                                 canvas.color565(22, 18, 45));
+
+            if (m_recState == RecordState::Recording)
+            {
+                // Red blinking dot
+                float blink = std::sin(m_elapsed * 8.0f) * 0.5f + 0.5f;
+                uint16_t dotCol = canvas.color565((uint8_t)(180 + blink * 75), 30, 30);
+                canvas.fillCircle((int)(kCardX + offsetX + 18.0f), (int)cyCard, 5, dotCol);
+
+                // Duration
+                uint32_t ms  = microphoneService.getDurationMs();
+                uint32_t sec = ms / 1000;
+                char durStr[12];
+                snprintf(durStr, sizeof(durStr), "%02u:%02u",
+                         (unsigned)(sec / 60), (unsigned)(sec % 60));
+
+                canvas.setFont(&fonts::FreeSansBold12pt7b);
+                canvas.setTextDatum(textdatum_t::middle_left);
+                canvas.setTextColor(TFT_WHITE);
+                canvas.drawString(durStr, (int)(kCardX + offsetX + 30.0f), (int)(cardY + kCardH * 0.38f));
+
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextColor(canvas.color565(160, 130, 220));
+                canvas.drawString("Tap mic to stop", (int)(kCardX + offsetX + 30.0f), (int)(cardY + kCardH * 0.70f));
+            }
+            else if (m_recState == RecordState::Uploading)
+            {
+                // Rotating spinner dots
+                float angle = std::fmod(m_elapsed * 6.0f, 2.0f * 3.14159f);
+                float spCx  = kCardX + offsetX + 18.0f;
+                float spCy  = cyCard;
+                for (int i = 0; i < 8; ++i)
+                {
+                    float a    = angle + i * (3.14159f / 4.0f);
+                    float frac = (float)i / 8.0f;
+                    uint8_t br = (uint8_t)(60 + frac * 195);
+                    canvas.fillCircle(
+                        (int)(spCx + std::cos(a) * 10.0f),
+                        (int)(spCy + std::sin(a) * 10.0f),
+                        2, canvas.color565(br, (uint8_t)(br * 0.6f), 255));
+                }
+
+                canvas.setFont(&fonts::FreeSansBold12pt7b);
+                canvas.setTextDatum(textdatum_t::middle_left);
+                canvas.setTextColor(TFT_WHITE);
+                canvas.drawString("Uploading...", (int)(kCardX + offsetX + 34.0f), (int)(cardY + kCardH * 0.38f));
+
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextColor(canvas.color565(140, 120, 200));
+                canvas.drawString("Sending to backend", (int)(kCardX + offsetX + 34.0f), (int)(cardY + kCardH * 0.70f));
+            }
+            else if (m_recState == RecordState::Result)
+            {
+                // Green success tick
+                canvas.fillCircle((int)(kCardX + offsetX + 18.0f), (int)cyCard,
+                                  9, canvas.color565(30, 160, 80));
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(TFT_WHITE);
+                canvas.drawString("✓", (int)(kCardX + offsetX + 18.0f), (int)cyCard);
+
+                canvas.setFont(&fonts::FreeSansBold12pt7b);
+                canvas.setTextDatum(textdatum_t::middle_left);
+                canvas.setTextColor(TFT_WHITE);
+
+                // Truncate long result text
+                std::string disp = m_resultText.empty() ? "(no text)" : m_resultText;
+                if (disp.length() > 28) disp = disp.substr(0, 25) + "...";
+                canvas.drawString(disp.c_str(), (int)(kCardX + offsetX + 34.0f), (int)(cardY + kCardH * 0.40f));
+
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextColor(canvas.color565(100, 220, 130));
+                canvas.drawString("Tap mic to dismiss", (int)(kCardX + offsetX + 34.0f), (int)(cardY + kCardH * 0.72f));
+            }
+            else if (m_recState == RecordState::Error)
+            {
+                // Red error circle
+                canvas.fillCircle((int)(kCardX + offsetX + 18.0f), (int)cyCard,
+                                  9, canvas.color565(200, 40, 40));
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(TFT_WHITE);
+                canvas.drawString("!", (int)(kCardX + offsetX + 18.0f), (int)cyCard);
+
+                canvas.setFont(&fonts::FreeSansBold12pt7b);
+                canvas.setTextDatum(textdatum_t::middle_left);
+                canvas.setTextColor(canvas.color565(255, 100, 100));
+
+                std::string disp = m_errorText.empty() ? "Upload failed" : m_errorText;
+                if (disp.length() > 26) disp = disp.substr(0, 23) + "...";
+                canvas.drawString(disp.c_str(), (int)(kCardX + offsetX + 34.0f), (int)(cardY + kCardH * 0.38f));
+
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextColor(canvas.color565(255, 160, 80));
+                canvas.drawString("Tap mic to retry", (int)(kCardX + offsetX + 34.0f), (int)(cardY + kCardH * 0.70f));
+            }
+        }
     }
+
 
     void HomeScreen::renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h, 
                                  int remCount, int ideaCount, int qCount, int memCount, float offsetX)
@@ -386,10 +525,48 @@ namespace VOXA
                             Serial.println(nextTheme == VoxaTheme::ThemeMode::Dark ? "Dark" : "Light");
                         }
 
-                        // Microphone button tap
+                        // Microphone button tap — recording state machine
                         if (m_isMicPressed)
                         {
-                            targetScreen = ScreenId::Record;
+                            switch (m_recState)
+                            {
+                                case RecordState::Idle:
+                                    microphoneService.startRecording("/voice_rec.wav");
+                                    m_recState = RecordState::Recording;
+                                    break;
+
+                                case RecordState::Recording:
+                                    microphoneService.stopRecording();
+                                    s_uploadPath = "/voice_rec.wav";
+                                    s_uploadDone = false;
+                                    s_uploadOk   = false;
+                                    memset(s_uploadText,  0, sizeof(s_uploadText));
+                                    memset(s_uploadError, 0, sizeof(s_uploadError));
+                                    m_recState = RecordState::Uploading;
+                                    xTaskCreate(uploadTaskFn, "VoxaUpload", 8192, nullptr, 1, nullptr);
+                                    break;
+
+                                case RecordState::Result:
+                                case RecordState::Error:
+                                    // Second tap on result/error = retry upload
+                                    if (m_recState == RecordState::Error)
+                                    {
+                                        s_uploadDone = false;
+                                        s_uploadOk   = false;
+                                        memset(s_uploadText,  0, sizeof(s_uploadText));
+                                        memset(s_uploadError, 0, sizeof(s_uploadError));
+                                        m_recState = RecordState::Uploading;
+                                        xTaskCreate(uploadTaskFn, "VoxaUpload", 8192, nullptr, 1, nullptr);
+                                    }
+                                    else
+                                    {
+                                        m_recState = RecordState::Idle;
+                                    }
+                                    break;
+
+                                default:
+                                    break;
+                            }
                         }
 
                         // Chevron navigation button tap
@@ -476,6 +653,51 @@ namespace VOXA
             lastMs = nowMs;
 
             m_elapsed += deltaSecs;
+
+            // ── Recording state machine ────────────────────────────────────
+            // Auto-stop recording after 30 seconds
+            if (m_recState == RecordState::Recording &&
+                microphoneService.getDurationMs() >= 30000)
+            {
+                microphoneService.stopRecording();
+                s_uploadPath = "/voice_rec.wav";
+                s_uploadDone = false;
+                s_uploadOk   = false;
+                memset(s_uploadText,  0, sizeof(s_uploadText));
+                memset(s_uploadError, 0, sizeof(s_uploadError));
+                m_recState = RecordState::Uploading;
+                xTaskCreate(uploadTaskFn, "VoxaUpload", 8192, nullptr, 1, nullptr);
+            }
+
+            // Check upload task completion
+            if (m_recState == RecordState::Uploading && s_uploadDone)
+            {
+                s_uploadDone = false;
+                if (s_uploadOk)
+                {
+                    m_resultText   = s_uploadText;
+                    m_recState     = RecordState::Result;
+                    m_resultShownMs = millis();
+                    // Persist the recording in the library
+                    uint32_t durS = microphoneService.getDurationMs() / 1000;
+                    recordingService.add("Voice Memo", "/voice_rec.wav", durS, "Just now");
+                    Serial.printf("[HomeScreen] Upload success: %s\n", m_resultText.c_str());
+                }
+                else
+                {
+                    m_errorText = (strlen(s_uploadError) > 0) ? s_uploadError : "Upload failed";
+                    m_recState  = RecordState::Error;
+                    m_resultShownMs = millis();
+                    Serial.printf("[HomeScreen] Upload error: %s\n", m_errorText.c_str());
+                }
+            }
+
+            // Auto-dismiss result card after 8 seconds
+            if ((m_recState == RecordState::Result || m_recState == RecordState::Error) &&
+                (millis() - m_resultShownMs) > 8000)
+            {
+                m_recState = RecordState::Idle;
+            }
 
             // 1. Process touch gestures and pressed feedback updates
             if (entryFrame >= 10)

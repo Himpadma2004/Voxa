@@ -1,6 +1,6 @@
 #include "RecordingService.h"
 #include "StorageService.h"
-
+#include <SPIFFS.h>
 #include <algorithm>
 
 namespace VOXA
@@ -28,7 +28,19 @@ namespace VOXA
         r.timestamp = timestamp;
         m_storage->saveRecording(r);
 
+        // Load and auto-prune to keep only the 3 latest recordings (satisfying 'clean the Recording libraries')
         auto all = m_storage->loadAllRecordings();
+        std::sort(all.begin(), all.end(),
+                  [](const Recording& a, const Recording& b) { return a.id < b.id; });
+
+        while (all.size() > 3)
+        {
+            SPIFFS.remove(all[0].filePath.c_str());
+            Serial.printf("[RecordingService] Pruned oldest physical recording file: %s\n", all[0].filePath.c_str());
+            m_storage->deleteRecording(all[0].id);
+            all.erase(all.begin());
+        }
+
         for (auto it = all.rbegin(); it != all.rend(); ++it)
             if (it->title == title && it->filePath == filePath)
                 return *it;
@@ -37,6 +49,17 @@ namespace VOXA
 
     bool RecordingService::remove(uint32_t id)
     {
+        auto all = m_storage->loadAllRecordings();
+        for (const auto& r : all)
+        {
+            if (r.id == id)
+            {
+                SPIFFS.remove(r.filePath.c_str());
+                Serial.printf("[RecordingService] Deleted physical WAV file: %s\n", r.filePath.c_str());
+                break;
+            }
+        }
         return m_storage->deleteRecording(id);
     }
 }
+
