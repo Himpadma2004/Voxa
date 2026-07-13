@@ -18,7 +18,7 @@ namespace VOXA
      * Independent HTTP client for all VOXA ↔ Python backend communication.
      *
      * Usage:
-     *   apiClient.setBaseUrl("http://192.168.1.100:8000");
+     *   apiClient.setBaseUrl("http://192.168.0.148:8000");
      *   ApiResult r = apiClient.uploadVoice("/voice_rec.wav");
      *
      * Future endpoints (no code changes needed, just call get/post):
@@ -48,7 +48,7 @@ namespace VOXA
         ApiResult   post(const std::string& endpoint, const std::string& jsonBody);
 
     private:
-        std::string m_baseUrl { "http://192.168.1.100:8000" };
+        std::string m_baseUrl{"http://192.168.0.148:8000"};
 
         void        loadBaseUrl();
         void        saveBaseUrl(const std::string& url);
@@ -60,4 +60,5 @@ namespace VOXA
 
 
     extern ApiClient apiClient;
+    extern std::string g_currentlyUploadingPath;
 }

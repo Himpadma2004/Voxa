@@ -13,6 +13,21 @@ namespace VOXA
     std::vector<Recording> RecordingService::getAll()
     {
         auto recordings = m_storage->loadAllRecordings();
+        bool changed = false;
+        for (auto it = recordings.begin(); it != recordings.end(); )
+        {
+            if (it->filePath == "filePath.wav" || it->filePath == "filePath" || it->filePath.empty())
+            {
+                Serial.printf("[RecordingService] Healing DB: removing invalid record ID %u (%s)\n", it->id, it->filePath.c_str());
+                m_storage->deleteRecording(it->id);
+                it = recordings.erase(it);
+                changed = true;
+            }
+            else
+            {
+                ++it;
+            }
+        }
         std::sort(recordings.begin(), recordings.end(),
                   [](const Recording& a, const Recording& b) { return a.id < b.id; });
         return recordings;

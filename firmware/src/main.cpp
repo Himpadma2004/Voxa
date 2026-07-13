@@ -86,6 +86,13 @@ namespace
             {
                 if (rec.timestamp == "Pending")
                 {
+                    // Prevent duplicate concurrent uploads
+                    if (rec.filePath == g_currentlyUploadingPath)
+                    {
+                        Serial.printf("[BackgroundUpload] File %s is already being uploaded. Skipping.\n", rec.filePath.c_str());
+                        continue;
+                    }
+
                     Serial.printf("[BackgroundUpload] Found pending voice note: %s\n", rec.filePath.c_str());
 
                     // Check server availability before attempting upload
@@ -95,7 +102,9 @@ namespace
                         break; // Stop iterating if server is unreachable
                     }
 
+                    g_currentlyUploadingPath = rec.filePath;
                     ApiResult res = apiClient.uploadVoice(rec.filePath);
+                    g_currentlyUploadingPath = "";
                     if (res.success)
                     {
                         Serial.printf("[BackgroundUpload] Successfully uploaded pending note: %s\n", res.text.c_str());

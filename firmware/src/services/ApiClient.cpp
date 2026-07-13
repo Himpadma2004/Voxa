@@ -15,6 +15,7 @@ namespace VOXA
 {
     // Global singleton instance (declared extern in header)
     ApiClient apiClient;
+    std::string g_currentlyUploadingPath = "";
 
     // ── Constructor ───────────────────────────────────────────────────────────
     ApiClient::ApiClient()
@@ -27,7 +28,7 @@ namespace VOXA
     {
         Preferences prefs;
         prefs.begin("voxa-api", true);
-        String url = prefs.getString("url", "http://192.168.1.100:8000");
+        String url = prefs.getString("url", "http://192.168.0.148:8000");
         prefs.end();
         m_baseUrl = url.c_str();
         Serial.print("[ApiClient] Base URL: ");

@@ -21,7 +21,10 @@ namespace
 
     void recScreenUploadTask(void* /*param*/)
     {
+        VOXA::g_currentlyUploadingPath = s_recUploadPath;
         VOXA::ApiResult res = VOXA::apiClient.uploadVoice(s_recUploadPath);
+        VOXA::g_currentlyUploadingPath = "";
+
         s_recUploadOk = res.success;
         strncpy(s_recUploadText,  res.text.c_str(),  255);
         strncpy(s_recUploadError, res.error.c_str(), 127);
