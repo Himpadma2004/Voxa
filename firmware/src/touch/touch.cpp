@@ -21,8 +21,20 @@ bool Touch::begin()
 
 bool Touch::isTouched()
 {
+    uint32_t now = millis();
+
+    // If screen was not touched recently, rate-limit I2C polling to once per 50ms.
+    // When screen is touched (drag/swipe in progress), poll at full speed.
+    if (!m_wasTouched && (now - m_lastPollMs < 50))
+    {
+        return false;
+    }
+
+    m_lastPollMs = now;
     return touch.getTouches() > 0;
 }
+
+
 
 bool Touch::getPoint(uint16_t &x, uint16_t &y)
 {

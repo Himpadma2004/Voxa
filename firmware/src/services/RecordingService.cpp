@@ -61,5 +61,10 @@ namespace VOXA
         }
         return m_storage->deleteRecording(id);
     }
+
+    bool RecordingService::update(const Recording& recording)
+    {
+        return m_storage->saveRecording(recording);
+    }
 }
 

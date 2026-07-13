@@ -49,6 +49,14 @@ namespace VOXA
             .data_in_num = 6        // SD pin 6
         };
 
+        Serial.println("[MicrophoneService] Configuring I2S parameters:");
+        Serial.printf("  - Sample Rate: %d Hz\n", i2s_config.sample_rate);
+        Serial.printf("  - Bits per Sample: %d-bit\n", i2s_config.bits_per_sample);
+        Serial.printf("  - Mode: RX Master\n");
+        Serial.printf("  - Format: Mono\n");
+        Serial.printf("  - Pin Mapping: BCLK=GPIO %d, LRCK=GPIO %d, SD=GPIO %d\n",
+                      pin_config.bck_io_num, pin_config.ws_io_num, pin_config.data_in_num);
+
         esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
         if (err != ESP_OK)
         {
@@ -65,9 +73,10 @@ namespace VOXA
         }
 
         m_initialized = true;
-        Serial.println("[MicrophoneService] I2S Initialized successfully");
+        Serial.println("[MicrophoneService] I2S initialized successfully and verified");
         return true;
     }
+
 
     bool MicrophoneService::startRecording(const std::string& filePath)
     {
@@ -115,8 +124,6 @@ namespace VOXA
         // Wait for background task to self-terminate
         if (m_taskHandle != nullptr)
         {
-            // The task will exit loop because m_recording is false
-            // We wait a tiny bit to make sure the task is deleted
             delay(100);
             m_taskHandle = nullptr;
         }
@@ -128,11 +135,43 @@ namespace VOXA
             m_file.seek(0);
             writeWavHeader(m_file, dataSize);
             m_file.close();
-            Serial.printf("[MicrophoneService] Recording saved. Size: %u bytes, Duration: %u ms\n", dataSize + 44, m_durationMs);
+            
+            // Validate recorded WAV file on SPIFFS
+            File checkFile = SPIFFS.open(m_filePath.c_str(), "r");
+            bool isValidWav = false;
+            uint32_t sz = 0;
+            if (checkFile)
+            {
+                sz = checkFile.size();
+                if (sz >= 44)
+                {
+                    uint8_t hdr[44];
+                    checkFile.read(hdr, 44);
+                    // Confirm standard riff chunk markers
+                    bool riffOk = (memcmp(&hdr[0], "RIFF", 4) == 0);
+                    bool waveOk = (memcmp(&hdr[8], "WAVE", 4) == 0);
+                    bool fmtOk  = (memcmp(&hdr[12], "fmt ", 4) == 0);
+                    bool dataOk = (memcmp(&hdr[36], "data", 4) == 0);
+                    isValidWav  = riffOk && waveOk && fmtOk && dataOk;
+                }
+                checkFile.close();
+            }
+
+            if (isValidWav)
+            {
+                Serial.printf("[MicrophoneService] WAV file validation SUCCESS: %s (%u bytes, %u ms)\n",
+                              m_filePath.c_str(), sz, m_durationMs);
+            }
+            else
+            {
+                Serial.printf("[MicrophoneService] WAV file validation ERROR (invalid format/size): %s (%u bytes)\n",
+                              m_filePath.c_str(), sz);
+            }
         }
 
         return true;
     }
+
 
     uint32_t MicrophoneService::getDurationMs() const
     {

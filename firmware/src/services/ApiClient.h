@@ -52,10 +52,12 @@ namespace VOXA
 
         void        loadBaseUrl();
         void        saveBaseUrl(const std::string& url);
+        std::string discoverBackendIP();
 
         std::string parseTextField(const std::string& json);
         bool        parseBoolField(const std::string& json, const std::string& key);
     };
+
 
     extern ApiClient apiClient;
 }

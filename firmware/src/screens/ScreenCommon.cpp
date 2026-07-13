@@ -2,6 +2,8 @@
 #include "../ui/Theme.h"
 #include "../services/TimeService.h"
 #include "../services/WiFiManager.h"
+#include "../services/MicrophoneService.h"
+
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -93,7 +95,14 @@ namespace VOXA::ScreenCommon
         canvas.setTextDatum(textdatum_t::top_left);
         canvas.drawString("VOXA", 10, 4);
 
+        if (VOXA::microphoneService.isRecording())
+        {
+            uint16_t dotColor = ((millis() / 500) % 2 == 0) ? canvas.color565(255, 40, 40) : canvas.color565(120, 20, 20);
+            canvas.fillCircle(65, 11, 4, dotColor);
+        }
+
         canvas.setTextDatum(textdatum_t::top_center);
+
         canvas.drawString(getCurrentTimeStr().c_str(), w * 0.5f, 4);
 
         // Status bar icons (Wifi, Battery)

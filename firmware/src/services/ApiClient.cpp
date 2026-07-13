@@ -153,15 +153,66 @@ namespace VOXA
 
         // ── Stream upload via raw WiFiClient (memory-efficient, no heap spike) ──
         WiFiClient client;
-        client.setTimeout(API_READ_MS / 1000);
+        client.setTimeout(API_READ_MS);
 
-        if (!client.connect(host.c_str(), port))
-        {
-            file.close();
-            result.error = std::string("Cannot reach server at ") + host.c_str() + ":" + std::to_string(port);
-            Serial.printf("[ApiClient] Cannot connect to %s:%d\n", host.c_str(), port);
-            return result;
-        }
+         uint32_t connStart = millis();
+         bool connected = client.connect(host.c_str(), port);
+         uint32_t connTime = millis() - connStart;
+ 
+         if (!connected)
+         {
+             Serial.printf("[ApiClient] Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
+             std::string discoveredUrl = discoverBackendIP();
+             if (!discoveredUrl.empty())
+             {
+                 saveBaseUrl(discoveredUrl);
+                 urlStr = (discoveredUrl + "/api/voice/upload").c_str();
+                 int newSchemeEnd = urlStr.indexOf("://");
+                 if (newSchemeEnd >= 0)
+                 {
+                     String rest = urlStr.substring(newSchemeEnd + 3);
+                     int slashPos = rest.indexOf('/');
+                     String hostPort = (slashPos >= 0) ? rest.substring(0, slashPos) : rest;
+                     int colonPos = hostPort.indexOf(':');
+                     if (colonPos >= 0)
+                     {
+                         host = hostPort.substring(0, colonPos);
+                         port = hostPort.substring(colonPos + 1).toInt();
+                     }
+                     else
+                     {
+                         host = hostPort;
+                         port = 80;
+                     }
+                 }
+                 Serial.printf("[ApiClient] Retrying connection to auto-discovered backend: %s:%d\n", host.c_str(), port);
+                 connStart = millis();
+                 connected = client.connect(host.c_str(), port);
+                 connTime = millis() - connStart;
+             }
+         }
+
+         if (!connected)
+         {
+             file.close();
+             if (WiFi.status() != WL_CONNECTED)
+             {
+                 result.error = "Wi-Fi disconnected";
+             }
+             else if (connTime < 300)
+             {
+                 result.error = "Backend not running";
+             }
+             else
+             {
+                 result.error = "Wrong IP / Timeout";
+             }
+             Serial.printf("[ApiClient] Connection failed in %u ms: %s (Host: %s:%d)\n",
+                           connTime, result.error.c_str(), host.c_str(), port);
+             return result;
+         }
+
+
 
         // HTTP request line + headers
         client.printf("POST %s HTTP/1.1\r\n",       path.c_str());
@@ -228,15 +279,30 @@ namespace VOXA
 
         if (httpCode == 200 || httpCode == 201)
         {
-            result.success = parseBoolField(result.body, "success");
-            result.text    = parseTextField(result.body);
-            Serial.printf("[ApiClient] Response OK. Text: \"%s\"\n", result.text.c_str());
+            if (result.body.find("\"success\"") == std::string::npos)
+            {
+                result.error = "Invalid Response JSON";
+                result.success = false;
+                Serial.printf("[ApiClient] Response is not valid JSON: %s\n", result.body.c_str());
+            }
+            else
+            {
+                result.success = parseBoolField(result.body, "success");
+                result.text    = parseTextField(result.body);
+                if (!result.success)
+                {
+                    result.error = "Upload failed in backend";
+                }
+                Serial.printf("[ApiClient] Response parsed successfully. Success: %s, Text: \"%s\"\n",
+                              result.success ? "true" : "false", result.text.c_str());
+            }
         }
         else
         {
-            result.error = "Server returned HTTP " + std::to_string(httpCode);
-            Serial.printf("[ApiClient] Server error: %d | %s\n", httpCode, result.body.c_str());
+            result.error = "HTTP Error " + std::to_string(httpCode);
+            Serial.printf("[ApiClient] Server returned HTTP %d: %s\n", httpCode, result.body.c_str());
         }
+
 
         return result;
     }
@@ -264,7 +330,7 @@ namespace VOXA
         }
 
         WiFiClient client;
-        client.setTimeout(API_READ_MS / 1000);
+        client.setTimeout(API_READ_MS);
         if (!client.connect(host.c_str(), port)) { result.error = "Cannot connect"; return result; }
 
         client.printf("GET %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\n\r\n",
@@ -310,7 +376,7 @@ namespace VOXA
         }
 
         WiFiClient client;
-        client.setTimeout(API_READ_MS / 1000);
+        client.setTimeout(API_READ_MS);
         if (!client.connect(host.c_str(), port)) { result.error = "Cannot connect"; return result; }
 
         client.printf("POST %s HTTP/1.1\r\n",        path.c_str());
@@ -341,4 +407,40 @@ namespace VOXA
         }
         return result;
     }
+
+    std::string ApiClient::discoverBackendIP()
+    {
+        if (WiFi.status() != WL_CONNECTED) return "";
+
+        IPAddress localIP = WiFi.localIP();
+        IPAddress subnet = WiFi.subnetMask();
+
+        // Standard Class C subnet (/24)
+        if (subnet[0] == 255 && subnet[1] == 255 && subnet[2] == 255)
+        {
+            Serial.println("[ApiClient] Scanning local subnet for active backend on port 8000...");
+            IPAddress targetIP = localIP;
+
+            for (int i = 1; i < 255; ++i)
+            {
+                if (i == localIP[3]) continue; // Skip own IP
+
+                targetIP[3] = i;
+                WiFiClient testClient;
+                testClient.setTimeout(1); // 1 sec socket timeout
+                
+                // Fast connect sweep: local port 8000 closed/open handshake is very fast
+                if (testClient.connect(targetIP, 8000))
+                {
+                    testClient.stop();
+                    String discoveredUrl = "http://" + targetIP.toString() + ":8000";
+                    Serial.printf("[ApiClient] Auto-discovered backend at: %s\n", discoveredUrl.c_str());
+                    return discoveredUrl.c_str();
+                }
+            }
+            Serial.println("[ApiClient] Subnet scan complete: no backend found on port 8000");
+        }
+        return "";
+    }
 }
+

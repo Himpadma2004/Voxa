@@ -18,6 +18,7 @@ public:
 
 private:
     bool m_wasTouched = false;
+    uint32_t m_lastPollMs { 0 };
     CSE_CST328 touch =
         CSE_CST328(
             240,

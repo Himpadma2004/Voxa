@@ -18,6 +18,7 @@ namespace VOXA
         [[nodiscard]] std::vector<Recording> getAll();
         Recording add(const std::string& title, const std::string& filePath, uint32_t durationSeconds, const std::string& timestamp);
         bool remove(uint32_t id);
+        bool update(const Recording& recording);
 
     private:
         StorageService* m_storage { nullptr };

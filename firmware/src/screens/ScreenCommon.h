@@ -19,7 +19,8 @@ namespace VOXA
         Others,
         Settings,
         SyncStatus,
-        Detail
+        Detail,
+        RecordingsLibrary
     };
 
     enum class Icon

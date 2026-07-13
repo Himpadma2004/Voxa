@@ -43,3 +43,10 @@ def save_reminder(
     print(
         "✅ Reminder Saved"
     )
+
+
+def load_all_reminders():
+    """
+    Load all reminders from the MongoDB collection.
+    """
+    return list(reminders_collection.find())

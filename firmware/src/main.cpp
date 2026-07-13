@@ -15,6 +15,7 @@
 #include "screens/SettingsScreen.h"
 #include "screens/SyncStatusScreen.h"
 #include "screens/DetailScreen.h"
+#include "screens/RecordingsLibraryScreen.h"
 #include "screens/Transition.h"
 #include "services/TimeService.h"
 #include "services/WiFiManager.h"
@@ -62,8 +63,58 @@ OthersScreen othersScreen;
 SettingsScreen settingsScreen;
 SyncStatusScreen syncStatusScreen;
 DetailScreen detailScreen;
+RecordingsLibraryScreen recordingsLibraryScreen;
 
 ScreenId activeScreen = ScreenId::Home;
+
+namespace
+{
+    void backgroundUploadTask(void* /*param*/)
+    {
+        while (true)
+        {
+            // Delay 10 seconds between checks
+            vTaskDelay(pdMS_TO_TICKS(10000));
+
+            if (!wifiManager.isConnected())
+            {
+                continue;
+            }
+
+            auto recordings = recordingService.getAll();
+            for (auto& rec : recordings)
+            {
+                if (rec.timestamp == "Pending")
+                {
+                    Serial.printf("[BackgroundUpload] Found pending voice note: %s\n", rec.filePath.c_str());
+
+                    // Check server availability before attempting upload
+                    if (!apiClient.isReachable())
+                    {
+                        Serial.println("[BackgroundUpload] Server unreachable. Will retry later.");
+                        break; // Stop iterating if server is unreachable
+                    }
+
+                    ApiResult res = apiClient.uploadVoice(rec.filePath);
+                    if (res.success)
+                    {
+                        Serial.printf("[BackgroundUpload] Successfully uploaded pending note: %s\n", res.text.c_str());
+                        rec.title = res.text;
+                        rec.timestamp = "Uploaded";
+                        recordingService.update(rec);
+                    }
+                    else
+                    {
+                        Serial.printf("[BackgroundUpload] Upload failed: %s\n", res.error.c_str());
+                    }
+
+                    // Delay 2 seconds between consecutive uploads
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                }
+            }
+        }
+    }
+}
 
 void setup()
 {
@@ -350,6 +401,7 @@ void setup()
   }
 
   Serial.println("Boot complete. Starting main screen loop...");
+  xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);
 }
 
 void loop()
@@ -396,6 +448,10 @@ void loop()
     case ScreenId::Detail:
       Serial.println("Opening Detail Screen...");
       nextScreen = detailScreen.show(touch);
+      break;
+    case ScreenId::RecordingsLibrary:
+      Serial.println("Opening Recordings Library Screen...");
+      nextScreen = recordingsLibraryScreen.show(touch);
       break;
     default:
       nextScreen = ScreenId::Home;

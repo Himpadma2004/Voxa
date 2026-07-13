@@ -15,16 +15,6 @@ namespace VOXA
     class HomeScreen
     {
     public:
-        /// Recording + upload state machine states.
-        enum class RecordState
-        {
-            Idle,       ///< Mic button visible, idle
-            Recording,  ///< Capturing audio (stub or real mic)
-            Uploading,  ///< WAV file being uploaded to backend (background task)
-            Result,     ///< Transcribed text received — showing result card
-            Error,      ///< Upload or server error — showing error card
-        };
-
         HomeScreen();
         ScreenId show(Touch& touch);
 
@@ -40,14 +30,6 @@ namespace VOXA
 
         // ── Services ────────────────────────────────────────────────────
         TimeService       m_timeService;
-
-
-
-        // ── Recording state machine ──────────────────────────────────────
-        RecordState m_recState      { RecordState::Idle };
-        std::string m_resultText;     ///< Transcribed text from backend
-        std::string m_errorText;      ///< Error message to display
-        uint32_t    m_resultShownMs { 0 }; ///< Timestamp when result/error was set
 
         // ── Animation ───────────────────────────────────────────────────
         float m_elapsed { 0.0f };
