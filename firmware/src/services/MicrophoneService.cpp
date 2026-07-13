@@ -30,14 +30,13 @@ namespace VOXA
         // Setup I2S configuration for I2S microphone (e.g., INMP441)
         i2s_config_t i2s_config = {
             .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-            .sample_rate = 16000,                         // 16 kHz
-            .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT, // 16-bit
-            // .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
-            .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,       // Mono
-            .communication_format = I2S_COMM_FORMAT_STAND_I2S, // Standard I2S
+            .sample_rate = 16000,
+            .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
+            .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+            .communication_format = I2S_COMM_FORMAT_I2S,
             .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-            .dma_buf_count = 8,
-            .dma_buf_len = 512,
+            .dma_buf_count = 16,
+            .dma_buf_len = 256,
             .use_apll = false,
             .tx_desc_auto_clear = false,
             .fixed_mclk = 0};
@@ -46,7 +45,7 @@ namespace VOXA
             .bck_io_num = 4,        // BCLK pin 4
             .ws_io_num = 5,         // LRCK pin 5
             .data_out_num = -1,     // Not used
-            .data_in_num = 6        // SD pin 6
+            .data_in_num = 7        // SD pin 6
         };
 
         Serial.println("[MicrophoneService] Configuring I2S parameters:");
@@ -180,45 +179,66 @@ namespace VOXA
     }
 
     void MicrophoneService::recordTask()
+{
+    constexpr int BUFFER_SAMPLES = 256;
+
+    int32_t rawBuffer[BUFFER_SAMPLES];
+    int16_t pcmBuffer[BUFFER_SAMPLES];
+
+    i2s_zero_dma_buffer(I2S_NUM_0);
+
+    while (m_recording)
     {
-        constexpr size_t samplesPerRead = 256;
+        size_t bytesRead = 0;
 
-        int32_t i2sBuffer[samplesPerRead];
-        int16_t pcmBuffer[samplesPerRead];
+        esp_err_t err = i2s_read(
+            I2S_NUM_0,
+            rawBuffer,
+            sizeof(rawBuffer),
+            &bytesRead,
+            portMAX_DELAY);
+        static bool once = true;
 
-        i2s_zero_dma_buffer(I2S_NUM_0);
+        // if (once)
+        // {
+        //     once = false;
 
-        while (m_recording)
+        //     Serial.println("===== RAW I2S SAMPLES =====");
+
+        //     for (int i = 0; i < 50; i++)
+        //     {
+        //         Serial.println(rawBuffer[i]);
+        //     }
+
+        //     Serial.println("===========================");
+        // }
+
+        if (err == ESP_OK && bytesRead > 0)
         {
-            size_t bytesRead = 0;
+            int sampleCount = bytesRead / sizeof(int32_t);
 
-            esp_err_t err = i2s_read(
-                I2S_NUM_0,
-                i2sBuffer,
-                sizeof(i2sBuffer),
-                &bytesRead,
-                portMAX_DELAY);
-
-            if (err == ESP_OK && bytesRead > 0)
+            for (int i = 0; i < sampleCount; i++)
             {
-                int samples = bytesRead / sizeof(int32_t);
+                int32_t sample = rawBuffer[i];
 
-                for (int i = 0; i < samples; i++)
-                {
-                    // Convert 32-bit I2S sample to 16-bit PCM
-                    pcmBuffer[i] = (int16_t)(i2sBuffer[i] >> 14);
-                }
+                // Extract the upper 16 bits from the 32-bit sample
+                sample = sample >> 16;
 
-                m_file.write(
-                    (uint8_t *)pcmBuffer,
-                    samples * sizeof(int16_t));
+                // Clamp
+                if (sample > 32767) sample = 32767;
+                if (sample < -32768) sample = -32768;
+
+                pcmBuffer[i] = (int16_t)sample;
             }
 
-            vTaskDelay(1);
+            m_file.write(
+                (uint8_t*)pcmBuffer,
+                sampleCount * sizeof(int16_t));
         }
-
-        vTaskDelete(NULL);
     }
+
+    vTaskDelete(nullptr);
+}
 
     // WAV Header format
     struct WavHeader
