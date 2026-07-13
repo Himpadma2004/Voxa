@@ -30,17 +30,17 @@ namespace VOXA
         // Setup I2S configuration for I2S microphone (e.g., INMP441)
         i2s_config_t i2s_config = {
             .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-            .sample_rate = 16000,                               // 16 kHz
-            .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,       // 16-bit
-            .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,        // Mono
-            .communication_format = I2S_COMM_FORMAT_STAND_I2S,  // Standard I2S
+            .sample_rate = 16000,                         // 16 kHz
+            .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT, // 16-bit
+            // .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
+            .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,       // Mono
+            .communication_format = I2S_COMM_FORMAT_STAND_I2S, // Standard I2S
             .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
             .dma_buf_count = 8,
             .dma_buf_len = 512,
             .use_apll = false,
             .tx_desc_auto_clear = false,
-            .fixed_mclk = 0
-        };
+            .fixed_mclk = 0};
 
         i2s_pin_config_t pin_config = {
             .bck_io_num = 4,        // BCLK pin 4
@@ -181,23 +181,40 @@ namespace VOXA
 
     void MicrophoneService::recordTask()
     {
-        // 1024 bytes buffer for 512 samples of 16-bit audio
-        constexpr size_t bufferSize = 1024;
-        uint8_t buffer[bufferSize];
+        constexpr size_t samplesPerRead = 256;
 
-        // Clear I2S DMA buffers
+        int32_t i2sBuffer[samplesPerRead];
+        int16_t pcmBuffer[samplesPerRead];
+
         i2s_zero_dma_buffer(I2S_NUM_0);
 
         while (m_recording)
         {
             size_t bytesRead = 0;
-            esp_err_t err = i2s_read(I2S_NUM_0, buffer, bufferSize, &bytesRead, portMAX_DELAY);
+
+            esp_err_t err = i2s_read(
+                I2S_NUM_0,
+                i2sBuffer,
+                sizeof(i2sBuffer),
+                &bytesRead,
+                portMAX_DELAY);
+
             if (err == ESP_OK && bytesRead > 0)
             {
-                m_file.write(buffer, bytesRead);
+                int samples = bytesRead / sizeof(int32_t);
+
+                for (int i = 0; i < samples; i++)
+                {
+                    // Convert 32-bit I2S sample to 16-bit PCM
+                    pcmBuffer[i] = (int16_t)(i2sBuffer[i] >> 14);
+                }
+
+                m_file.write(
+                    (uint8_t *)pcmBuffer,
+                    samples * sizeof(int16_t));
             }
-            // Yield to other tasks
-            vTaskDelay(pdMS_TO_TICKS(1));
+
+            vTaskDelay(1);
         }
 
         vTaskDelete(NULL);
