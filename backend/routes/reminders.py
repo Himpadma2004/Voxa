@@ -1,33 +1,68 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from reminders.reminder_repository import load_all_reminders
 
 router = APIRouter(prefix="/api/reminders", tags=["Reminders"])
 
 
+def _serialize_value(value):
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    elif isinstance(value, list):
+        return [_serialize_value(item) for item in value]
+    elif isinstance(value, dict):
+        return {key: _serialize_value(val) for key, val in value.items()}
+    else:
+        return value
+
+
+def _normalize_reminder(reminder, index):
+    reminder_time = reminder.get("reminder_time") or reminder.get("dateTime") or reminder.get("timestamp")
+    created_at = reminder.get("created_at")
+    status = str(reminder.get("status", "pending")).lower()
+
+    return {
+        "id": index + 1,
+        "title": reminder.get("title", ""),
+        "dateTime": _serialize_value(reminder_time) if reminder_time else "",
+        "completed": status == "completed",
+        "comments": reminder.get("comments", ""),
+        "created_at": _serialize_value(created_at) if created_at else "",
+        "audio_id": reminder.get("audio_id", ""),
+        "status": reminder.get("status", "pending"),
+    }
+
+
 @router.get("")
-def read_all_reminders():
+def read_all_reminders(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=200)
+):
     """
     Fetch all calendar reminders from MongoDB.
     """
     try:
         reminders = load_all_reminders()
-        # Convert ObjectId and datetime to string for JSON serialization
-        for r in reminders:
-            if "_id" in r:
-                r["_id"] = str(r["_id"])
-            if "reminder_time" in r and r["reminder_time"]:
-                if hasattr(r["reminder_time"], "isoformat"):
-                    r["reminder_time"] = r["reminder_time"].isoformat()
-                else:
-                    r["reminder_time"] = str(r["reminder_time"])
-            if "created_at" in r and r["created_at"]:
-                if hasattr(r["created_at"], "isoformat"):
-                    r["created_at"] = r["created_at"].isoformat()
-                else:
-                    r["created_at"] = str(r["created_at"])
+        reminders.sort(
+            key=lambda r: _serialize_value(r.get("created_at") or r.get("reminder_time") or r.get("_id") or ""),
+            reverse=True
+        )
 
-        return JSONResponse(content={"success": True, "reminders": reminders})
+        total = len(reminders)
+        page_items = reminders[skip: skip + limit]
+        items = [_normalize_reminder(reminder, skip + index) for index, reminder in enumerate(page_items)]
+
+        return JSONResponse(content={
+            "success": True,
+            "items": items,
+            "reminders": items,
+            "page": {
+                "skip": skip,
+                "limit": limit,
+                "total": total,
+                "has_more": (skip + limit) < total,
+            }
+        })
     except Exception as e:
         return JSONResponse(
             status_code=500,

@@ -29,6 +29,7 @@
 #include "services/SettingsService.h"
 #include "services/MemoryService.h"
 #include "services/SearchService.h"
+#include "services/DataService.h"
 #include "services/ApiClient.h"
 
 using namespace VOXA;
@@ -69,6 +70,24 @@ ScreenId activeScreen = ScreenId::Home;
 
 namespace
 {
+    void backgroundDataSyncTask(void* /*param*/)
+    {
+        bool lastConnected = VOXA::wifiManager.isConnected();
+
+        while (true)
+        {
+            bool connected = VOXA::wifiManager.isConnected();
+            if (connected && !lastConnected)
+            {
+                Serial.println("[DataSync] Wi-Fi reconnected. Refreshing backend data...");
+                VOXA::dataService.syncAll();
+            }
+
+            lastConnected = connected;
+            vTaskDelay(pdMS_TO_TICKS(15000));
+        }
+    }
+
     void backgroundUploadTask(void* /*param*/)
     {
         while (true)
@@ -159,6 +178,7 @@ void setup()
 
   // Initialize system/RTC clock (NTP will sync once WiFi connects)
   timeService.begin();
+    dataService.begin();
 
   // Initialize WiFiManager preferences and legacy cleanup
   wifiManager.begin();
@@ -224,6 +244,8 @@ void setup()
           Display::lcd.setTextColor(TFT_WHITE);
           Display::lcd.drawString(wifiManager.getIPAddress().c_str(), w * 0.5f, h * 0.65f);
           delay(1500);
+
+          dataService.syncAll();
           
           wifiConnected = true;
       }
@@ -411,6 +433,7 @@ void setup()
 
   Serial.println("Boot complete. Starting main screen loop...");
   xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(backgroundDataSyncTask, "BgDataSync", 8192, nullptr, 1, nullptr, 0);
 }
 
 void loop()
@@ -475,4 +498,4 @@ void loop()
 
   delay(10);
 }
-
+

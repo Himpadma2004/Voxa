@@ -1,7 +1,7 @@
 #include "RecordingService.h"
+#include "DataService.h"
 #include "StorageService.h"
 #include <SPIFFS.h>
-#include <algorithm>
 
 namespace VOXA
 {
@@ -12,24 +12,21 @@ namespace VOXA
 
     std::vector<Recording> RecordingService::getAll()
     {
-        auto recordings = m_storage->loadAllRecordings();
-        bool changed = false;
+        auto recordings = dataService.getRecordings();
         for (auto it = recordings.begin(); it != recordings.end(); )
         {
             if (it->filePath == "filePath.wav" || it->filePath == "filePath" || it->filePath.empty())
             {
                 Serial.printf("[RecordingService] Healing DB: removing invalid record ID %u (%s)\n", it->id, it->filePath.c_str());
+                dataService.removeRecordingLocal(it->id);
                 m_storage->deleteRecording(it->id);
                 it = recordings.erase(it);
-                changed = true;
             }
             else
             {
                 ++it;
             }
         }
-        std::sort(recordings.begin(), recordings.end(),
-                  [](const Recording& a, const Recording& b) { return a.id < b.id; });
         return recordings;
     }
 
@@ -42,29 +39,26 @@ namespace VOXA
         r.durationSeconds = durationSeconds;
         r.timestamp = timestamp;
         m_storage->saveRecording(r);
+        dataService.addRecordingLocal(r);
 
         // Load and auto-prune to keep only the 3 latest recordings (satisfying 'clean the Recording libraries')
-        auto all = m_storage->loadAllRecordings();
-        std::sort(all.begin(), all.end(),
-                  [](const Recording& a, const Recording& b) { return a.id < b.id; });
-
+        auto all = dataService.getRecordings();
         while (all.size() > 3)
         {
-            SPIFFS.remove(all[0].filePath.c_str());
-            Serial.printf("[RecordingService] Pruned oldest physical recording file: %s\n", all[0].filePath.c_str());
-            m_storage->deleteRecording(all[0].id);
-            all.erase(all.begin());
+            const auto& oldest = all.back();
+            SPIFFS.remove(oldest.filePath.c_str());
+            Serial.printf("[RecordingService] Pruned oldest physical recording file: %s\n", oldest.filePath.c_str());
+            dataService.removeRecordingLocal(oldest.id);
+            m_storage->deleteRecording(oldest.id);
+            all.pop_back();
         }
 
-        for (auto it = all.rbegin(); it != all.rend(); ++it)
-            if (it->title == title && it->filePath == filePath)
-                return *it;
         return r;
     }
 
     bool RecordingService::remove(uint32_t id)
     {
-        auto all = m_storage->loadAllRecordings();
+        auto all = dataService.getRecordings();
         for (const auto& r : all)
         {
             if (r.id == id)
@@ -74,11 +68,13 @@ namespace VOXA
                 break;
             }
         }
+        dataService.removeRecordingLocal(id);
         return m_storage->deleteRecording(id);
     }
 
     bool RecordingService::update(const Recording& recording)
     {
+        dataService.updateRecordingLocal(recording);
         return m_storage->saveRecording(recording);
     }
 }

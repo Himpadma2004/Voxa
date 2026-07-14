@@ -1,4 +1,5 @@
 #include "MemoryService.h"
+#include "DataService.h"
 #include "../storage/MemoryStorage.h"
 
 #include <algorithm>
@@ -29,12 +30,12 @@ namespace VOXA
 
     std::vector<Memory> MemoryService::getAll()
     {
-        return m_storage->loadAll();
+        return dataService.getOthers();
     }
 
     Memory MemoryService::getById(uint32_t id)
     {
-        auto list = m_storage->loadAll();
+        auto list = getAll();
         for (const auto& m : list)
         {
             if (m.id == id) return m;
@@ -46,33 +47,36 @@ namespace VOXA
     {
         Memory m = memory;
         m_storage->add(m);
-        // Reload list to find the newly assigned auto-increment id
-        auto list = m_storage->loadAll();
+        dataService.addOtherLocal(m);
+        auto list = dataService.getOthers();
         if (!list.empty())
         {
-            return list.back();
+            return list.front();
         }
         return m;
     }
 
     bool MemoryService::update(const Memory& memory)
     {
+        dataService.updateOtherLocal(memory);
         return m_storage->update(memory);
     }
 
     bool MemoryService::remove(uint32_t id)
     {
+        dataService.removeOtherLocal(id);
         return m_storage->remove(id);
     }
 
     bool MemoryService::favorite(uint32_t id, bool isFavorite)
     {
-        auto list = m_storage->loadAll();
+        auto list = dataService.getOthers();
         for (auto& m : list)
         {
             if (m.id == id)
             {
                 m.favorite = isFavorite;
+                dataService.updateOtherLocal(m);
                 return m_storage->update(m);
             }
         }
@@ -81,7 +85,7 @@ namespace VOXA
 
     std::vector<Memory> MemoryService::search(const std::string& query, const std::string& sortBy)
     {
-        auto list = m_storage->loadAll();
+        auto list = getAll();
         std::vector<Memory> results;
 
         if (query.empty())
@@ -151,7 +155,7 @@ namespace VOXA
 
     std::vector<Memory> MemoryService::getByCategory(const std::string& category)
     {
-        auto list = m_storage->loadAll();
+        auto list = getAll();
         std::vector<Memory> results;
         for (const auto& m : list)
         {

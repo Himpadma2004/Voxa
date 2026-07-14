@@ -2,7 +2,11 @@
 #include "../ui/Theme.h"
 #include "Transition.h"
 #include "../services/ApiClient.h"
+#include "../services/ReminderService.h"
+#include "../services/IdeaService.h"
+#include "../services/QuestionService.h"
 #include "../services/RecordingService.h"
+#include <array>
 #include <cmath>
 #include <algorithm>
 #include <ctime>
@@ -31,6 +35,9 @@ namespace
 
 namespace VOXA
 {
+    extern ReminderService reminderService;
+    extern IdeaService ideaService;
+    extern QuestionService questionService;
     extern RecordingService recordingService;
 
     HomeScreen::HomeScreen()
@@ -487,11 +494,20 @@ namespace VOXA
         }
         LovyanGFX& target = useSprite ? (LovyanGFX&)canvas : (LovyanGFX&)Display::lcd;
 
-        // Mock badge counts
-        int remCount = 3;
-        int ideaCount = 4;
-        int qCount = 4;
-        int memCount = 6;
+        auto refreshCounts = [&]() {
+            int remCount = reminderService.getPendingCount();
+            int ideaCount = static_cast<int>(ideaService.getAll().size());
+            int qCount = static_cast<int>(questionService.getAll().size());
+            int memCount = static_cast<int>(recordingService.getAll().size());
+            return std::array<int, 4>{ remCount, ideaCount, qCount, memCount };
+        };
+
+        auto counts = refreshCounts();
+        int remCount = counts[0];
+        int ideaCount = counts[1];
+        int qCount = counts[2];
+        int memCount = counts[3];
+        uint32_t lastCountRefreshMs = millis();
 
         ScreenId targetScreen = ScreenId::Home;
         uint32_t lastMs = millis();
@@ -502,6 +518,16 @@ namespace VOXA
             uint32_t nowMs = millis();
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
+
+            if (nowMs - lastCountRefreshMs > 5000)
+            {
+                counts = refreshCounts();
+                remCount = counts[0];
+                ideaCount = counts[1];
+                qCount = counts[2];
+                memCount = counts[3];
+                lastCountRefreshMs = nowMs;
+            }
 
             m_elapsed += deltaSecs;
 

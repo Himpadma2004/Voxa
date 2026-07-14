@@ -1,7 +1,6 @@
 #include "IdeaService.h"
+#include "DataService.h"
 #include "StorageService.h"
-
-#include <algorithm>
 
 namespace VOXA
 {
@@ -12,10 +11,7 @@ namespace VOXA
 
     std::vector<Idea> IdeaService::getAll()
     {
-        auto ideas = m_storage->loadAllIdeas();
-        std::sort(ideas.begin(), ideas.end(),
-                [](const Idea& a, const Idea& b) { return a.id < b.id; });
-        return ideas;
+        return dataService.getIdeas();
     }
 
     Idea IdeaService::add(const std::string& title, const std::string& content, const std::string& timestamp)
@@ -26,16 +22,13 @@ namespace VOXA
         idea.content = content;
         idea.timestamp = timestamp;
         m_storage->saveIdea(idea);
-
-        auto all = m_storage->loadAllIdeas();
-        for (auto it = all.rbegin(); it != all.rend(); ++it)
-            if (it->title == title && it->timestamp == timestamp)
-                return *it;
+        dataService.addIdeaLocal(idea);
         return idea;
     }
 
     bool IdeaService::remove(uint32_t id)
     {
+        dataService.removeIdeaLocal(id);
         return m_storage->deleteIdea(id);
     }
 }

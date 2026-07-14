@@ -1,7 +1,6 @@
 #include "ReminderService.h"
+#include "DataService.h"
 #include "StorageService.h"
-
-#include <algorithm>
 
 namespace VOXA
 {
@@ -12,10 +11,7 @@ namespace VOXA
 
     std::vector<Reminder> ReminderService::getAll()
     {
-        auto reminders = m_storage->loadAllReminders();
-        std::sort(reminders.begin(), reminders.end(),
-                  [](const Reminder& a, const Reminder& b) { return a.id < b.id; });
-        return reminders;
+        return dataService.getReminders();
     }
 
     std::vector<Reminder> ReminderService::getPending()
@@ -41,12 +37,8 @@ namespace VOXA
         r.dateTime = dateTime;
         r.completed = false;
         m_storage->saveReminder(r);
+        dataService.addReminderLocal(r);
 
-        // Reload to get the assigned id.
-        auto all = m_storage->loadAllReminders();
-        for (auto it = all.rbegin(); it != all.rend(); ++it)
-            if (it->title == title && it->dateTime == dateTime)
-                return *it;
         return r;
     }
 
@@ -58,6 +50,7 @@ namespace VOXA
             if (r.id == id)
             {
                 r.completed = true;
+                dataService.updateReminderLocal(r);
                 return m_storage->saveReminder(r);
             }
         }
@@ -66,6 +59,7 @@ namespace VOXA
 
     bool ReminderService::remove(uint32_t id)
     {
+        dataService.removeReminderLocal(id);
         return m_storage->deleteReminder(id);
     }
 }
