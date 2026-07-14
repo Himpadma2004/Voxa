@@ -13,6 +13,7 @@ namespace VOXA
         std::string dateTime;       ///< ISO-style string, e.g. "2026-07-01 20:00"
         bool        completed { false };
         std::string comments;       ///< Delimited comments
+        bool        pinned    { false };
 
         /// Returns true if this reminder has been set and has a valid id.
         [[nodiscard]] bool isValid() const { return id != 0 && !title.empty(); }

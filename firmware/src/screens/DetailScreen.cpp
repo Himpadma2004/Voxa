@@ -7,6 +7,55 @@
 #include "../services/MemoryService.h"
 #include "Transition.h"
 #include <cmath>
+#include <algorithm>
+
+namespace
+{
+    void drawWrappedString(LGFX_Sprite& canvas, const std::string& text, float x, float& y, float maxW, uint16_t color)
+    {
+        canvas.setTextColor(color);
+        canvas.setTextDatum(textdatum_t::top_left);
+
+        std::string currentLine = "";
+        std::string word = "";
+        
+        for (size_t i = 0; i <= text.size(); i++)
+        {
+            char c = (i < text.size()) ? text[i] : '\0';
+            if (c == ' ' || c == '\n' || c == '\0')
+            {
+                std::string testLine = currentLine.empty() ? word : (currentLine + " " + word);
+                if (canvas.textWidth(testLine.c_str()) > maxW && !currentLine.empty())
+                {
+                    canvas.drawString(currentLine.c_str(), x, y);
+                    y += canvas.fontHeight() + 2.0f;
+                    currentLine = word;
+                }
+                else
+                {
+                    currentLine = testLine;
+                }
+                word = "";
+                if (c == '\n')
+                {
+                    canvas.drawString(currentLine.c_str(), x, y);
+                    y += canvas.fontHeight() + 2.0f;
+                    currentLine = "";
+                }
+            }
+            else
+            {
+                word += c;
+            }
+        }
+
+        if (!currentLine.empty())
+        {
+            canvas.drawString(currentLine.c_str(), x, y);
+            y += canvas.fontHeight() + 2.0f;
+        }
+    }
+}
 
 namespace VOXA
 {
@@ -32,6 +81,18 @@ namespace VOXA
         float dragStartX = 0.0f;
         float dragStartY = 0.0f;
         bool swipeBackCandidate = false;
+
+        // Scroll state variables
+        float m_scrollY = 0.0f;
+        float m_targetScrollY = 0.0f;
+        float m_scrollVelocity = 0.0f;
+        float m_lastDragX = 0.0f;
+        float m_lastDragY = 0.0f;
+        float m_dragStartY = 0.0f;
+        float m_dragStartScrollY = 0.0f;
+        bool  m_wasTouched = false;
+        bool  m_isDragging = false;
+        uint32_t m_lastTouchSampleMs = 0;
 
         uint16_t w = Display::width();
         uint16_t h = Display::height();
@@ -114,6 +175,8 @@ namespace VOXA
             }
         }
 
+        float totalContentHeight = h; // Default to screen height
+
         while (targetScreen == ScreenId::Detail)
         {
             uint32_t nowMs = millis();
@@ -134,13 +197,19 @@ namespace VOXA
                     dragStartX = tx;
                     dragStartY = ty;
                     swipeBackCandidate = (tx < 50);
+                    m_dragStartY = ty;
+                    m_dragStartScrollY = m_targetScrollY;
+                    m_lastTouchSampleMs = nowMs;
+                    m_isDragging = false;
+                    m_scrollVelocity = 0.0f;
+
                     // Back button bounds
                     if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
                     {
                         m_isBackPressed = true;
                     }
 
-                    // Delete button bounds (centered at bottom Y = h - 35, width = 120, height = 26)
+                    // Delete button bounds
                     float delCx = w * 0.5f;
                     float delCy = h - 35.0f;
                     if (tx >= delCx - 60.0f && tx <= delCx + 60.0f &&
@@ -152,11 +221,30 @@ namespace VOXA
                 else
                 {
                     float dx = tx - dragStartX;
-                    float dyLocal = ty - dragStartY;
-                    if (swipeBackCandidate && dx > 60 && std::abs(dyLocal) < 40)
+                    float dy = ty - dragStartY;
+                    
+                    if (swipeBackCandidate && dx > 60 && std::abs(dy) < 40)
                     {
                         targetScreen = s_backRoute;
                         swipeBackCandidate = false;
+                    }
+
+                    if (!m_isDragging && std::abs(dy) > 8.0f && !m_isBackPressed && !m_isDeletePressed)
+                    {
+                        m_isDragging = true;
+                        dragStartY = ty;
+                        m_dragStartScrollY = m_targetScrollY;
+                    }
+
+                    if (m_isDragging)
+                    {
+                        m_targetScrollY = m_dragStartScrollY - dy;
+                        uint32_t dt = nowMs - m_lastTouchSampleMs;
+                        if (dt > 0)
+                        {
+                            m_scrollVelocity = -dy / (dt / 1000.0f);
+                        }
+                        m_lastTouchSampleMs = nowMs;
                     }
                 }
             }
@@ -165,35 +253,38 @@ namespace VOXA
                 if (m_wasTouched)
                 {
                     m_wasTouched = false;
-                    float rx = m_lastDragX;
-                    float ry = m_lastDragY;
-
-                    if (m_isBackPressed)
+                    if (m_isDragging)
                     {
-                        targetScreen = s_backRoute;
+                        m_isDragging = false;
                     }
-                    else if (m_isDeletePressed)
+                    else
                     {
-                        // Perform deletion on target service
-                        if (s_category == "reminders")
+                        if (m_isBackPressed)
                         {
-                            reminderService.remove(s_itemId);
+                            targetScreen = s_backRoute;
                         }
-                        else if (s_category == "ideas")
+                        else if (m_isDeletePressed)
                         {
-                            ideaService.remove(s_itemId);
+                            if (s_category == "reminders")
+                            {
+                                reminderService.remove(s_itemId);
+                            }
+                            else if (s_category == "ideas")
+                            {
+                                ideaService.remove(s_itemId);
+                            }
+                            else if (s_category == "questions")
+                            {
+                                questionService.remove(s_itemId);
+                            }
+                            else if (s_category == "memories")
+                            {
+                                memoryService.remove(s_itemId);
+                            }
+                            Serial.print("[Detail] Deleted item: ");
+                            Serial.println(s_itemId);
+                            targetScreen = s_backRoute;
                         }
-                        else if (s_category == "questions")
-                        {
-                            questionService.remove(s_itemId);
-                        }
-                        else if (s_category == "memories")
-                        {
-                            memoryService.remove(s_itemId);
-                        }
-                        Serial.print("[Detail] Deleted item: ");
-                        Serial.println(s_itemId);
-                        targetScreen = s_backRoute;
                     }
                     m_isBackPressed = false;
                     m_isDeletePressed = false;
@@ -204,44 +295,75 @@ namespace VOXA
             w = Display::width();
             h = Display::height();
 
+            // Perform Scroll Inertia
+            if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
+            {
+                m_targetScrollY += m_scrollVelocity * deltaSecs;
+                m_scrollVelocity *= std::pow(0.85f, deltaSecs * 60.0f);
+                if (std::abs(m_scrollVelocity) < 5.0f)
+                {
+                    m_scrollVelocity = 0.0f;
+                }
+            }
+
+            float visibleHeight = h - 70.0f - 55.0f;
+            float maxScrollY = std::max(0.0f, totalContentHeight - visibleHeight);
+            m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
+            m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
+            if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
+            {
+                m_scrollY = m_targetScrollY;
+            }
+
             // 3. Render Detail Page
             ScreenCommon::renderSurface(canvas, w, h);
             ScreenCommon::renderHeader(canvas, "Detail View", true, false, Icon::Plus, w, h);
 
-            // Back button Y centering (Y = 45.0f)
+            // Back button
             uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
             uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
             ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
                                               backFill, backColor, w, h);
+
+            // Scrollable Content area (70 to h - 55)
+            canvas.setClipRect(0, 70, w, h - 70 - 55);
+
+            float currentY = 76.0f - m_scrollY;
+            float maxW = w * 0.92f;
+            float startX = w * 0.04f;
 
             // Category tag pill
             std::string tagText = s_category;
             std::transform(tagText.begin(), tagText.end(), tagText.begin(), ::toupper);
             if (!tagText.empty() && tagText.back() == 'S') tagText.pop_back(); // singularize
 
-            float tagX = w * 0.04f;
-            float tagY = 74.0f;
             canvas.setFont(&fonts::FreeSans9pt7b);
             float tw = canvas.textWidth(tagText.c_str());
-            canvas.fillRoundRect((int)tagX, (int)tagY, (int)(tw + 12.0f), 20, 4, tagColor);
+            canvas.fillRoundRect((int)startX, (int)currentY, (int)(tw + 12.0f), 20, 4, tagColor);
             canvas.setTextColor(VoxaTheme::getBackground());
             canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString(tagText.c_str(), tagX + tw * 0.5f + 6.0f, tagY + 10.0f);
+            canvas.drawString(tagText.c_str(), startX + tw * 0.5f + 6.0f, currentY + 10.0f);
+            
+            currentY += 28.0f; // Gap after tag
 
             // Title block
             canvas.setFont(&fonts::FreeSansBold12pt7b);
-            canvas.setTextColor(VoxaTheme::getTextPrimary());
-            canvas.setTextDatum(textdatum_t::top_left);
-            canvas.drawString(titleStr.c_str(), w * 0.04f, 102.0f);
+            drawWrappedString(canvas, titleStr, startX, currentY, maxW, VoxaTheme::getTextPrimary());
+            currentY += 10.0f; // Gap after title
 
             // Content block
             canvas.setFont(&fonts::FreeSans9pt7b);
-            canvas.setTextColor(VoxaTheme::getTextSecondary());
-            canvas.drawString(contentStr.c_str(), w * 0.04f, 134.0f);
+            drawWrappedString(canvas, contentStr, startX, currentY, maxW, VoxaTheme::getTextSecondary());
+            currentY += 10.0f; // Gap after content
 
             // Status block
-            canvas.setTextColor(VoxaTheme::getPrimary());
-            canvas.drawString(statusStr.c_str(), w * 0.04f, 156.0f);
+            canvas.setFont(&fonts::FreeSans9pt7b);
+            drawWrappedString(canvas, statusStr, startX, currentY, maxW, VoxaTheme::getPrimary());
+            
+            // Calculate total content height (relative to start of scrollable area)
+            totalContentHeight = (currentY + m_scrollY) - 70.0f + 10.0f;
+
+            canvas.clearClipRect();
 
             // Delete button at bottom
             float delCx = w * 0.5f;

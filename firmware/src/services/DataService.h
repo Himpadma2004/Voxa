@@ -58,6 +58,9 @@ namespace VOXA
         bool updateRecordingLocal(const Recording& recording);
         bool removeRecordingLocal(uint32_t id);
 
+        bool moveItem(const std::string& fromCategory, const std::string& toCategory, uint32_t id);
+        bool togglePin(const std::string& category, uint32_t id);
+
     private:
         JsonStorage* m_cache { nullptr };
         bool m_loaded { false };

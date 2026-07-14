@@ -23,6 +23,7 @@ namespace VOXA
         std::string timestamp;          ///< e.g. "2026-06-26 11:44"
         uint32_t    durationSeconds { 0 };  ///< 0 for non-voice memories
         std::string comments;           ///< Delimited comments
+        bool        pinned          { false };
 
         [[nodiscard]] bool isValid() const { return id != 0 && !title.empty(); }
     };

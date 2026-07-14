@@ -3,6 +3,7 @@
 #include "../ui/Theme.h"
 #include "../services/RecordingService.h"
 #include "Transition.h"
+#include "AudioPlayerScreen.h"
 #include <cmath>
 #include <algorithm>
 
@@ -170,7 +171,11 @@ namespace VOXA
 
                     if (m_pressedItemIndex != -1)
                     {
-                        m_selectedDeleteIndex = m_pressedItemIndex;
+                        if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)recordings.size())
+                        {
+                            AudioPlayerScreen::setRecording(recordings[m_pressedItemIndex].id, ScreenId::RecordingsLibrary);
+                            targetScreen = ScreenId::AudioPlayer;
+                        }
                         m_pressedItemIndex = -1;
                     }
 

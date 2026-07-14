@@ -20,7 +20,8 @@ namespace VOXA
         Settings,
         SyncStatus,
         Detail,
-        RecordingsLibrary
+        RecordingsLibrary,
+        AudioPlayer
     };
 
     enum class Icon
@@ -47,7 +48,9 @@ namespace VOXA
         Chat,
         Spark,
         Upload,
-        Rotate
+        Rotate,
+        Play,
+        Pause
     };
 
     namespace ScreenCommon

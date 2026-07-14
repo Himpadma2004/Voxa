@@ -14,6 +14,7 @@ namespace VOXA
         std::string timestamp;  ///< e.g. "2026-05-28"
         bool        answered { false };
         std::string comments;   ///< Delimited comments
+        bool        pinned   { false };
 
         [[nodiscard]] bool isValid() const { return id != 0 && !text.empty(); }
     };

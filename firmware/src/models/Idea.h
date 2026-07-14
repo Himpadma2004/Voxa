@@ -13,6 +13,7 @@ namespace VOXA
         std::string content;
         std::string timestamp;  ///< e.g. "2026-05-28"
         std::string comments;   ///< Semicolon-separated or delimited comments
+        bool        pinned    { false };
 
         [[nodiscard]] bool isValid() const { return id != 0 && !title.empty(); }
     };

@@ -286,6 +286,17 @@ namespace VOXA::ScreenCommon
                 }
                 break;
 
+            case Icon::Play:
+                canvas.fillTriangle(cx - size*0.18f, cy - size*0.3f,
+                                    cx - size*0.18f, cy + size*0.3f,
+                                    cx + size*0.28f, cy, color);
+                break;
+
+            case Icon::Pause:
+                canvas.fillRect(cx - size*0.20f, cy - size*0.3f, size*0.12f, size*0.6f, color);
+                canvas.fillRect(cx + size*0.08f, cy - size*0.3f, size*0.12f, size*0.6f, color);
+                break;
+
             case Icon::Cloud:
                 canvas.fillCircle(cx - size * 0.18f, cy + size * 0.08f, size * 0.16f, color);
                 canvas.fillCircle(cx + size * 0.18f, cy + size * 0.08f, size * 0.16f, color);

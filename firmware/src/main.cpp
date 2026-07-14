@@ -16,6 +16,7 @@
 #include "screens/SyncStatusScreen.h"
 #include "screens/DetailScreen.h"
 #include "screens/RecordingsLibraryScreen.h"
+#include "screens/AudioPlayerScreen.h"
 #include "screens/Transition.h"
 #include "services/TimeService.h"
 #include "services/WiFiManager.h"
@@ -65,6 +66,7 @@ SettingsScreen settingsScreen;
 SyncStatusScreen syncStatusScreen;
 DetailScreen detailScreen;
 RecordingsLibraryScreen recordingsLibraryScreen;
+AudioPlayerScreen audioPlayerScreen;
 
 ScreenId activeScreen = ScreenId::Home;
 
@@ -434,6 +436,10 @@ void loop()
     case ScreenId::RecordingsLibrary:
       Serial.println("Opening Recordings Library Screen...");
       nextScreen = recordingsLibraryScreen.show(touch);
+      break;
+    case ScreenId::AudioPlayer:
+      Serial.println("Opening Audio Player Screen...");
+      nextScreen = audioPlayerScreen.show(touch);
       break;
     default:
       nextScreen = ScreenId::Home;

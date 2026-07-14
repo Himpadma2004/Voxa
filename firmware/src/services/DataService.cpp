@@ -163,6 +163,7 @@ namespace VOXA
             item.dateTime = row.count("dateTime") ? row.at("dateTime") : "";
             item.completed = row.count("completed") && row.at("completed") == "true";
             item.comments = row.count("comments") ? row.at("comments") : "";
+            item.pinned = row.count("pinned") && row.at("pinned") == "true";
             if (item.isValid()) m_reminders.push_back(std::move(item));
         }
 
@@ -174,6 +175,7 @@ namespace VOXA
             item.content = row.count("content") ? row.at("content") : "";
             item.timestamp = row.count("timestamp") ? row.at("timestamp") : "";
             item.comments = row.count("comments") ? row.at("comments") : "";
+            item.pinned = row.count("pinned") && row.at("pinned") == "true";
             if (item.isValid()) m_ideas.push_back(std::move(item));
         }
 
@@ -186,6 +188,7 @@ namespace VOXA
             item.timestamp = row.count("timestamp") ? row.at("timestamp") : "";
             item.answered = row.count("answered") && row.at("answered") == "true";
             item.comments = row.count("comments") ? row.at("comments") : "";
+            item.pinned = row.count("pinned") && row.at("pinned") == "true";
             if (item.isValid()) m_questions.push_back(std::move(item));
         }
 
@@ -202,6 +205,7 @@ namespace VOXA
             item.tags = row.count("tags") ? row.at("tags") : "";
             item.source = row.count("source") ? row.at("source") : "AI";
             item.comments = row.count("comments") ? row.at("comments") : "";
+            item.pinned = row.count("pinned") && row.at("pinned") == "true";
             if (item.isValid()) m_others.push_back(std::move(item));
         }
 
@@ -328,6 +332,7 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_reminders;
         std::sort(copy.begin(), copy.end(), [](const Reminder& a, const Reminder& b) {
+            if (a.pinned != b.pinned) return a.pinned > b.pinned;
             return a.id > b.id;
         });
         return copy;
@@ -338,6 +343,7 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_ideas;
         std::sort(copy.begin(), copy.end(), [](const Idea& a, const Idea& b) {
+            if (a.pinned != b.pinned) return a.pinned > b.pinned;
             return a.id > b.id;
         });
         return copy;
@@ -348,6 +354,7 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_questions;
         std::sort(copy.begin(), copy.end(), [](const Question& a, const Question& b) {
+            if (a.pinned != b.pinned) return a.pinned > b.pinned;
             return a.id > b.id;
         });
         return copy;
@@ -358,6 +365,7 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_others;
         std::sort(copy.begin(), copy.end(), [](const Memory& a, const Memory& b) {
+            if (a.pinned != b.pinned) return a.pinned > b.pinned;
             return a.id > b.id;
         });
         return copy;
@@ -522,7 +530,8 @@ namespace VOXA
                 {"title", item.title},
                 {"dateTime", item.dateTime},
                 {"completed", item.completed ? "true" : "false"},
-                {"comments", item.comments}
+                {"comments", item.comments},
+                {"pinned", item.pinned ? "true" : "false"}
             });
         }
         m_cache->saveJson(kRemindersCache, JsonStorage::serializeObjectArray(rows));
@@ -539,7 +548,8 @@ namespace VOXA
                 {"title", item.title},
                 {"content", item.content},
                 {"timestamp", item.timestamp},
-                {"comments", item.comments}
+                {"comments", item.comments},
+                {"pinned", item.pinned ? "true" : "false"}
             });
         }
         m_cache->saveJson(kIdeasCache, JsonStorage::serializeObjectArray(rows));
@@ -557,7 +567,8 @@ namespace VOXA
                 {"answer", item.answer},
                 {"timestamp", item.timestamp},
                 {"answered", item.answered ? "true" : "false"},
-                {"comments", item.comments}
+                {"comments", item.comments},
+                {"pinned", item.pinned ? "true" : "false"}
             });
         }
         m_cache->saveJson(kQuestionsCache, JsonStorage::serializeObjectArray(rows));
@@ -577,7 +588,8 @@ namespace VOXA
                 {"category", item.category},
                 {"tags", item.tags},
                 {"source", item.source},
-                {"comments", item.comments}
+                {"comments", item.comments},
+                {"pinned", item.pinned ? "true" : "false"}
             });
         }
         m_cache->saveJson(kOthersCache, JsonStorage::serializeObjectArray(rows));
@@ -598,6 +610,192 @@ namespace VOXA
             });
         }
         m_cache->saveJson(kRecordingsCache, JsonStorage::serializeObjectArray(rows));
+    }
+
+    bool DataService::togglePin(const std::string& category, uint32_t id)
+    {
+        if (category == "reminders")
+        {
+            for (auto& item : m_reminders)
+            {
+                if (item.id == id)
+                {
+                    item.pinned = !item.pinned;
+                    saveRemindersCache();
+                    return true;
+                }
+            }
+        }
+        else if (category == "ideas")
+        {
+            for (auto& item : m_ideas)
+            {
+                if (item.id == id)
+                {
+                    item.pinned = !item.pinned;
+                    saveIdeasCache();
+                    return true;
+                }
+            }
+        }
+        else if (category == "questions")
+        {
+            for (auto& item : m_questions)
+            {
+                if (item.id == id)
+                {
+                    item.pinned = !item.pinned;
+                    saveQuestionsCache();
+                    return true;
+                }
+            }
+        }
+        else if (category == "others" || category == "memories")
+        {
+            for (auto& item : m_others)
+            {
+                if (item.id == id)
+                {
+                    item.pinned = !item.pinned;
+                    saveOthersCache();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    bool DataService::moveItem(const std::string& fromCategory, const std::string& toCategory, uint32_t id)
+    {
+        if (fromCategory == toCategory) return true;
+
+        std::string title = "";
+        std::string content = "";
+        std::string comments = "";
+        bool pinned = false;
+
+        if (fromCategory == "reminders")
+        {
+            for (auto it = m_reminders.begin(); it != m_reminders.end(); ++it)
+            {
+                if (it->id == id)
+                {
+                    title = it->title;
+                    content = "Reminder comments";
+                    comments = it->comments;
+                    pinned = it->pinned;
+                    m_reminders.erase(it);
+                    saveRemindersCache();
+                    break;
+                }
+            }
+        }
+        else if (fromCategory == "ideas")
+        {
+            for (auto it = m_ideas.begin(); it != m_ideas.end(); ++it)
+            {
+                if (it->id == id)
+                {
+                    title = it->title;
+                    content = it->content;
+                    comments = it->comments;
+                    pinned = it->pinned;
+                    m_ideas.erase(it);
+                    saveIdeasCache();
+                    break;
+                }
+            }
+        }
+        else if (fromCategory == "questions")
+        {
+            for (auto it = m_questions.begin(); it != m_questions.end(); ++it)
+            {
+                if (it->id == id)
+                {
+                    title = it->text;
+                    content = it->answer;
+                    comments = it->comments;
+                    pinned = it->pinned;
+                    m_questions.erase(it);
+                    saveQuestionsCache();
+                    break;
+                }
+            }
+        }
+        else if (fromCategory == "others" || fromCategory == "memories")
+        {
+            for (auto it = m_others.begin(); it != m_others.end(); ++it)
+            {
+                if (it->id == id)
+                {
+                    title = it->title;
+                    content = it->content;
+                    comments = it->comments;
+                    pinned = it->pinned;
+                    m_others.erase(it);
+                    saveOthersCache();
+                    break;
+                }
+            }
+        }
+
+        if (title.empty()) return false;
+
+        if (toCategory == "reminders")
+        {
+            Reminder item;
+            item.id = nextSequentialId(m_reminders);
+            item.title = title;
+            item.dateTime = "2026-07-14 12:00";
+            item.completed = false;
+            item.comments = comments;
+            item.pinned = pinned;
+            m_reminders.insert(m_reminders.begin(), item);
+            saveRemindersCache();
+            return true;
+        }
+        else if (toCategory == "ideas")
+        {
+            Idea item;
+            item.id = nextSequentialId(m_ideas);
+            item.title = title;
+            item.content = content;
+            item.timestamp = "2026-07-14 12:00";
+            item.comments = comments;
+            item.pinned = pinned;
+            m_ideas.insert(m_ideas.begin(), item);
+            saveIdeasCache();
+            return true;
+        }
+        else if (toCategory == "questions")
+        {
+            Question item;
+            item.id = nextSequentialId(m_questions);
+            item.text = title;
+            item.answer = content;
+            item.timestamp = "2026-07-14 12:00";
+            item.answered = !content.empty();
+            item.comments = comments;
+            item.pinned = pinned;
+            m_questions.insert(m_questions.begin(), item);
+            saveQuestionsCache();
+            return true;
+        }
+        else if (toCategory == "others" || toCategory == "memories")
+        {
+            Memory item;
+            item.id = nextSequentialId(m_others);
+            item.title = title;
+            item.content = content;
+            item.timestamp = "2026-07-14 12:00";
+            item.category = "note";
+            item.pinned = pinned;
+            m_others.insert(m_others.begin(), item);
+            saveOthersCache();
+            return true;
+        }
+
+        return false;
     }
 
     uint32_t DataService::nextId(const std::vector<uint32_t>& ids)
