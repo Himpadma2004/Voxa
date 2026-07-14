@@ -28,7 +28,7 @@ namespace VOXA
     {
         Preferences prefs;
         prefs.begin("voxa-api", true);
-        String url = prefs.getString("url", "http://192.168.0.148:8000");
+        String url = prefs.getString("url", "http://192.168.1.4:8000");
         prefs.end();
         m_baseUrl = url.c_str();
         Serial.print("[ApiClient] Base URL: ");
@@ -344,12 +344,28 @@ namespace VOXA
         int sp = statusLine.indexOf(' ');
         result.httpCode = (sp >= 0) ? statusLine.substring(sp + 1, sp + 4).toInt() : 0;
 
-        while (client.connected()) { String l = client.readStringUntil('\n'); if (l == "\r" || l.isEmpty()) break; }
+        std::string contentType = "";
+        while (client.connected())
+        {
+            String l = client.readStringUntil('\n');
+            if (l == "\r" || l.isEmpty()) break;
+            if (l.startsWith("Content-Type:") || l.startsWith("content-type:"))
+            {
+                int colonIdx = l.indexOf(':');
+                if (colonIdx >= 0)
+                {
+                    String val = l.substring(colonIdx + 1);
+                    val.trim();
+                    contentType = val.c_str();
+                }
+            }
+        }
         String body;
         while (client.available()) body += (char)client.read();
         client.stop();
 
         result.body = body.c_str();
+        result.contentType = contentType;
         result.success = (result.httpCode == 200);
         if (!result.success) result.error = "HTTP " + std::to_string(result.httpCode);
         return result;
@@ -394,12 +410,28 @@ namespace VOXA
         int sp = statusLine.indexOf(' ');
         result.httpCode = (sp >= 0) ? statusLine.substring(sp + 1, sp + 4).toInt() : 0;
 
-        while (client.connected()) { String l = client.readStringUntil('\n'); if (l == "\r" || l.isEmpty()) break; }
+        std::string contentType = "";
+        while (client.connected())
+        {
+            String l = client.readStringUntil('\n');
+            if (l == "\r" || l.isEmpty()) break;
+            if (l.startsWith("Content-Type:") || l.startsWith("content-type:"))
+            {
+                int colonIdx = l.indexOf(':');
+                if (colonIdx >= 0)
+                {
+                    String val = l.substring(colonIdx + 1);
+                    val.trim();
+                    contentType = val.c_str();
+                }
+            }
+        }
         String body;
         while (client.available()) body += (char)client.read();
         client.stop();
 
         result.body    = body.c_str();
+        result.contentType = contentType;
         result.success = (result.httpCode == 200 || result.httpCode == 201);
         if (!result.success) result.error = "HTTP " + std::to_string(result.httpCode);
         else

@@ -72,19 +72,27 @@ namespace
 {
     void backgroundDataSyncTask(void* /*param*/)
     {
-        bool lastConnected = VOXA::wifiManager.isConnected();
+        uint32_t lastSyncMs = 0;
+        bool lastConnected = false;
 
         while (true)
         {
             bool connected = VOXA::wifiManager.isConnected();
-            if (connected && !lastConnected)
+            uint32_t now = millis();
+
+            if (connected)
             {
-                Serial.println("[DataSync] Wi-Fi reconnected. Refreshing backend data...");
-                VOXA::dataService.syncAll();
+                // Sync on reconnection OR if 60 seconds have elapsed since the last sync
+                if (!lastConnected || (now - lastSyncMs >= 60000) || lastSyncMs == 0)
+                {
+                    Serial.println("[DataSync] Syncing backend data in background...");
+                    VOXA::dataService.syncAll();
+                    lastSyncMs = millis();
+                }
             }
 
             lastConnected = connected;
-            vTaskDelay(pdMS_TO_TICKS(15000));
+            vTaskDelay(pdMS_TO_TICKS(5000)); // Check connectivity state every 5 seconds
         }
     }
 
@@ -184,75 +192,17 @@ void setup()
   wifiManager.begin();
   
   bool wifiConnected = false;
-  if (wifiManager.hasSavedCredentials())
+  if (wifiManager.shouldForcePortal())
   {
-      Serial.println("[WiFi] Saved credentials found. Connecting...");
+      Serial.println("[WiFi] Force portal flag set. Launching captive portal...");
+      wifiManager.clearForcePortal();
+  }
+  else if (wifiManager.hasSavedCredentials())
+  {
+      Serial.println("[WiFi] Saved credentials found. Connecting in background...");
       wifiManager.connect();
-      
-      // Draw "Connecting to Wi-Fi..." screen
-      uint16_t w = Display::width();
-      uint16_t h = Display::height();
-      
-      // Draw vertical gradient background
-      for (int y = 0; y < h; ++y)
-      {
-          float t = (float)y / (h - 1);
-          uint8_t r = (uint8_t)((1.0f - t) * 8 + t * 18);
-          uint8_t g = (uint8_t)((1.0f - t) * 8 + t * 14);
-          uint8_t b = (uint8_t)((1.0f - t) * 12 + t * 28);
-          Display::lcd.drawFastHLine(0, y, w, Display::lcd.color565(r, g, b));
-      }
-      
-      Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
-      Display::lcd.setTextDatum(textdatum_t::middle_center);
-      Display::lcd.setTextColor(Display::lcd.color565(124, 92, 255));
-      Display::lcd.drawString("Connecting to Wi-Fi", w * 0.5f, h * 0.35f);
-      
-      std::string savedSsid = wifiManager.getSSID();
-      Display::lcd.setFont(&fonts::FreeSans9pt7b);
-      Display::lcd.setTextColor(TFT_WHITE);
-      Display::lcd.drawString(savedSsid.c_str(), w * 0.5f, h * 0.55f);
-      Display::lcd.drawString("Please wait...", w * 0.5f, h * 0.70f);
-      
-      // Wait up to 8 seconds for connection
-      unsigned long startMs = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - startMs < 8000)
-      {
-          delay(100);
-      }
-      
-      if (WiFi.status() == WL_CONNECTED)
-      {
-          Serial.println("[WiFi] Connection successful!");
-          Display::lcd.fillScreen(TFT_BLACK);
-          
-          // Draw success message
-          for (int y = 0; y < h; ++y)
-          {
-              float t = (float)y / (h - 1);
-              uint8_t r = (uint8_t)((1.0f - t) * 8 + t * 18);
-              uint8_t g = (uint8_t)((1.0f - t) * 8 + t * 14);
-              uint8_t b = (uint8_t)((1.0f - t) * 12 + t * 28);
-              Display::lcd.drawFastHLine(0, y, w, Display::lcd.color565(r, g, b));
-          }
-          
-          Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
-          Display::lcd.setTextColor(TFT_GREEN);
-          Display::lcd.drawString("Wi-Fi Connected!", w * 0.5f, h * 0.40f);
-          
-          Display::lcd.setFont(&fonts::FreeSans9pt7b);
-          Display::lcd.setTextColor(TFT_WHITE);
-          Display::lcd.drawString(wifiManager.getIPAddress().c_str(), w * 0.5f, h * 0.65f);
-          delay(1500);
-
-          dataService.syncAll();
-          
-          wifiConnected = true;
-      }
-      else
-      {
-          Serial.println("[WiFi] Connection failed / timed out.");
-      }
+      activeScreen = ScreenId::Home;
+      wifiConnected = true;
   }
   
   if (!wifiConnected)

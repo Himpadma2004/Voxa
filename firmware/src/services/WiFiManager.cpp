@@ -156,7 +156,7 @@ namespace
             </div>
             <div class="form-group">
                 <label for="api_url">Backend API URL</label>
-                <input type="text" id="api_url" name="api_url" placeholder="http://192.168.0.148:8000" value="%API_URL%">
+                <input type="text" id="api_url" name="api_url" placeholder="http://192.168.1.4:8000" value="%API_URL%">
             </div>
             <button type="submit">Save & Connect</button>
         </form>
@@ -313,6 +313,33 @@ namespace VOXA
         Serial.println("[WiFiManager] Cleared credentials from Preferences");
     }
 
+    bool WiFiManager::shouldForcePortal()
+    {
+        Preferences prefs;
+        prefs.begin("voxa-wifi", true);
+        bool force = prefs.getBool("force_portal", false);
+        prefs.end();
+        return force;
+    }
+
+    void WiFiManager::clearForcePortal()
+    {
+        Preferences prefs;
+        prefs.begin("voxa-wifi", false);
+        prefs.putBool("force_portal", false);
+        prefs.end();
+        Serial.println("[WiFiManager] Cleared force portal flag");
+    }
+
+    void WiFiManager::setForcePortal(bool force)
+    {
+        Preferences prefs;
+        prefs.begin("voxa-wifi", false);
+        prefs.putBool("force_portal", force);
+        prefs.end();
+        Serial.printf("[WiFiManager] Set force portal flag to: %s\n", force ? "true" : "false");
+    }
+
     void WiFiManager::loadCredentials()
     {
         getSavedCredentials(m_ssid, m_password);
@@ -345,7 +372,7 @@ namespace VOXA
             String html = SETUP_HTML;
             Preferences prefs;
             prefs.begin("voxa-api", true);
-            String currentUrl = prefs.getString("url", "http://192.168.0.148:8000");
+            String currentUrl = prefs.getString("url", "http://192.168.1.4:8000");
             prefs.end();
             html.replace("%API_URL%", currentUrl);
             web->send(200, "text/html", html);

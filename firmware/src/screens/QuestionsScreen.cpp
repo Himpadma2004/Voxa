@@ -166,6 +166,9 @@ namespace VOXA
                 }
             }
 
+            // Reload data for background sync auto-update
+            questions = questionService.getAll();
+
             // Dimensions re-query
             w = Display::width();
             h = Display::height();

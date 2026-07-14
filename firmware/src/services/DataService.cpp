@@ -54,9 +54,25 @@ namespace
         while (true)
         {
             VOXA::ApiResult result = VOXA::apiClient.get(buildPagedEndpoint(endpointBase, skip, kPageSize));
-            if (!result.success)
+            
+            // 1. Verify HTTP status is 200
+            if (result.httpCode != 200)
             {
-                Serial.printf("[DataService] Fetch failed for %s: %s\n", endpointBase.c_str(), result.error.c_str());
+                Serial.printf("[DataService] Verify failed: HTTP code is not 200 (Got: %d) for %s\n", result.httpCode, endpointBase.c_str());
+                return false;
+            }
+
+            // 2. Verify response body is not empty
+            if (result.body.empty())
+            {
+                Serial.printf("[DataService] Verify failed: Response body is empty for %s\n", endpointBase.c_str());
+                return false;
+            }
+
+            // 3. Verify Content-Type is application/json
+            if (result.contentType.find("application/json") == std::string::npos)
+            {
+                Serial.printf("[DataService] Verify failed: Content-Type is not application/json (Got: %s) for %s\n", result.contentType.c_str(), endpointBase.c_str());
                 return false;
             }
 
@@ -65,6 +81,7 @@ namespace
             if (err)
             {
                 Serial.printf("[DataService] JSON parse failed for %s: %s\n", endpointBase.c_str(), err.c_str());
+                Serial.printf("[DataService] Raw response body: %s\n", result.body.c_str());
                 return false;
             }
 

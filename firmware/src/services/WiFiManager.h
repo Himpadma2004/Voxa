@@ -30,6 +30,9 @@ namespace VOXA
         void getSavedCredentials(std::string& ssid, std::string& password);
         void saveCredentials(const std::string& ssid, const std::string& password);
         void clearCredentials();
+        bool shouldForcePortal();
+        void clearForcePortal();
+        void setForcePortal(bool force);
 
         // Setup Portal Methods
         void startPortal();

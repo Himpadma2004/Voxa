@@ -12,13 +12,14 @@ namespace VOXA
         std::string body;        ///< raw response body
         std::string text;        ///< parsed "text" field from JSON
         std::string error;       ///< human-readable error (empty on success)
+        std::string contentType; ///< parsed Content-Type header
     };
 
     /**
      * Independent HTTP client for all VOXA ↔ Python backend communication.
      *
      * Usage:
-     *   apiClient.setBaseUrl("http://192.168.0.148:8000");
+     *   apiClient.setBaseUrl("http://192.168.1.4:8000");
      *   ApiResult r = apiClient.uploadVoice("/voice_rec.wav");
      *
      * Future endpoints (no code changes needed, just call get/post):
@@ -48,7 +49,7 @@ namespace VOXA
         ApiResult   post(const std::string& endpoint, const std::string& jsonBody);
 
     private:
-        std::string m_baseUrl{"http://192.168.0.148:8000"};
+        std::string m_baseUrl{"http://192.168.1.4:8000"};
 
         void        loadBaseUrl();
         void        saveBaseUrl(const std::string& url);

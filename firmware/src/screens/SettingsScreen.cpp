@@ -186,6 +186,7 @@ namespace VOXA
                             {
                                 // Reboot to Setup Mode (same as Wi-Fi toggle when no credentials)
                                 Serial.println("[Settings] Entering Portal Setup Mode via reboot to configure API URL...");
+                                wifiManager.setForcePortal(true);
                                 delay(500);
                                 ESP.restart();
                             }
@@ -210,6 +211,8 @@ namespace VOXA
                             else if (m_pressedItemIndex == 9)
                             {
                                 Serial.println("[Settings] Factory Resetting...");
+                                wifiManager.clearCredentials();
+                                wifiManager.clearForcePortal();
                                 SPIFFS.remove("/reminders.json");
                                 SPIFFS.remove("/memory.json");
                                 SPIFFS.remove("/ideas.json");
