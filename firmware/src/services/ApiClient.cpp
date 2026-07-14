@@ -11,6 +11,54 @@
 #define API_CONNECT_MS      15000
 #define API_READ_MS         30000
 
+namespace
+{
+    String readLineWithTimeout(WiFiClient& client, uint32_t timeoutMs)
+    {
+        String line = "";
+        uint32_t start = millis();
+        while (millis() - start < timeoutMs)
+        {
+            if (client.available())
+            {
+                char c = client.read();
+                if (c == '\n') break;
+                line += c;
+            }
+            else
+            {
+                if (!client.connected()) break;
+                delay(1);
+            }
+        }
+        return line;
+    }
+
+    String readBodyWithTimeout(WiFiClient& client, uint32_t timeoutMs)
+    {
+        String body = "";
+        uint32_t start = millis();
+        while (client.connected() || client.available())
+        {
+            if (client.available())
+            {
+                body += (char)client.read();
+                start = millis();
+            }
+            else
+            {
+                if (millis() - start > timeoutMs)
+                {
+                    Serial.println("[ApiClient] Body read timeout");
+                    break;
+                }
+                delay(1);
+            }
+        }
+        return body;
+    }
+}
+
 namespace VOXA
 {
     // Global singleton instance (declared extern in header)
@@ -257,7 +305,7 @@ namespace VOXA
         }
 
         // Read status line
-        String statusLine = client.readStringUntil('\n');
+        String statusLine = readLineWithTimeout(client, API_READ_MS);
         int    spacePos   = statusLine.indexOf(' ');
         int    httpCode   = (spacePos >= 0)
                             ? statusLine.substring(spacePos + 1, spacePos + 4).toInt()
@@ -267,13 +315,14 @@ namespace VOXA
         // Skip headers
         while (client.connected())
         {
-            String line = client.readStringUntil('\n');
-            if (line == "\r" || line.isEmpty()) break;
+            String line = readLineWithTimeout(client, API_READ_MS);
+            String line_trimmed = line;
+            line_trimmed.trim();
+            if (line_trimmed.isEmpty()) break;
         }
 
         // Read body
-        String body;
-        while (client.available()) body += (char)client.read();
+        String body = readBodyWithTimeout(client, API_READ_MS);
         client.stop();
 
         result.body = body.c_str();
@@ -340,28 +389,33 @@ namespace VOXA
         uint32_t t0 = millis();
         while (!client.available() && millis() - t0 < (uint32_t)API_READ_MS) delay(10);
 
-        String statusLine = client.readStringUntil('\n');
+        String statusLine = readLineWithTimeout(client, API_READ_MS);
         int sp = statusLine.indexOf(' ');
         result.httpCode = (sp >= 0) ? statusLine.substring(sp + 1, sp + 4).toInt() : 0;
 
         std::string contentType = "";
         while (client.connected())
         {
-            String l = client.readStringUntil('\n');
-            if (l == "\r" || l.isEmpty()) break;
-            if (l.startsWith("Content-Type:") || l.startsWith("content-type:"))
+            String l = readLineWithTimeout(client, API_READ_MS);
+            String l_trimmed = l;
+            l_trimmed.trim();
+            if (l_trimmed.isEmpty()) break;
+            
+            String l_lower = l;
+            l_lower.toLowerCase();
+            if (l_lower.startsWith("content-type:"))
             {
                 int colonIdx = l.indexOf(':');
                 if (colonIdx >= 0)
                 {
                     String val = l.substring(colonIdx + 1);
                     val.trim();
+                    val.toLowerCase();
                     contentType = val.c_str();
                 }
             }
         }
-        String body;
-        while (client.available()) body += (char)client.read();
+        String body = readBodyWithTimeout(client, API_READ_MS);
         client.stop();
 
         result.body = body.c_str();
@@ -406,28 +460,33 @@ namespace VOXA
         uint32_t t0 = millis();
         while (!client.available() && millis() - t0 < (uint32_t)API_READ_MS) delay(10);
 
-        String statusLine = client.readStringUntil('\n');
+        String statusLine = readLineWithTimeout(client, API_READ_MS);
         int sp = statusLine.indexOf(' ');
         result.httpCode = (sp >= 0) ? statusLine.substring(sp + 1, sp + 4).toInt() : 0;
 
         std::string contentType = "";
         while (client.connected())
         {
-            String l = client.readStringUntil('\n');
-            if (l == "\r" || l.isEmpty()) break;
-            if (l.startsWith("Content-Type:") || l.startsWith("content-type:"))
+            String l = readLineWithTimeout(client, API_READ_MS);
+            String l_trimmed = l;
+            l_trimmed.trim();
+            if (l_trimmed.isEmpty()) break;
+            
+            String l_lower = l;
+            l_lower.toLowerCase();
+            if (l_lower.startsWith("content-type:"))
             {
                 int colonIdx = l.indexOf(':');
                 if (colonIdx >= 0)
                 {
                     String val = l.substring(colonIdx + 1);
                     val.trim();
+                    val.toLowerCase();
                     contentType = val.c_str();
                 }
             }
         }
-        String body;
-        while (client.available()) body += (char)client.read();
+        String body = readBodyWithTimeout(client, API_READ_MS);
         client.stop();
 
         result.body    = body.c_str();
@@ -470,6 +529,7 @@ namespace VOXA
                     Serial.printf("[ApiClient] Auto-discovered backend at: %s\n", discoveredUrl.c_str());
                     return discoveredUrl.c_str();
                 }
+                delay(1); // Yield to prevent watchdog triggers
             }
             Serial.println("[ApiClient] Subnet scan complete: no backend found on port 8000");
         }
