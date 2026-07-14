@@ -4,6 +4,8 @@
 #include "../services/ReminderService.h"
 #include "DetailScreen.h"
 #include "Transition.h"
+#include "../services/WiFiManager.h"
+#include "../services/DataService.h"
 #include <cmath>
 #include <algorithm>
 
@@ -138,6 +140,14 @@ namespace VOXA
                     if (m_isDragging)
                     {
                         m_isDragging = false;
+                        if (m_scrollY < -50.0f && wifiManager.isConnected())
+                        {
+                            Serial.println("[Reminders] Triggering manual pull-to-refresh sync...");
+                            xTaskCreatePinnedToCore([](void*){
+                                VOXA::dataService.syncAll();
+                                vTaskDelete(NULL);
+                            }, "ManualSync", 4096, NULL, 1, NULL, 0);
+                        }
                     }
                     else
                     {
@@ -214,6 +224,15 @@ namespace VOXA
             float cardW = w * 0.92f;
 
             canvas.setClipRect(0, 70, w, h - 70 - 18);
+
+            if (m_scrollY < 0.0f)
+            {
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(VoxaTheme::getTextSecondary());
+                const char* msg = (m_scrollY < -50.0f) ? "Release to sync" : "Pull to sync";
+                canvas.drawString(msg, w * 0.5f, 72.0f - m_scrollY - 22.0f);
+            }
 
             for (std::size_t i = 0; i < reminders.size(); ++i)
             {

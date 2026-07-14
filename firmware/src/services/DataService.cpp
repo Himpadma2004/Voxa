@@ -326,31 +326,51 @@ namespace VOXA
     std::vector<Reminder> DataService::getReminders()
     {
         if (!m_loaded) begin();
-        return m_reminders;
+        auto copy = m_reminders;
+        std::sort(copy.begin(), copy.end(), [](const Reminder& a, const Reminder& b) {
+            return a.id > b.id;
+        });
+        return copy;
     }
 
     std::vector<Idea> DataService::getIdeas()
     {
         if (!m_loaded) begin();
-        return m_ideas;
+        auto copy = m_ideas;
+        std::sort(copy.begin(), copy.end(), [](const Idea& a, const Idea& b) {
+            return a.id > b.id;
+        });
+        return copy;
     }
 
     std::vector<Question> DataService::getQuestions()
     {
         if (!m_loaded) begin();
-        return m_questions;
+        auto copy = m_questions;
+        std::sort(copy.begin(), copy.end(), [](const Question& a, const Question& b) {
+            return a.id > b.id;
+        });
+        return copy;
     }
 
     std::vector<Memory> DataService::getOthers()
     {
         if (!m_loaded) begin();
-        return m_others;
+        auto copy = m_others;
+        std::sort(copy.begin(), copy.end(), [](const Memory& a, const Memory& b) {
+            return a.id > b.id;
+        });
+        return copy;
     }
 
     std::vector<Recording> DataService::getRecordings()
     {
         if (!m_loaded) begin();
-        return m_recordings;
+        auto copy = m_recordings;
+        std::sort(copy.begin(), copy.end(), [](const Recording& a, const Recording& b) {
+            return a.id > b.id;
+        });
+        return copy;
     }
 
     std::size_t DataService::getReminderCount() { return getReminders().size(); }

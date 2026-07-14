@@ -27,6 +27,8 @@ namespace VOXA
                 ++it;
             }
         }
+        std::sort(recordings.begin(), recordings.end(),
+                  [](const Recording& a, const Recording& b) { return a.id > b.id; });
         return recordings;
     }
 
