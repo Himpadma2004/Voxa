@@ -42,6 +42,10 @@ namespace VOXA
 
     HomeScreen::HomeScreen()
     {
+    }
+
+    void HomeScreen::begin()
+    {
         microphoneService.begin();
     }
 

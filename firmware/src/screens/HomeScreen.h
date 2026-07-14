@@ -16,6 +16,7 @@ namespace VOXA
     {
     public:
         HomeScreen();
+        void begin();
         ScreenId show(Touch& touch);
 
     private:

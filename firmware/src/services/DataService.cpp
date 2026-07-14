@@ -2,6 +2,7 @@
 #include "ApiClient.h"
 #include "../storage/JsonStorage.h"
 
+#include <WiFi.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 #include <algorithm>
@@ -9,7 +10,6 @@
 namespace
 {
     constexpr std::size_t kPageSize = 20;
-    constexpr std::size_t kJsonCapacity = 48 * 1024;
 
     const char* kRemindersCache  = "cache_reminders.json";
     const char* kIdeasCache      = "cache_ideas.json";
@@ -54,6 +54,12 @@ namespace
         while (true)
         {
             VOXA::ApiResult result = VOXA::apiClient.get(buildPagedEndpoint(endpointBase, skip, kPageSize));
+
+            if (result.httpCode == 0)
+            {
+                Serial.printf("[DataService] Backend not responding for %s\n", endpointBase.c_str());
+                return false;
+            }
             
             // 1. Verify HTTP status is 200
             if (result.httpCode != 200)
@@ -76,7 +82,7 @@ namespace
                 return false;
             }
 
-            DynamicJsonDocument doc(kJsonCapacity);
+            JsonDocument doc;
             DeserializationError err = deserializeJson(doc, result.body.c_str());
             if (err)
             {
@@ -223,6 +229,18 @@ namespace VOXA
 
     bool DataService::syncAll()
     {
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            Serial.println("[DataService] Sync skipped: Wi-Fi not connected");
+            return false;
+        }
+
+        if (!apiClient.isHealthy())
+        {
+            Serial.println("[DataService] Sync skipped: backend not responding");
+            return false;
+        }
+
         bool ok = true;
         ok = syncReminders() && ok;
         ok = syncIdeas() && ok;

@@ -156,7 +156,7 @@ namespace
             </div>
             <div class="form-group">
                 <label for="api_url">Backend API URL</label>
-                <input type="text" id="api_url" name="api_url" placeholder="http://192.168.1.4:8000" value="%API_URL%">
+                <input type="text" id="api_url" name="api_url" placeholder="http://192.168.0.148:8000" value="%API_URL%">
             </div>
             <button type="submit">Save & Connect</button>
         </form>
@@ -249,7 +249,7 @@ namespace VOXA
 
     bool WiFiManager::isConnected() const
     {
-        return WiFi.status() == WL_CONNECTED;
+        return (WiFi.status() == WL_CONNECTED) && (WiFi.localIP() != IPAddress(0, 0, 0, 0));
     }
 
     std::string WiFiManager::getSSID() const
@@ -372,7 +372,7 @@ namespace VOXA
             String html = SETUP_HTML;
             Preferences prefs;
             prefs.begin("voxa-api", true);
-            String currentUrl = prefs.getString("url", "http://192.168.1.4:8000");
+            String currentUrl = prefs.getString("url", "http://192.168.0.148:8000");
             prefs.end();
             html.replace("%API_URL%", currentUrl);
             web->send(200, "text/html", html);

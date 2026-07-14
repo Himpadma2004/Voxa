@@ -13,6 +13,21 @@
 
 namespace
 {
+    bool parseBaseUrl(const std::string& baseUrl, String& host, int& port)
+    {
+        String urlStr = baseUrl.c_str();
+        int schemeEnd = urlStr.indexOf("://");
+        if (schemeEnd < 0) return false;
+
+        String rest = urlStr.substring(schemeEnd + 3);
+        int slashPos = rest.indexOf('/');
+        String hostPort = (slashPos >= 0) ? rest.substring(0, slashPos) : rest;
+        int colonPos = hostPort.indexOf(':');
+        host = (colonPos >= 0) ? hostPort.substring(0, colonPos) : hostPort;
+        port = (colonPos >= 0) ? hostPort.substring(colonPos + 1).toInt() : 80;
+        return host.length() > 0;
+    }
+
     String readLineWithTimeout(WiFiClient& client, uint32_t timeoutMs)
     {
         String line = "";
@@ -66,7 +81,9 @@ namespace VOXA
     std::string g_currentlyUploadingPath = "";
 
     // ── Constructor ───────────────────────────────────────────────────────────
-    ApiClient::ApiClient()
+    ApiClient::ApiClient() = default;
+
+    void ApiClient::begin()
     {
         loadBaseUrl();
     }
@@ -76,7 +93,7 @@ namespace VOXA
     {
         Preferences prefs;
         prefs.begin("voxa-api", true);
-        String url = prefs.getString("url", "http://192.168.1.4:8000");
+        String url = prefs.getString("url", "http://192.168.0.148:8000");
         prefs.end();
         m_baseUrl = url.c_str();
         Serial.print("[ApiClient] Base URL: ");
@@ -101,21 +118,52 @@ namespace VOXA
         if (WiFi.status() != WL_CONNECTED) return false;
 
         // Parse host/port from base URL
-        String urlStr = m_baseUrl.c_str();
-        int schemeEnd = urlStr.indexOf("://");
-        if (schemeEnd < 0) return false;
-        String rest = urlStr.substring(schemeEnd + 3);
-        int slashPos = rest.indexOf('/');
-        String hostPort = (slashPos >= 0) ? rest.substring(0, slashPos) : rest;
-        int colonPos = hostPort.indexOf(':');
-        String host = (colonPos >= 0) ? hostPort.substring(0, colonPos) : hostPort;
-        int    port = (colonPos >= 0) ? hostPort.substring(colonPos + 1).toInt() : 80;
+        String host;
+        int    port = 80;
+        if (!parseBaseUrl(m_baseUrl, host, port)) return false;
 
         WiFiClient c;
         c.setTimeout(3);
         bool ok = c.connect(host.c_str(), port);
         c.stop();
         return ok;
+    }
+
+    bool ApiClient::isHealthy()
+    {
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            Serial.println("[Health] WiFi NOT connected");
+            return false;
+        }
+
+        String host;
+        int port = 80;
+
+        if (!parseBaseUrl(m_baseUrl, host, port))
+        {
+            Serial.println("[Health] parseBaseUrl FAILED");
+            return false;
+        }
+
+        Serial.printf("[Health] Host = %s\n", host.c_str());
+        Serial.printf("[Health] Port = %d\n", port);
+
+        WiFiClient client;
+        client.setTimeout(3000);
+
+        Serial.println("[Health] Connecting...");
+
+        if (!client.connect(host.c_str(), port))
+        {
+            Serial.println("[Health] TCP connect FAILED");
+            return false;
+        }
+
+        Serial.println("[Health] TCP connected!");
+
+        client.stop();
+        return true;
     }
 
     // ── JSON Helpers ──────────────────────────────────────────────────────────
@@ -154,6 +202,13 @@ namespace VOXA
         {
             result.error = "No Wi-Fi connection";
             Serial.println("[ApiClient] Upload failed: No Wi-Fi");
+            return result;
+        }
+
+        if (!isHealthy())
+        {
+            result.error = "Backend not responding";
+            Serial.println("[ApiClient] Upload skipped: backend not responding");
             return result;
         }
 
@@ -281,7 +336,20 @@ namespace VOXA
             size_t toRead = std::min(remaining, (size_t)512);
             size_t actual = file.read(buf, toRead);
             if (actual == 0) break;
-            client.write(buf, actual);
+            size_t sent = client.write(buf, actual);
+
+            if (sent != actual)
+            {
+                Serial.printf(
+                    "[ApiClient] Write failed! Sent %u of %u bytes\n",
+                    sent,
+                    actual);
+
+                result.error = "Socket write failed";
+                client.stop();
+                file.close();
+                return result;
+            }
             remaining -= actual;
         }
         file.close();
@@ -306,6 +374,9 @@ namespace VOXA
 
         // Read status line
         String statusLine = readLineWithTimeout(client, API_READ_MS);
+        Serial.println("========== HTTP STATUS ==========");
+        Serial.println(statusLine);
+        Serial.println("=================================");
         int    spacePos   = statusLine.indexOf(' ');
         int    httpCode   = (spacePos >= 0)
                             ? statusLine.substring(spacePos + 1, spacePos + 4).toInt()
@@ -323,6 +394,9 @@ namespace VOXA
 
         // Read body
         String body = readBodyWithTimeout(client, API_READ_MS);
+        Serial.println("========== HTTP BODY ==========");
+        Serial.println(body);
+        Serial.println("===============================");
         client.stop();
 
         result.body = body.c_str();
@@ -381,7 +455,38 @@ namespace VOXA
 
         WiFiClient client;
         client.setTimeout(API_READ_MS);
-        if (!client.connect(host.c_str(), port)) { result.error = "Cannot connect"; return result; }
+        if (!client.connect(host.c_str(), port))
+        {
+            Serial.printf("[ApiClient] GET Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
+            std::string discoveredUrl = discoverBackendIP();
+            if (!discoveredUrl.empty())
+            {
+                saveBaseUrl(discoveredUrl);
+                String newUrlStr = (discoveredUrl + endpoint).c_str();
+                int newSchemeEnd = newUrlStr.indexOf("://");
+                if (newSchemeEnd >= 0)
+                {
+                    String rest  = newUrlStr.substring(newSchemeEnd + 3);
+                    int sl       = rest.indexOf('/');
+                    String hp    = (sl >= 0) ? rest.substring(0, sl) : rest;
+                    path         = (sl >= 0) ? rest.substring(sl) : "/";
+                    int col      = hp.indexOf(':');
+                    host = (col >= 0) ? hp.substring(0, col) : hp;
+                    port = (col >= 0) ? hp.substring(col + 1).toInt() : 80;
+                }
+                Serial.printf("[ApiClient] Retrying connection to auto-discovered backend: %s:%d\n", host.c_str(), port);
+                if (!client.connect(host.c_str(), port))
+                {
+                    result.error = "Cannot connect";
+                    return result;
+                }
+            }
+            else
+            {
+                result.error = "Cannot connect";
+                return result;
+            }
+        }
 
         client.printf("GET %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\n\r\n",
                       path.c_str(), host.c_str(), port);
@@ -448,7 +553,38 @@ namespace VOXA
 
         WiFiClient client;
         client.setTimeout(API_READ_MS);
-        if (!client.connect(host.c_str(), port)) { result.error = "Cannot connect"; return result; }
+        if (!client.connect(host.c_str(), port))
+        {
+            Serial.printf("[ApiClient] POST Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
+            std::string discoveredUrl = discoverBackendIP();
+            if (!discoveredUrl.empty())
+            {
+                saveBaseUrl(discoveredUrl);
+                String newUrlStr = (discoveredUrl + endpoint).c_str();
+                int newSchemeEnd = newUrlStr.indexOf("://");
+                if (newSchemeEnd >= 0)
+                {
+                    String rest  = newUrlStr.substring(newSchemeEnd + 3);
+                    int sl       = rest.indexOf('/');
+                    String hp    = (sl >= 0) ? rest.substring(0, sl) : rest;
+                    path         = (sl >= 0) ? rest.substring(sl) : "/";
+                    int col      = hp.indexOf(':');
+                    host = (col >= 0) ? hp.substring(0, col) : hp;
+                    port = (col >= 0) ? hp.substring(col + 1).toInt() : 80;
+                }
+                Serial.printf("[ApiClient] Retrying connection to auto-discovered backend: %s:%d\n", host.c_str(), port);
+                if (!client.connect(host.c_str(), port))
+                {
+                    result.error = "Cannot connect";
+                    return result;
+                }
+            }
+            else
+            {
+                result.error = "Cannot connect";
+                return result;
+            }
+        }
 
         client.printf("POST %s HTTP/1.1\r\n",        path.c_str());
         client.printf("Host: %s:%d\r\n",             host.c_str(), port);
