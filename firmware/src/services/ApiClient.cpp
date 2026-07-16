@@ -93,20 +93,30 @@ namespace VOXA
     {
         Preferences prefs;
         prefs.begin("voxa-api", true);
-        String url = prefs.getString("url", "http://192.168.0.148:8000");
+        String url = prefs.getString("url", "http://192.168.1.7:8000");
         prefs.end();
-        m_baseUrl = url.c_str();
+        std::string cleanedUrl = url.c_str();
+        if (!cleanedUrl.empty() && cleanedUrl.back() == '/')
+        {
+            cleanedUrl.pop_back();
+        }
+        m_baseUrl = cleanedUrl;
         Serial.print("[ApiClient] Base URL: ");
         Serial.println(m_baseUrl.c_str());
     }
 
     void ApiClient::saveBaseUrl(const std::string& url)
     {
+        std::string cleanedUrl = url;
+        if (!cleanedUrl.empty() && cleanedUrl.back() == '/')
+        {
+            cleanedUrl.pop_back();
+        }
         Preferences prefs;
         prefs.begin("voxa-api", false);
-        prefs.putString("url", url.c_str());
+        prefs.putString("url", cleanedUrl.c_str());
         prefs.end();
-        m_baseUrl = url;
+        m_baseUrl = cleanedUrl;
     }
 
     void ApiClient::setBaseUrl(const std::string& url) { saveBaseUrl(url); }
@@ -259,12 +269,14 @@ namespace VOXA
         WiFiClient client;
         client.setTimeout(API_READ_MS);
 
-         uint32_t connStart = millis();
-         bool connected = client.connect(host.c_str(), port);
-         uint32_t connTime = millis() - connStart;
- 
-         if (!connected)
-         {
+        uint32_t connStart = millis();
+        bool connected = client.connect(host.c_str(), port);
+        Serial.println("[ApiClient] Connected, waiting before sending HTTP...");
+        delay(100);
+        uint32_t connTime = millis() - connStart;
+
+        if (!connected)
+        {
              Serial.printf("[ApiClient] Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
              std::string discoveredUrl = discoverBackendIP();
              if (!discoveredUrl.empty())
@@ -328,22 +340,73 @@ namespace VOXA
         // Multipart header
         client.print(partHeader);
 
+        // Check if server already responded/rejected before we start file streaming
+        delay(50);
+        if (client.available())
+        {
+            Serial.println("[ApiClient] Server responded early (rejected headers):");
+            while (client.available())
+            {
+                char c = client.read();
+                Serial.print(c);
+            }
+            Serial.println();
+            client.stop();
+            file.close();
+            result.error = "Rejected by server early";
+            return result;
+        }
+
         // Stream WAV file in 512-byte chunks
         uint8_t buf[512];
         size_t  remaining = fileSize;
         while (remaining > 0)
         {
+            delay(1); // Yield to FreeRTOS to prevent Task Watchdog starvation on CPU 0
+
+            if (!client.connected())
+            {
+                Serial.println("[ApiClient] Socket closed before write complete!");
+                
+                // Read whatever response the server might have sent before closing!
+                delay(10);
+                if (client.available())
+                {
+                    Serial.println("[ApiClient] Server response at socket closure:");
+                    while (client.available())
+                    {
+                        char c = client.read();
+                        Serial.print(c);
+                    }
+                    Serial.println();
+                }
+                break;
+            }
+
             size_t toRead = std::min(remaining, (size_t)512);
             size_t actual = file.read(buf, toRead);
             if (actual == 0) break;
-            size_t sent = client.write(buf, actual);
 
+            size_t sent = client.write(buf, actual);
             if (sent != actual)
             {
                 Serial.printf(
                     "[ApiClient] Write failed! Sent %u of %u bytes\n",
                     sent,
                     actual);
+
+                // Read whatever response the server might have sent before resetting!
+                delay(10);
+                if (client.available())
+                {
+                    Serial.println("[ApiClient] Server response during write failure:");
+                    while (client.available())
+                    {
+                        char c = client.read();
+                        Serial.print(c);
+                    }
+                    Serial.println();
+                }
 
                 result.error = "Socket write failed";
                 client.stop();
@@ -356,6 +419,7 @@ namespace VOXA
 
         // Multipart footer
         client.print(partFooter);
+        client.flush();
 
         // Wait for response
         uint32_t t0 = millis();
@@ -506,6 +570,8 @@ namespace VOXA
             l_trimmed.trim();
             if (l_trimmed.isEmpty()) break;
             
+            Serial.printf("[ApiClient GET Header] %s\n", l_trimmed.c_str());
+
             String l_lower = l;
             l_lower.toLowerCase();
             if (l_lower.startsWith("content-type:"))
