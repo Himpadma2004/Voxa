@@ -330,6 +330,17 @@ namespace VOXA
 
 
 
+        Serial.println("=== HTTP REQUEST LOG ===");
+        Serial.printf("POST %s HTTP/1.1\r\n", path.c_str());
+        Serial.printf("Host: %s:%d\r\n", host.c_str(), port);
+        Serial.printf("Content-Length: %u\r\n", totalLen);
+        Serial.printf("Boundary: %s\r\n", API_BOUNDARY);
+        Serial.printf("Calculated multipart size: %u\r\n", totalLen);
+        Serial.printf("Actual WAV size: %u\r\n", fileSize);
+        Serial.printf("Header size: %u\r\n", partHeader.length());
+        Serial.printf("Footer size: %u\r\n", partFooter.length());
+        Serial.println("========================");
+
         // HTTP request line + headers
         client.printf("POST %s HTTP/1.1\r\n",       path.c_str());
         client.printf("Host: %s:%d\r\n",            host.c_str(), port);
@@ -360,13 +371,16 @@ namespace VOXA
         // Stream WAV file in 512-byte chunks
         uint8_t buf[512];
         size_t  remaining = fileSize;
+        size_t  totalBytesRead = 0;
+        size_t  totalBytesWritten = 0;
+
         while (remaining > 0)
         {
             delay(1); // Yield to FreeRTOS to prevent Task Watchdog starvation on CPU 0
 
             if (!client.connected())
             {
-                Serial.println("[ApiClient] Socket closed before write complete!");
+                Serial.printf("[ApiClient] Socket closed before write complete! Read=%u, Written=%u\n", totalBytesRead, totalBytesWritten);
                 
                 // Read whatever response the server might have sent before closing!
                 delay(10);
@@ -386,14 +400,17 @@ namespace VOXA
             size_t toRead = std::min(remaining, (size_t)512);
             size_t actual = file.read(buf, toRead);
             if (actual == 0) break;
+            totalBytesRead += actual;
 
             size_t sent = client.write(buf, actual);
             if (sent != actual)
             {
                 Serial.printf(
-                    "[ApiClient] Write failed! Sent %u of %u bytes\n",
+                    "[ApiClient] Write failed! Sent %u of %u bytes (Total Read=%u, Total Written=%u)\n",
                     sent,
-                    actual);
+                    actual,
+                    totalBytesRead,
+                    totalBytesWritten);
 
                 // Read whatever response the server might have sent before resetting!
                 delay(10);
@@ -413,9 +430,12 @@ namespace VOXA
                 file.close();
                 return result;
             }
+            totalBytesWritten += sent;
             remaining -= actual;
         }
         file.close();
+
+        Serial.printf("[ApiClient] File transmission complete: SPIFFS Read=%u, Socket Written=%u\n", totalBytesRead, totalBytesWritten);
 
         // Multipart footer
         client.print(partFooter);
@@ -447,14 +467,17 @@ namespace VOXA
                             : 0;
         result.httpCode = httpCode;
 
-        // Skip headers
-        while (client.connected())
+        // Read headers
+        Serial.println("========== HTTP HEADERS ==========");
+        while (client.connected() || client.available())
         {
             String line = readLineWithTimeout(client, API_READ_MS);
             String line_trimmed = line;
             line_trimmed.trim();
             if (line_trimmed.isEmpty()) break;
+            Serial.println(line_trimmed);
         }
+        Serial.println("==================================");
 
         // Read body
         String body = readBodyWithTimeout(client, API_READ_MS);

@@ -7,7 +7,7 @@ from datetime import datetime
 # Add the current directory to sys.path to ensure modular imports work correctly
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 
 # Import existing backend modules and services
@@ -104,7 +104,22 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
 
 
 @app.post("/api/voice/upload")
-async def upload_voice(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_voice(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
+):
+    print("=" * 60)
+    print("UPLOAD REQUEST RECEIVED")
+    print("Method:", request.method)
+    print("Client:", request.client)
+    print("Headers:")
+    for header, value in request.headers.items():
+        print(f"  {header}: {value}")
+    print("Filename:", file.filename)
+    print("ContentType:", file.content_type)
+    print("=" * 60)
+    sys.stdout.flush()
     print(f"\n[Server] Received file upload request: {file.filename}")
 
     # Ensure recordings temp directory exists
