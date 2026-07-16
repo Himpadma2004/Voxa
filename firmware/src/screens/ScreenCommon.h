@@ -21,7 +21,9 @@ namespace VOXA
         SyncStatus,
         Detail,
         RecordingsLibrary,
-        AudioPlayer
+        AudioPlayer,
+        WiFiSettings,
+        TextInput
     };
 
     enum class Icon

@@ -31,16 +31,16 @@ namespace VOXA
         if (to == ScreenId::Home)
             return TransitionType::SlideDown;
 
-        // Detail screen is a modal that slides up
-        if (to == ScreenId::Detail)
+        // Detail and TextInput screens are modals that slide up
+        if (to == ScreenId::Detail || to == ScreenId::TextInput)
             return TransitionType::SlideUp;
-        if (from == ScreenId::Detail)
+        if (from == ScreenId::Detail || from == ScreenId::TextInput)
             return TransitionType::SlideDown;
-
-        // SyncStatus is a sub-page of Settings → slide left
-        if (to == ScreenId::SyncStatus)
+ 
+        // SyncStatus and WiFiSettings are sub-pages of Settings → slide left
+        if (to == ScreenId::SyncStatus || to == ScreenId::WiFiSettings)
             return TransitionType::SlideLeft;
-        if (from == ScreenId::SyncStatus)
+        if (from == ScreenId::SyncStatus || from == ScreenId::WiFiSettings)
             return TransitionType::SlideRight;
 
         // Any top-level screen navigated into from Home → slide up (pop)

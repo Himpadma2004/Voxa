@@ -166,7 +166,13 @@ namespace VOXA
 
         if (!client.connect(host.c_str(), port))
         {
-            Serial.println("[Health] TCP connect FAILED");
+            Serial.println("[Health] TCP connect FAILED. Attempting auto-discovery...");
+            std::string discoveredUrl = discoverBackendIP();
+            if (!discoveredUrl.empty())
+            {
+                saveBaseUrl(discoveredUrl);
+                return true;
+            }
             return false;
         }
 
@@ -744,7 +750,7 @@ namespace VOXA
 
                 targetIP[3] = i;
                 WiFiClient testClient;
-                testClient.setTimeout(1); // 1 sec socket timeout
+                testClient.setTimeout(100); // 100ms socket timeout for local network sweep
                 
                 // Fast connect sweep: local port 8000 closed/open handshake is very fast
                 if (testClient.connect(targetIP, 8000))

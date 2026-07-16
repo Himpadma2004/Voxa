@@ -155,27 +155,8 @@ namespace VOXA
                             Settings currentSettings = settingsService.getSettings();
                             if (m_pressedItemIndex == 0)
                             {
-                                // Toggle Wi-Fi
-                                currentSettings.wifiEnabled = !currentSettings.wifiEnabled;
-                                settingsService.updateSettings(currentSettings);
-                                if (currentSettings.wifiEnabled)
-                                {
-                                    if (wifiManager.hasSavedCredentials())
-                                    {
-                                        wifiManager.connect();
-                                    }
-                                    else
-                                    {
-                                        Serial.println("[Settings] Entering Wi-Fi Setup Mode via reboot...");
-                                        delay(500);
-                                        ESP.restart();
-                                    }
-                                }
-                                else
-                                {
-                                    wifiManager.disconnect();
-                                }
-                                Serial.println("[Settings] Toggle Wi-Fi");
+                                // Open Wi-Fi Settings screen
+                                targetScreen = ScreenId::WiFiSettings;
                             }
                             else if (m_pressedItemIndex == 1)
                             {
