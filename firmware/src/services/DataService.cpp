@@ -14,6 +14,7 @@ namespace
     const char* kRemindersCache  = "cache_reminders.json";
     const char* kIdeasCache      = "cache_ideas.json";
     const char* kQuestionsCache  = "cache_questions.json";
+    const char* kTasksCache      = "cache_tasks.json";
     const char* kOthersCache     = "cache_others.json";
     const char* kRecordingsCache = "cache_recordings.json";
 
@@ -245,6 +246,7 @@ namespace VOXA
         ok = syncReminders() && ok;
         ok = syncIdeas() && ok;
         ok = syncQuestions() && ok;
+        ok = syncTasks() && ok;
         ok = syncOthers() && ok;
         ok = syncRecordings() && ok;
         return ok;
@@ -301,6 +303,26 @@ namespace VOXA
         {
             m_questions = std::move(fetched);
             saveQuestionsCache();
+        }
+        return ok;
+    }
+
+    bool DataService::syncTasks()
+    {
+        std::vector<TaskItem> fetched;
+        bool ok = fetchPagedList<TaskItem>("/api/notes?category=tasks", fetched, [](JsonVariantConst item, TaskItem& out) {
+            out.id = item["id"] | 0;
+            out.title = getJsonString(item["title"]);
+            out.content = getJsonString(item["content"]);
+            out.timestamp = normalizeTimestamp(getJsonString(item["timestamp"]));
+            out.comments = getJsonString(item["comments"]);
+            out.sourceId = getJsonString(item["source_id"]);
+            out.isDone = item["completed"] | false;
+        });
+        if (ok)
+        {
+            m_tasks = std::move(fetched);
+            saveTasksCache();
         }
         return ok;
     }
@@ -378,6 +400,17 @@ namespace VOXA
         return copy;
     }
 
+    std::vector<TaskItem> DataService::getTasks()
+    {
+        if (!m_loaded) begin();
+        auto copy = m_tasks;
+        std::sort(copy.begin(), copy.end(), [](const TaskItem& a, const TaskItem& b) {
+            if (a.isPinned != b.isPinned) return a.isPinned > b.isPinned;
+            return a.id > b.id;
+        });
+        return copy;
+    }
+
     std::vector<Memory> DataService::getOthers()
     {
         if (!m_loaded) begin();
@@ -402,8 +435,61 @@ namespace VOXA
     std::size_t DataService::getReminderCount() { return getReminders().size(); }
     std::size_t DataService::getIdeaCount() { return getIdeas().size(); }
     std::size_t DataService::getQuestionCount() { return getQuestions().size(); }
+    std::size_t DataService::getTaskCount() { return getTasks().size(); }
     std::size_t DataService::getOtherCount() { return getOthers().size(); }
     std::size_t DataService::getRecordingCount() { return getRecordings().size(); }
+
+    bool DataService::addTaskLocal(const TaskItem& task)
+    {
+        auto copy = task;
+        copy.id = nextSequentialId(m_tasks);
+        m_tasks.insert(m_tasks.begin(), copy);
+        saveTasksCache();
+        return true;
+    }
+
+    bool DataService::removeTaskLocal(uint32_t id)
+    {
+        auto it = std::remove_if(m_tasks.begin(), m_tasks.end(), [id](const TaskItem& item) { return item.id == id; });
+        if (it == m_tasks.end()) return false;
+        m_tasks.erase(it, m_tasks.end());
+        saveTasksCache();
+        return true;
+    }
+
+    bool DataService::toggleTaskDone(uint32_t id)
+    {
+        for (auto& t : m_tasks)
+        {
+            if (t.id == id)
+            {
+                t.isDone = !t.isDone;
+                saveTasksCache();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void DataService::saveTasksCache()
+    {
+        std::vector<std::map<std::string, std::string>> rows;
+        rows.reserve(m_tasks.size());
+        for (const auto& item : m_tasks)
+        {
+            rows.push_back({
+                {"id", std::to_string(item.id)},
+                {"title", item.title},
+                {"content", item.content},
+                {"timestamp", item.timestamp},
+                {"comments", item.comments},
+                {"sourceId", item.sourceId},
+                {"isDone", item.isDone ? "true" : "false"},
+                {"pinned", item.isPinned ? "true" : "false"}
+            });
+        }
+        m_cache->saveJson(kTasksCache, JsonStorage::serializeObjectArray(rows));
+    }
 
     bool DataService::addReminderLocal(const Reminder& reminder)
     {

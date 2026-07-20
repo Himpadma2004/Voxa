@@ -6,6 +6,7 @@
 #include "../services/IdeaService.h"
 #include "../services/QuestionService.h"
 #include "../services/RecordingService.h"
+#include "../services/DataService.h"
 #include <array>
 #include <cmath>
 #include <algorithm>
@@ -140,7 +141,7 @@ namespace VOXA
 
 
     void HomeScreen::renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h, 
-                                 int remCount, int ideaCount, int qCount, int memCount, float offsetX)
+                                 int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX)
     {
         // Title Header shifted to Y = 45.0f to prevent overlapping
         canvas.setFont(&fonts::FreeSansBold12pt7b);
@@ -169,10 +170,11 @@ namespace VOXA
             int badgeCount;
         };
 
-        MenuItem menuItems[7] = {
+        MenuItem menuItems[8] = {
             { Icon::Bell,       "Reminders",  0x79CF, remCount },
             { Icon::Lightbulb,  "Ideas",      0xFD20, ideaCount },
             { Icon::Question,   "Questions",  0x067F, qCount },
+            { Icon::Note,       "Tasks",      0xFA20, taskCount },
             { Icon::Search,     "Search",     0x266C, 0 },
             { Icon::Mic,        "Recordings", 0xFAC0, memCount },
             { Icon::Folder,     "Others",     0xAD55, 0 },
@@ -185,7 +187,7 @@ namespace VOXA
         // Clip scrollable cards to viewport (middle region Y = 70 to h - 18)
         canvas.setClipRect(0, 70, w, h - 70 - 18);
 
-        for (int i = 0; i < 7; ++i)
+        for (int i = 0; i < 8; ++i)
         {
             float itemY = 72.0f + i * 50.0f - m_menuScrollY;
 
@@ -244,7 +246,7 @@ namespace VOXA
     }
 
     void HomeScreen::processTouch(Touch& touch, uint16_t w, uint16_t h, 
-                                  int remCount, int ideaCount, int qCount, int memCount, 
+                                  int remCount, int ideaCount, int qCount, int taskCount, int memCount, 
                                   ScreenId& targetScreen)
     {
         uint16_t tx = 0, ty = 0;
@@ -463,10 +465,11 @@ namespace VOXA
                                 case 0: targetScreen = ScreenId::Reminders; break;
                                 case 1: targetScreen = ScreenId::Ideas;     break;
                                 case 2: targetScreen = ScreenId::Questions; break;
-                                case 3: targetScreen = ScreenId::Search;    break;
-                                case 4: targetScreen = ScreenId::RecordingsLibrary; break;
-                                case 5: targetScreen = ScreenId::Others;    break;
-                                case 6: targetScreen = ScreenId::Settings;  break;
+                                case 3: targetScreen = ScreenId::Tasks;     break;
+                                case 4: targetScreen = ScreenId::Search;    break;
+                                case 5: targetScreen = ScreenId::RecordingsLibrary; break;
+                                case 6: targetScreen = ScreenId::Others;    break;
+                                case 7: targetScreen = ScreenId::Settings;  break;
                             }
                         }
                     }
@@ -502,15 +505,17 @@ namespace VOXA
             int remCount = reminderService.getPendingCount();
             int ideaCount = static_cast<int>(ideaService.getAll().size());
             int qCount = static_cast<int>(questionService.getAll().size());
+            int taskCount = static_cast<int>(dataService.getTaskCount());
             int memCount = static_cast<int>(recordingService.getAll().size());
-            return std::array<int, 4>{ remCount, ideaCount, qCount, memCount };
+            return std::array<int, 5>{ remCount, ideaCount, qCount, taskCount, memCount };
         };
 
         auto counts = refreshCounts();
         int remCount = counts[0];
         int ideaCount = counts[1];
         int qCount = counts[2];
-        int memCount = counts[3];
+        int taskCount = counts[3];
+        int memCount = counts[4];
         uint32_t lastCountRefreshMs = millis();
 
         ScreenId targetScreen = ScreenId::Home;
@@ -529,7 +534,8 @@ namespace VOXA
                 remCount = counts[0];
                 ideaCount = counts[1];
                 qCount = counts[2];
-                memCount = counts[3];
+                taskCount = counts[3];
+                memCount = counts[4];
                 lastCountRefreshMs = nowMs;
             }
 
@@ -538,7 +544,7 @@ namespace VOXA
             // 1. Process touch gestures and pressed feedback updates
             if (entryFrame >= 10)
             {
-                processTouch(touch, w, h, remCount, ideaCount, qCount, memCount, targetScreen);
+                processTouch(touch, w, h, remCount, ideaCount, qCount, taskCount, memCount, targetScreen);
             }
 
             // Re-query dimensions inside the loop since rotation changes width and height on-the-fly!
@@ -601,7 +607,7 @@ namespace VOXA
                 }
                 else
                 {
-                    renderPage1(target, w, h, remCount, ideaCount, qCount, memCount, drawX);
+                    renderPage1(target, w, h, remCount, ideaCount, qCount, taskCount, memCount, drawX);
                 }
             }
 

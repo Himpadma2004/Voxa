@@ -9,6 +9,7 @@
 #include "../models/Question.h"
 #include "../models/Recording.h"
 #include "../models/Reminder.h"
+#include "../models/Task.h"
 
 namespace VOXA
 {
@@ -25,18 +26,21 @@ namespace VOXA
         bool syncReminders();
         bool syncIdeas();
         bool syncQuestions();
+        bool syncTasks();
         bool syncOthers();
         bool syncRecordings();
 
         [[nodiscard]] std::vector<Reminder> getReminders();
         [[nodiscard]] std::vector<Idea> getIdeas();
         [[nodiscard]] std::vector<Question> getQuestions();
+        [[nodiscard]] std::vector<TaskItem> getTasks();
         [[nodiscard]] std::vector<Memory> getOthers();
         [[nodiscard]] std::vector<Recording> getRecordings();
 
         [[nodiscard]] std::size_t getReminderCount();
         [[nodiscard]] std::size_t getIdeaCount();
         [[nodiscard]] std::size_t getQuestionCount();
+        [[nodiscard]] std::size_t getTaskCount();
         [[nodiscard]] std::size_t getOtherCount();
         [[nodiscard]] std::size_t getRecordingCount();
 
@@ -49,6 +53,10 @@ namespace VOXA
 
         bool addQuestionLocal(const Question& question);
         bool removeQuestionLocal(uint32_t id);
+
+        bool addTaskLocal(const TaskItem& task);
+        bool removeTaskLocal(uint32_t id);
+        bool toggleTaskDone(uint32_t id);
 
         bool addOtherLocal(const Memory& memory);
         bool updateOtherLocal(const Memory& memory);
@@ -68,12 +76,14 @@ namespace VOXA
         std::vector<Reminder>  m_reminders;
         std::vector<Idea>      m_ideas;
         std::vector<Question>  m_questions;
+        std::vector<TaskItem>  m_tasks;
         std::vector<Memory>    m_others;
         std::vector<Recording> m_recordings;
 
         bool fetchRemindersFromBackend();
         bool fetchIdeasFromBackend();
         bool fetchQuestionsFromBackend();
+        bool fetchTasksFromBackend();
         bool fetchOthersFromBackend();
         bool fetchRecordingsFromBackend();
 
@@ -81,6 +91,7 @@ namespace VOXA
         void saveRemindersCache();
         void saveIdeasCache();
         void saveQuestionsCache();
+        void saveTasksCache();
         void saveOthersCache();
         void saveRecordingsCache();
 

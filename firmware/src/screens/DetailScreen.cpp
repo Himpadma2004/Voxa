@@ -5,6 +5,7 @@
 #include "../services/IdeaService.h"
 #include "../services/QuestionService.h"
 #include "../services/MemoryService.h"
+#include "../services/DataService.h"
 #include "Transition.h"
 #include <cmath>
 #include <algorithm>
@@ -159,6 +160,21 @@ namespace VOXA
                 }
             }
         }
+        else if (s_category == "tasks")
+        {
+            auto tasks = dataService.getTasks();
+            for (const auto& t : tasks)
+            {
+                if (t.id == s_itemId)
+                {
+                    titleStr = t.title;
+                    contentStr = t.content.empty() ? "No description" : t.content;
+                    statusStr = t.isDone ? "Status: Completed" : "Status: Pending";
+                    tagColor = 0xFA20;
+                    break;
+                }
+            }
+        }
         else if (s_category == "memories")
         {
             auto memories = memoryService.getAll();
@@ -276,6 +292,10 @@ namespace VOXA
                             else if (s_category == "questions")
                             {
                                 questionService.remove(s_itemId);
+                            }
+                            else if (s_category == "tasks")
+                            {
+                                dataService.removeTaskLocal(s_itemId);
                             }
                             else if (s_category == "memories")
                             {

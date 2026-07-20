@@ -111,6 +111,8 @@ def read_all_notes(
             items = _flatten_items(serialized_notes, "ideas")
         elif category_key == "questions":
             items = _flatten_items(serialized_notes, "questions")
+        elif category_key in ("tasks", "task"):
+            items = _flatten_items(serialized_notes, "tasks")
         elif category_key in ("others", "other", "notes"):
             items = _flatten_items(serialized_notes, "notes", fallback_field="summary")
         else:

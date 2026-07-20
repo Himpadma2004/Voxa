@@ -19,6 +19,7 @@
 #include "screens/AudioPlayerScreen.h"
 #include "screens/WiFiSettingsScreen.h"
 #include "screens/TextInputScreen.h"
+#include "screens/TasksScreen.h"
 #include "screens/Transition.h"
 #include "services/TimeService.h"
 #include "services/WiFiManager.h"
@@ -72,6 +73,7 @@ RecordingsLibraryScreen recordingsLibraryScreen;
 AudioPlayerScreen audioPlayerScreen;
 WiFiSettingsScreen wifiSettingsScreen;
 TextInputScreen textInputScreen;
+TasksScreen tasksScreen;
 
 ScreenId activeScreen = ScreenId::Home;
 
@@ -543,6 +545,10 @@ void loop()
   case ScreenId::TextInput:
     Serial.println("Opening Text Input Screen...");
     nextScreen = textInputScreen.show(touch);
+    break;
+  case ScreenId::Tasks:
+    Serial.println("Opening Tasks Screen...");
+    nextScreen = tasksScreen.show(touch);
     break;
   default:
     nextScreen = ScreenId::Home;

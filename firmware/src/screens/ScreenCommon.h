@@ -23,7 +23,8 @@ namespace VOXA
         RecordingsLibrary,
         AudioPlayer,
         WiFiSettings,
-        TextInput
+        TextInput,
+        Tasks
     };
 
     enum class Icon

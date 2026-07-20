@@ -23,10 +23,10 @@ namespace VOXA
         void renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX);
 
         void renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h,
-                         int remCount, int ideaCount, int qCount, int memCount, float offsetX);
+                         int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX);
 
         void processTouch(Touch& touch, uint16_t w, uint16_t h,
-                          int remCount, int ideaCount, int qCount, int memCount,
+                          int remCount, int ideaCount, int qCount, int taskCount, int memCount,
                           ScreenId& targetScreen);
 
         // ── Services ────────────────────────────────────────────────────
