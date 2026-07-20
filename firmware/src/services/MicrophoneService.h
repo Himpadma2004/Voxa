@@ -8,6 +8,18 @@
 
 namespace VOXA
 {
+    enum class RecordingState
+    {
+        Idle,
+        Starting,
+        Recording,
+        Stopping,
+        Saving,
+        Uploading
+    };
+
+    const char* recordingStateToString(RecordingState state);
+
     class MicrophoneService
     {
     public:
@@ -23,11 +35,14 @@ namespace VOXA
         /// Stop recording and finalize the WAV header
         bool stopRecording(const char* caller = "unknown", const char* reason = "normal_stop");
 
-        /// Check if currently recording
-        bool isRecording() const { return m_recording; }
+        /// Get current recording state
+        RecordingState getState() const { return m_state; }
 
-        /// Check if busy recording or dumping audio file to SPIFFS
-        bool isBusy() const { return m_recording || m_saving; }
+        /// Check if currently recording
+        bool isRecording() const { return m_state == RecordingState::Recording; }
+
+        /// Check if busy recording, saving, or uploading
+        bool isBusy() const { return m_state != RecordingState::Idle; }
 
         /// Get current recording duration in milliseconds
         uint32_t getDurationMs() const;
@@ -39,6 +54,9 @@ namespace VOXA
         void recordTask();
 
     private:
+        RecordingState m_state { RecordingState::Idle };
+        void setState(RecordingState newState, const char* caller);
+
         bool        m_initialized { false };
         bool        m_recording   { false };
         bool        m_saving      { false };

@@ -86,7 +86,9 @@ namespace VOXA
             if (uiState == UIState::Uploading && s_recUploadDone)
             {
                 s_recUploadDone = false;
-                uint32_t durS = microphoneService.getDurationMs() / 1000;
+                uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
+                if (durS == 0)
+                    durS = 1;
                 if (s_recUploadOk)
                 {
                     resultText = s_recUploadText;
@@ -132,7 +134,9 @@ namespace VOXA
                 }
                 else
                 {
-                    uint32_t durS = microphoneService.getDurationMs() / 1000;
+                    uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
+                    if (durS == 0)
+                        durS = 1;
                     recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
                     resultText = "Saved offline (queued)";
                     uiState = UIState::Result;
@@ -169,7 +173,7 @@ namespace VOXA
                     {
                         // Mic button is pressed
                         // Action depends on current state
-                        if (uiState == UIState::Idle)
+                        if (uiState == UIState::Idle && microphoneService.getState() == RecordingState::Idle)
                         {
                             static uint32_t s_recSeq = 0;
                             s_recSeq++;
@@ -177,10 +181,12 @@ namespace VOXA
                             snprintf(filePathBuf, sizeof(filePathBuf), "/rec_%u_%u.wav", (unsigned int)millis(), (unsigned int)s_recSeq);
                             s_recUploadPath = filePathBuf;
 
-                            microphoneService.startRecording(s_recUploadPath, "RecordScreen::micButtonPressed");
-                            uiState = UIState::Recording;
+                            if (microphoneService.startRecording(s_recUploadPath, "RecordScreen::micButtonPressed"))
+                            {
+                                uiState = UIState::Recording;
+                            }
                         }
-                        else if (uiState == UIState::Recording)
+                        else if (uiState == UIState::Recording && microphoneService.getState() == RecordingState::Recording)
                         {
                             // Guard against a touch-debounce blip (finger still down,
                             // but the touch driver briefly reported a release) being
@@ -209,7 +215,9 @@ namespace VOXA
                                     }
                                     else
                                     {
-                                        uint32_t durS = microphoneService.getDurationMs() / 1000;
+                                        uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
+                                        if (durS == 0)
+                                            durS = 1;
                                         recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
                                         resultText = "Saved offline (queued)";
                                         uiState = UIState::Result;
@@ -240,7 +248,9 @@ namespace VOXA
                             }
                             else
                             {
-                                uint32_t durS = microphoneService.getDurationMs() / 1000;
+                                uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
+                                if (durS == 0)
+                                    durS = 1;
                                 recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
                                 resultText = "Saved offline (queued)";
                                 uiState = UIState::Result;
@@ -260,11 +270,19 @@ namespace VOXA
                     float dyLocal = ty - dragStartY;
                     if (swipeBackCandidate && dx > 60 && std::abs(dyLocal) < 40)
                     {
-                        if (uiState == UIState::Recording)
+                        if (uiState == UIState::Recording && microphoneService.getState() == RecordingState::Recording)
                         {
-                            microphoneService.stopRecording("RecordScreen::swipeBack", "swipe_back_navigation");
+                            if (microphoneService.getDurationMs() >= 700)
+                            {
+                                microphoneService.stopRecording("RecordScreen::swipeBack", "swipe_back_navigation");
+                                targetScreen = ScreenId::Home;
+                            }
+                            // else: too soon — ignore the swipe, keep recording, stay on screen
                         }
-                        targetScreen = ScreenId::Home;
+                        else
+                        {
+                            targetScreen = ScreenId::Home;
+                        }
                         swipeBackCandidate = false;
                     }
                 }
@@ -276,11 +294,19 @@ namespace VOXA
                     m_wasTouched = false;
                     if (m_isBackPressed)
                     {
-                        if (uiState == UIState::Recording)
+                        if (uiState == UIState::Recording && microphoneService.getState() == RecordingState::Recording)
                         {
-                            microphoneService.stopRecording("RecordScreen::backButton", "back_button_pressed");
+                            if (microphoneService.getDurationMs() >= 700)
+                            {
+                                microphoneService.stopRecording("RecordScreen::backButton", "back_button_pressed");
+                                targetScreen = ScreenId::Home;
+                            }
+                            // else: too soon — ignore, keep recording, stay on screen
                         }
-                        targetScreen = ScreenId::Home;
+                        else
+                        {
+                            targetScreen = ScreenId::Home;
+                        }
                     }
                     m_isBackPressed = false;
                 }

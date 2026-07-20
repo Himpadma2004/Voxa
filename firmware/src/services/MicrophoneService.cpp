@@ -12,7 +12,6 @@ namespace VOXA
     {
     }
 
-
     MicrophoneService::~MicrophoneService()
     {
         stopRecording();
@@ -24,7 +23,8 @@ namespace VOXA
 
     bool MicrophoneService::begin()
     {
-        if (m_initialized) return true;
+        if (m_initialized)
+            return true;
 
         Serial.println("[MicrophoneService] Initializing I2S...");
 
@@ -43,10 +43,10 @@ namespace VOXA
             .fixed_mclk = 0};
 
         i2s_pin_config_t pin_config = {
-            .bck_io_num = 4,        // BCLK pin 4
-            .ws_io_num = 5,         // LRCK pin 5
-            .data_out_num = -1,     // Not used
-            .data_in_num = 7        // SD pin 6
+            .bck_io_num = 4,    // BCLK pin 4
+            .ws_io_num = 5,     // LRCK pin 5
+            .data_out_num = -1, // Not used
+            .data_in_num = 7    // SD pin 6
         };
 
         Serial.println("[MicrophoneService] Configuring I2S parameters:");
@@ -77,8 +77,7 @@ namespace VOXA
         return true;
     }
 
-
-    bool MicrophoneService::startRecording(const std::string& filePath, const char* caller)
+    bool MicrophoneService::startRecording(const std::string &filePath, const char *caller)
     {
         uint32_t nowMs = millis();
         Serial.printf("[MicrophoneService] startRecording() called by: %s, timestamp: %u ms\n", caller, nowMs);
@@ -100,10 +99,10 @@ namespace VOXA
         // Allocate PSRAM/DRAM buffer if not already done
         if (!m_psramBuffer)
         {
-            size_t trySizes[] = { 2000000, 1048576, 524288, 262144 };
+            size_t trySizes[] = {2000000, 1048576, 524288, 262144};
             for (size_t sz : trySizes)
             {
-                m_psramBuffer = (uint8_t*)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                m_psramBuffer = (uint8_t *)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
                 if (m_psramBuffer)
                 {
                     m_allocatedBufferSize = sz;
@@ -115,7 +114,7 @@ namespace VOXA
             if (!m_psramBuffer)
             {
                 // Fallback to internal DRAM if PSRAM capability is not present/available
-                m_psramBuffer = (uint8_t*)malloc(131072); // 128KB (~4 seconds)
+                m_psramBuffer = (uint8_t *)malloc(131072); // 128KB (~4 seconds)
                 if (m_psramBuffer)
                 {
                     m_allocatedBufferSize = 131072;
@@ -136,20 +135,21 @@ namespace VOXA
 
         // Spawn high-priority background audio reader task
         xTaskCreatePinnedToCore(
-            [](void* param) { static_cast<MicrophoneService*>(param)->recordTask(); },
+            [](void *param)
+            { static_cast<MicrophoneService *>(param)->recordTask(); },
             "MicRecordTask",
             4096,
             this,
             5, // High priority
             &m_taskHandle,
-            1  // Run on Core 1 (UI is on Core 0)
+            1 // Run on Core 1 (UI is on Core 0)
         );
 
         Serial.printf("[MicrophoneService] Recording started → %s (caller: %s)\n", filePath.c_str(), caller);
         return true;
     }
 
-    bool MicrophoneService::stopRecording(const char* caller, const char* reason)
+    bool MicrophoneService::stopRecording(const char *caller, const char *reason)
     {
         uint32_t nowMs = millis();
         Serial.printf("[MicrophoneService] stopRecording() called by: %s, timestamp: %u ms, reason: %s\n", caller, nowMs, reason);
@@ -179,6 +179,43 @@ namespace VOXA
             SpiffsLock lock("MicrophoneService::stopRecording");
 
             Serial.printf("[MicrophoneService] Saving %u bytes from PSRAM to SPIFFS: %s...\n", (unsigned int)m_bufferOffset, m_filePath.c_str());
+
+            // Make sure there's enough room for the WHOLE recording before writing
+            // a single byte — freeing just one old file isn't enough if this
+            // recording is bigger than that. Keep deleting the oldest file on
+            // SPIFFS until there's enough free space, or nothing left to delete.
+            const size_t neededBytes = m_bufferOffset + 44 + 4096; // data + header + safety margin
+            int freedCount = 0;
+            while ((SPIFFS.totalBytes() - SPIFFS.usedBytes()) < neededBytes && freedCount < 50)
+            {
+                File root = SPIFFS.open("/");
+                String oldestName;
+                time_t oldestTime = 0;
+                File f = root.openNextFile();
+                while (f)
+                {
+                    String fname = f.name();
+                    // Never delete the file we're currently about to write
+                    if (!f.isDirectory() && fname != String(m_filePath.c_str()) &&
+                        (oldestTime == 0 || f.getLastWrite() < oldestTime))
+                    {
+                        oldestTime = f.getLastWrite();
+                        oldestName = fname;
+                    }
+                    f = root.openNextFile();
+                }
+                root.close();
+
+                if (oldestName.isEmpty())
+                    break; // nothing left to free
+
+                Serial.printf("[MicrophoneService] Low on space (need %u bytes) — deleting oldest file: %s\n",
+                              (unsigned int)neededBytes, oldestName.c_str());
+                SPIFFS.remove(oldestName);
+                freedCount++;
+            }
+            Serial.printf("[MicrophoneService] SPIFFS free space before write: %u / %u bytes\n",
+                          (unsigned int)(SPIFFS.totalBytes() - SPIFFS.usedBytes()), (unsigned int)SPIFFS.totalBytes());
 
             m_file = SPIFFS.open(m_filePath.c_str(), "w");
             if (!m_file)
@@ -239,9 +276,21 @@ namespace VOXA
                     // Confirm standard riff chunk markers
                     bool riffOk = (memcmp(&hdr[0], "RIFF", 4) == 0);
                     bool waveOk = (memcmp(&hdr[8], "WAVE", 4) == 0);
-                    bool fmtOk  = (memcmp(&hdr[12], "fmt ", 4) == 0);
+                    bool fmtOk = (memcmp(&hdr[12], "fmt ", 4) == 0);
                     bool dataOk = (memcmp(&hdr[36], "data", 4) == 0);
-                    isValidWav  = riffOk && waveOk && fmtOk && dataOk;
+                    // Also confirm the file's actual size matches what the header
+                    // claims — a partial/failed write (SPIFFS ran out of room
+                    // mid-write) still has valid magic bytes but far less data
+                    // than declared, and must not be treated as a good recording.
+                    uint32_t declaredDataSize;
+                    memcpy(&declaredDataSize, &hdr[40], 4);
+                    bool sizeOk = (sz == 44 + declaredDataSize);
+                    isValidWav = riffOk && waveOk && fmtOk && dataOk && sizeOk;
+                    if (!sizeOk)
+                    {
+                        Serial.printf("[MicrophoneService] ERROR: WAV truncated — header declares %u data bytes but file only has %u\n",
+                                      (unsigned int)declaredDataSize, (unsigned int)(sz - 44));
+                    }
                 }
                 checkFile.close();
             }
@@ -268,7 +317,8 @@ namespace VOXA
 
     uint32_t MicrophoneService::getDurationMs() const
     {
-        if (m_recording) return millis() - m_startMs;
+        if (m_recording)
+            return millis() - m_startMs;
         return m_durationMs;
     }
 
@@ -284,7 +334,7 @@ namespace VOXA
 
         size_t totalReads = 0;
         size_t totalBytesReadCount = 0;
-        const char* exitReason = "m_recording flag became false";
+        const char *exitReason = "m_recording flag became false";
 
         while (m_recording)
         {
@@ -319,8 +369,10 @@ namespace VOXA
                     sample = sample >> 16;
 
                     // Clamp
-                    if (sample > 32767) sample = 32767;
-                    if (sample < -32768) sample = -32768;
+                    if (sample > 32767)
+                        sample = 32767;
+                    if (sample < -32768)
+                        sample = -32768;
 
                     pcmBuffer[i] = (int16_t)sample;
                 }
@@ -357,28 +409,28 @@ namespace VOXA
     // WAV Header format
     struct WavHeader
     {
-        char     riff[4]          { 'R', 'I', 'F', 'F' };
-        uint32_t chunkSize        { 0 };
-        char     wave[4]          { 'W', 'A', 'V', 'E' };
-        char     fmt[4]           { 'f', 'm', 't', ' ' };
-        uint32_t subChunk1Size    { 16 };
-        uint16_t audioFormat      { 1 }; // PCM
-        uint16_t numChannels      { 1 }; // Mono
-        uint32_t sampleRate       { 16000 }; // 16 kHz
-        uint32_t byteRate         { 32000 }; // 16000 * 1 * 2
-        uint16_t blockAlign       { 2 }; // 1 * 2
-        uint16_t bitsPerSample    { 16 }; // 16-bit
-        char     data[4]          { 'd', 'a', 't', 'a' };
-        uint32_t subChunk2Size    { 0 };
+        char riff[4]{'R', 'I', 'F', 'F'};
+        uint32_t chunkSize{0};
+        char wave[4]{'W', 'A', 'V', 'E'};
+        char fmt[4]{'f', 'm', 't', ' '};
+        uint32_t subChunk1Size{16};
+        uint16_t audioFormat{1};    // PCM
+        uint16_t numChannels{1};    // Mono
+        uint32_t sampleRate{16000}; // 16 kHz
+        uint32_t byteRate{32000};   // 16000 * 1 * 2
+        uint16_t blockAlign{2};     // 1 * 2
+        uint16_t bitsPerSample{16}; // 16-bit
+        char data[4]{'d', 'a', 't', 'a'};
+        uint32_t subChunk2Size{0};
     };
 
-    bool MicrophoneService::writeWavHeader(File& file, uint32_t dataSize)
+    bool MicrophoneService::writeWavHeader(File &file, uint32_t dataSize)
     {
         WavHeader header;
         header.subChunk2Size = dataSize;
         header.chunkSize = 36 + dataSize;
-        
-        size_t written = file.write(reinterpret_cast<const uint8_t*>(&header), sizeof(WavHeader));
+
+        size_t written = file.write(reinterpret_cast<const uint8_t *>(&header), sizeof(WavHeader));
         return written == sizeof(WavHeader);
     }
 }
