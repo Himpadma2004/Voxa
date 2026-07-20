@@ -67,6 +67,19 @@ def process_transcript(
     transcript,
     model_name
 ):
+    if not transcript or not transcript.strip():
+        print("[ProcessingService] Transcript is empty. Returning empty response notice.")
+        return {
+            "category": "Empty",
+            "summary": "Empty transcript — please record again.",
+            "tasks": [],
+            "reminders": [],
+            "ideas": [],
+            "questions": [],
+            "thoughts": [],
+            "notes": [],
+            "priority": "Low"
+        }
 
     raw_output = analyze_transcript(
         transcript,

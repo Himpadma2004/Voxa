@@ -1,23 +1,26 @@
 #include "ApiClient.h"
+#include "../storage/SpiffsMutex.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <SPIFFS.h>
 #include <Preferences.h>
 #include <Arduino.h>
 #include <algorithm>
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-#define API_BOUNDARY        "VoxaBoundary9C4F2A1D"
-#define API_CONNECT_MS      15000
-#define API_READ_MS         30000
+#define API_BOUNDARY "VoxaBoundary9C4F2A1D"
+#define API_CONNECT_MS 15000
+#define API_READ_MS 30000
 
 namespace
 {
-    bool parseBaseUrl(const std::string& baseUrl, String& host, int& port)
+    bool parseBaseUrl(const std::string &baseUrl, String &host, int &port)
     {
         String urlStr = baseUrl.c_str();
         int schemeEnd = urlStr.indexOf("://");
-        if (schemeEnd < 0) return false;
+        if (schemeEnd < 0)
+            return false;
 
         String rest = urlStr.substring(schemeEnd + 3);
         int slashPos = rest.indexOf('/');
@@ -28,7 +31,7 @@ namespace
         return host.length() > 0;
     }
 
-    String readLineWithTimeout(WiFiClient& client, uint32_t timeoutMs)
+    String readLineWithTimeout(WiFiClient &client, uint32_t timeoutMs)
     {
         String line = "";
         uint32_t start = millis();
@@ -37,19 +40,21 @@ namespace
             if (client.available())
             {
                 char c = client.read();
-                if (c == '\n') break;
+                if (c == '\n')
+                    break;
                 line += c;
             }
             else
             {
-                if (!client.connected()) break;
+                if (!client.connected())
+                    break;
                 delay(1);
             }
         }
         return line;
     }
 
-    String readBodyWithTimeout(WiFiClient& client, uint32_t timeoutMs)
+    String readBodyWithTimeout(WiFiClient &client, uint32_t timeoutMs)
     {
         String body = "";
         uint32_t start = millis();
@@ -105,7 +110,7 @@ namespace VOXA
         Serial.println(m_baseUrl.c_str());
     }
 
-    void ApiClient::saveBaseUrl(const std::string& url)
+    void ApiClient::saveBaseUrl(const std::string &url)
     {
         std::string cleanedUrl = url;
         if (!cleanedUrl.empty() && cleanedUrl.back() == '/')
@@ -119,621 +124,315 @@ namespace VOXA
         m_baseUrl = cleanedUrl;
     }
 
-    void ApiClient::setBaseUrl(const std::string& url) { saveBaseUrl(url); }
-    std::string ApiClient::getBaseUrl() const          { return m_baseUrl; }
+    void ApiClient::setBaseUrl(const std::string &url) { saveBaseUrl(url); }
+    std::string ApiClient::getBaseUrl() const { return m_baseUrl; }
 
     // ── Health Check ──────────────────────────────────────────────────────────
     bool ApiClient::isReachable()
     {
-        if (WiFi.status() != WL_CONNECTED) return false;
+        if (WiFi.status() != WL_CONNECTED)
+            return false;
 
-        // Parse host/port from base URL
-        String host;
-        int    port = 80;
-        if (!parseBaseUrl(m_baseUrl, host, port)) return false;
-
-        WiFiClient c;
-        c.setTimeout(3);
-        bool ok = c.connect(host.c_str(), port);
-        c.stop();
-        return ok;
+        HTTPClient http;
+        http.setTimeout(2000);
+        String url = String(m_baseUrl.c_str()) + "/";
+        if (!http.begin(url)) return false;
+        int code = http.GET();
+        http.end();
+        return (code > 0);
     }
 
     bool ApiClient::isHealthy()
     {
+        // Cache health result for 10 seconds to avoid spamming the backend
+        const uint32_t CACHE_MS = 10000;
+        if (millis() - m_lastHealthCheckMs < CACHE_MS && m_lastHealthCheckMs > 0)
+        {
+            return m_lastHealthResult;
+        }
+
         if (WiFi.status() != WL_CONNECTED)
         {
-            Serial.println("[Health] WiFi NOT connected");
+            m_lastHealthCheckMs = millis();
+            m_lastHealthResult = false;
             return false;
         }
 
-        String host;
-        int port = 80;
+        HTTPClient http;
+        http.setTimeout(3000);
+        String url = String(m_baseUrl.c_str()) + "/";
 
-        if (!parseBaseUrl(m_baseUrl, host, port))
+        bool ok = false;
+        if (http.begin(url))
         {
-            Serial.println("[Health] parseBaseUrl FAILED");
-            return false;
+            int httpCode = http.GET();
+            if (httpCode > 0)
+            {
+                ok = true;
+            }
+            http.end();
         }
 
-        Serial.printf("[Health] Host = %s\n", host.c_str());
-        Serial.printf("[Health] Port = %d\n", port);
-
-        WiFiClient client;
-        client.setTimeout(3000);
-
-        Serial.println("[Health] Connecting...");
-
-        if (!client.connect(host.c_str(), port))
+        if (!ok)
         {
-            Serial.println("[Health] TCP connect FAILED. Attempting auto-discovery...");
+            Serial.println("[Health] Health check GET / failed. Attempting auto-discovery...");
             std::string discoveredUrl = discoverBackendIP();
+            m_lastHealthCheckMs = millis();
             if (!discoveredUrl.empty())
             {
                 saveBaseUrl(discoveredUrl);
+                m_lastHealthResult = true;
                 return true;
             }
+            m_lastHealthResult = false;
             return false;
         }
 
-        Serial.println("[Health] TCP connected!");
-
-        client.stop();
+        m_lastHealthCheckMs = millis();
+        m_lastHealthResult = true;
         return true;
     }
 
     // ── JSON Helpers ──────────────────────────────────────────────────────────
-    std::string ApiClient::parseTextField(const std::string& json)
+    std::string ApiClient::parseTextField(const std::string &json)
     {
         const std::string key = "\"text\"";
         size_t kPos = json.find(key);
-        if (kPos == std::string::npos) return "";
+        if (kPos == std::string::npos)
+            return "";
         size_t colon = json.find(':', kPos);
-        if (colon == std::string::npos) return "";
+        if (colon == std::string::npos)
+            return "";
         size_t q1 = json.find('"', colon + 1);
-        if (q1 == std::string::npos) return "";
+        if (q1 == std::string::npos)
+            return "";
         size_t q2 = json.find('"', q1 + 1);
-        if (q2 == std::string::npos) return "";
+        if (q2 == std::string::npos)
+            return "";
         return json.substr(q1 + 1, q2 - q1 - 1);
     }
 
-    bool ApiClient::parseBoolField(const std::string& json, const std::string& key)
+    bool ApiClient::parseBoolField(const std::string &json, const std::string &key)
     {
         const std::string token = "\"" + key + "\"";
         size_t kPos = json.find(token);
-        if (kPos == std::string::npos) return false;
+        if (kPos == std::string::npos)
+            return false;
         size_t colon = json.find(':', kPos);
-        if (colon == std::string::npos) return false;
+        if (colon == std::string::npos)
+            return false;
         size_t val = json.find_first_not_of(" \t\r\n", colon + 1);
-        if (val == std::string::npos) return false;
+        if (val == std::string::npos)
+            return false;
         return json.compare(val, 4, "true") == 0;
     }
 
     // ── Voice Upload ──────────────────────────────────────────────────────────
-    ApiResult ApiClient::uploadVoice(const std::string& filePath)
+    // Uses ESP32's HTTPClient library instead of raw WiFiClient.
+    // HTTPClient handles connection lifecycle, TCP options, and response reading
+    // internally — avoiding all the raw-socket issues (RST at 32KB, EBADF on
+    // setNoDelay, concurrent socket starvation) that plagued the custom approach.
+    ApiResult ApiClient::uploadVoice(const std::string &filePath)
     {
         ApiResult result;
 
+        // ── Pre-flight checks ──────────────────────────────────────────────
         if (WiFi.status() != WL_CONNECTED)
         {
             result.error = "No Wi-Fi connection";
-            Serial.println("[ApiClient] Upload failed: No Wi-Fi");
+            Serial.println("[Upload] Aborted — no Wi-Fi");
             return result;
         }
 
-        if (!isHealthy())
-        {
-            result.error = "Backend not responding";
-            Serial.println("[ApiClient] Upload skipped: backend not responding");
-            return result;
-        }
+        SpiffsLock lock("ApiClient::uploadVoice");
 
         File file = SPIFFS.open(filePath.c_str(), "r");
         if (!file)
         {
-            result.error = "Recording file not found";
-            Serial.printf("[ApiClient] Upload failed: cannot open %s\n", filePath.c_str());
+            result.error = "File not found on SPIFFS";
+            Serial.printf("[Upload] Cannot open: %s\n", filePath.c_str());
             return result;
         }
 
-        size_t fileSize = file.size();
-        Serial.printf("[ApiClient] Uploading %s (%u bytes)...\n", filePath.c_str(), fileSize);
-
-        // Multipart components
-        String partHeader =
-            "--" API_BOUNDARY "\r\n"
-            "Content-Disposition: form-data; name=\"file\"; filename=\"voice.wav\"\r\n"
-            "Content-Type: audio/wav\r\n\r\n";
-        String partFooter = "\r\n--" API_BOUNDARY "--\r\n";
-        size_t totalLen   = partHeader.length() + fileSize + partFooter.length();
-
-        // ── Parse URL → host, port, path ──────────────────────────────────
-        String urlStr   = (m_baseUrl + "/api/voice/upload").c_str();
-        String host;
-        int    port     = 80;
-        String path     = "/api/voice/upload";
-
-        int schemeEnd = urlStr.indexOf("://");
-        if (schemeEnd >= 0)
+        const size_t fileSize = file.size();
+        if (fileSize == 0)
         {
-            String rest     = urlStr.substring(schemeEnd + 3);
-            int slashPos    = rest.indexOf('/');
-            String hostPort = (slashPos >= 0) ? rest.substring(0, slashPos) : rest;
-            int colonPos    = hostPort.indexOf(':');
-            if (colonPos >= 0)
-            {
-                host = hostPort.substring(0, colonPos);
-                port = hostPort.substring(colonPos + 1).toInt();
-            }
-            else
-            {
-                host = hostPort;
-            }
-        }
-
-        // ── Stream upload via raw WiFiClient (memory-efficient, no heap spike) ──
-        WiFiClient client;
-        client.setTimeout(API_READ_MS);
-
-        uint32_t connStart = millis();
-        bool connected = client.connect(host.c_str(), port);
-        Serial.println("[ApiClient] Connected, waiting before sending HTTP...");
-        delay(100);
-        uint32_t connTime = millis() - connStart;
-
-        if (!connected)
-        {
-             Serial.printf("[ApiClient] Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
-             std::string discoveredUrl = discoverBackendIP();
-             if (!discoveredUrl.empty())
-             {
-                 saveBaseUrl(discoveredUrl);
-                 urlStr = (discoveredUrl + "/api/voice/upload").c_str();
-                 int newSchemeEnd = urlStr.indexOf("://");
-                 if (newSchemeEnd >= 0)
-                 {
-                     String rest = urlStr.substring(newSchemeEnd + 3);
-                     int slashPos = rest.indexOf('/');
-                     String hostPort = (slashPos >= 0) ? rest.substring(0, slashPos) : rest;
-                     int colonPos = hostPort.indexOf(':');
-                     if (colonPos >= 0)
-                     {
-                         host = hostPort.substring(0, colonPos);
-                         port = hostPort.substring(colonPos + 1).toInt();
-                     }
-                     else
-                     {
-                         host = hostPort;
-                         port = 80;
-                     }
-                 }
-                 Serial.printf("[ApiClient] Retrying connection to auto-discovered backend: %s:%d\n", host.c_str(), port);
-                 connStart = millis();
-                 connected = client.connect(host.c_str(), port);
-                 connTime = millis() - connStart;
-             }
-         }
-
-         if (!connected)
-         {
-             file.close();
-             if (WiFi.status() != WL_CONNECTED)
-             {
-                 result.error = "Wi-Fi disconnected";
-             }
-             else if (connTime < 300)
-             {
-                 result.error = "Backend not running";
-             }
-             else
-             {
-                 result.error = "Wrong IP / Timeout";
-             }
-             Serial.printf("[ApiClient] Connection failed in %u ms: %s (Host: %s:%d)\n",
-                           connTime, result.error.c_str(), host.c_str(), port);
-             return result;
-         }
-
-
-
-        Serial.println("=== HTTP REQUEST LOG ===");
-        Serial.printf("POST %s HTTP/1.1\r\n", path.c_str());
-        Serial.printf("Host: %s:%d\r\n", host.c_str(), port);
-        Serial.printf("Content-Length: %u\r\n", totalLen);
-        Serial.printf("Boundary: %s\r\n", API_BOUNDARY);
-        Serial.printf("Calculated multipart size: %u\r\n", totalLen);
-        Serial.printf("Actual WAV size: %u\r\n", fileSize);
-        Serial.printf("Header size: %u\r\n", partHeader.length());
-        Serial.printf("Footer size: %u\r\n", partFooter.length());
-        Serial.println("========================");
-
-        // HTTP request line + headers
-        client.printf("POST %s HTTP/1.1\r\n",       path.c_str());
-        client.printf("Host: %s:%d\r\n",            host.c_str(), port);
-        client.printf("Content-Type: multipart/form-data; boundary=" API_BOUNDARY "\r\n");
-        client.printf("Content-Length: %u\r\n",     totalLen);
-        client.print("Connection: close\r\n\r\n");
-
-        // Multipart header
-        client.print(partHeader);
-
-        // Check if server already responded/rejected before we start file streaming
-        delay(50);
-        if (client.available())
-        {
-            Serial.println("[ApiClient] Server responded early (rejected headers):");
-            while (client.available())
-            {
-                char c = client.read();
-                Serial.print(c);
-            }
-            Serial.println();
-            client.stop();
             file.close();
-            result.error = "Rejected by server early";
+            result.error = "File is empty (0 bytes)";
+            Serial.println("[Upload] Skipped — empty file");
             return result;
         }
 
-        // Stream WAV file in 512-byte chunks
-        uint8_t buf[512];
-        size_t  remaining = fileSize;
-        size_t  totalBytesRead = 0;
-        size_t  totalBytesWritten = 0;
+        // ── Build URL ─────────────────────────────────────────────────────
+        const String url = String(m_baseUrl.c_str()) + "/api/voice/upload-raw";
 
-        while (remaining > 0)
+        Serial.println("=== UPLOAD START ===");
+        Serial.printf("  File : %s\n", filePath.c_str());
+        Serial.printf("  Size : %u bytes\n", fileSize);
+        Serial.printf("  URL  : %s\n", url.c_str());
+        Serial.println("====================");
+
+        // ── Send via HTTPClient, with retry on transient network errors ────
+        // A reset/refused/timeout on one attempt doesn't mean the IP is wrong
+        // (isHealthy() already confirmed it) — it's usually a one-off WiFi/LAN
+        // blip. Retry a few times with a short backoff before giving up, so a
+        // single bad packet doesn't permanently fail the recording.
+        const int MAX_ATTEMPTS = 3;
+        const uint32_t RETRY_DELAY_MS[MAX_ATTEMPTS] = {500, 1500, 3000};
+
+        int httpCode = 0;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt)
         {
-            delay(1); // Yield to FreeRTOS to prevent Task Watchdog starvation on CPU 0
+            file.seek(0); // rewind — previous attempt (if any) consumed the stream
 
-            if (!client.connected())
+            HTTPClient http;
+            http.begin(url);
+            http.setTimeout(60000); // 60 s — enough for any WAV
+            http.addHeader("Content-Type", "audio/wav");
+
+            // sendRequest("POST", stream*, size) streams the file in one shot.
+            // HTTPClient manages the TCP socket, TCP_NODELAY, and response reading.
+            httpCode = http.sendRequest("POST", &file, fileSize);
+
+            Serial.printf("[Upload] Attempt %d/%d — HTTP response code: %d\n",
+                          attempt, MAX_ATTEMPTS, httpCode);
+
+            result.httpCode = httpCode;
+
+            if (httpCode == HTTP_CODE_OK || httpCode == 201)
             {
-                Serial.printf("[ApiClient] Socket closed before write complete! Read=%u, Written=%u\n", totalBytesRead, totalBytesWritten);
-                
-                // Read whatever response the server might have sent before closing!
-                delay(10);
-                if (client.available())
-                {
-                    Serial.println("[ApiClient] Server response at socket closure:");
-                    while (client.available())
-                    {
-                        char c = client.read();
-                        Serial.print(c);
-                    }
-                    Serial.println();
-                }
-                break;
+                const String body = http.getString();
+                result.body = body.c_str();
+                result.success = true;
+                result.text = parseTextField(result.body);
+                Serial.printf("[Upload] SUCCESS — audio_id: %s\n", result.text.c_str());
+                http.end();
+                break; // done, no need to retry
             }
-
-            size_t toRead = std::min(remaining, (size_t)512);
-            size_t actual = file.read(buf, toRead);
-            if (actual == 0) break;
-            totalBytesRead += actual;
-
-            size_t sent = client.write(buf, actual);
-            if (sent != actual)
+            else if (httpCode < 0)
             {
-                Serial.printf(
-                    "[ApiClient] Write failed! Sent %u of %u bytes (Total Read=%u, Total Written=%u)\n",
-                    sent,
-                    actual,
-                    totalBytesRead,
-                    totalBytesWritten);
+                // Negative codes are ESP-IDF error values (connection refused, reset, timeout…)
+                result.error = "Network error: " + std::string(http.errorToString(httpCode).c_str());
+                Serial.printf("[Upload] Network error: %s (%d)\n",
+                              http.errorToString(httpCode).c_str(), httpCode);
+                http.end();
 
-                // Read whatever response the server might have sent before resetting!
-                delay(10);
-                if (client.available())
+                if (attempt < MAX_ATTEMPTS)
                 {
-                    Serial.println("[ApiClient] Server response during write failure:");
-                    while (client.available())
-                    {
-                        char c = client.read();
-                        Serial.print(c);
-                    }
-                    Serial.println();
+                    Serial.printf("[Upload] Retrying in %u ms...\n", RETRY_DELAY_MS[attempt - 1]);
+                    delay(RETRY_DELAY_MS[attempt - 1]);
+                    continue;
                 }
-
-                result.error = "Socket write failed";
-                client.stop();
-                file.close();
-                return result;
-            }
-            totalBytesWritten += sent;
-            remaining -= actual;
-        }
-        file.close();
-
-        Serial.printf("[ApiClient] File transmission complete: SPIFFS Read=%u, Socket Written=%u\n", totalBytesRead, totalBytesWritten);
-
-        // Multipart footer
-        client.print(partFooter);
-        client.flush();
-
-        // Wait for response
-        uint32_t t0 = millis();
-        while (!client.available() && (millis() - t0) < (uint32_t)API_READ_MS)
-        {
-            delay(10);
-        }
-
-        if (!client.available())
-        {
-            client.stop();
-            result.error = "Upload timeout — no server response";
-            Serial.println("[ApiClient] Timeout waiting for response");
-            return result;
-        }
-
-        // Read status line
-        String statusLine = readLineWithTimeout(client, API_READ_MS);
-        Serial.println("========== HTTP STATUS ==========");
-        Serial.println(statusLine);
-        Serial.println("=================================");
-        int    spacePos   = statusLine.indexOf(' ');
-        int    httpCode   = (spacePos >= 0)
-                            ? statusLine.substring(spacePos + 1, spacePos + 4).toInt()
-                            : 0;
-        result.httpCode = httpCode;
-
-        // Read headers
-        Serial.println("========== HTTP HEADERS ==========");
-        while (client.connected() || client.available())
-        {
-            String line = readLineWithTimeout(client, API_READ_MS);
-            String line_trimmed = line;
-            line_trimmed.trim();
-            if (line_trimmed.isEmpty()) break;
-            Serial.println(line_trimmed);
-        }
-        Serial.println("==================================");
-
-        // Read body
-        String body = readBodyWithTimeout(client, API_READ_MS);
-        Serial.println("========== HTTP BODY ==========");
-        Serial.println(body);
-        Serial.println("===============================");
-        client.stop();
-
-        result.body = body.c_str();
-
-        if (httpCode == 200 || httpCode == 201)
-        {
-            if (result.body.find("\"success\"") == std::string::npos)
-            {
-                result.error = "Invalid Response JSON";
-                result.success = false;
-                Serial.printf("[ApiClient] Response is not valid JSON: %s\n", result.body.c_str());
+                // Out of attempts — leave the file queued on SPIFFS; the
+                // background uploader will pick it up again on the next pass.
+                // We deliberately do NOT trigger a full subnet rescan here — see
+                // isHealthy() for the one place auto-discovery should run.
             }
             else
             {
-                result.success = parseBoolField(result.body, "success");
-                result.text    = parseTextField(result.body);
-                if (!result.success)
-                {
-                    result.error = "Upload failed in backend";
-                }
-                Serial.printf("[ApiClient] Response parsed successfully. Success: %s, Text: \"%s\"\n",
-                              result.success ? "true" : "false", result.text.c_str());
+                result.error = "HTTP " + std::to_string(httpCode);
+                const String body = http.getString();
+                result.body = body.c_str();
+                Serial.printf("[Upload] Server error %d: %s\n", httpCode, body.c_str());
+                http.end();
+                break; // a real HTTP error (4xx/5xx) won't fix itself by retrying
             }
         }
-        else
-        {
-            result.error = "HTTP Error " + std::to_string(httpCode);
-            Serial.printf("[ApiClient] Server returned HTTP %d: %s\n", httpCode, result.body.c_str());
-        }
 
-
+        file.close();
         return result;
     }
 
     // ── Generic GET ───────────────────────────────────────────────────────────
-    ApiResult ApiClient::get(const std::string& endpoint)
+    ApiResult ApiClient::get(const std::string &endpoint)
     {
         ApiResult result;
-        if (WiFi.status() != WL_CONNECTED) { result.error = "No Wi-Fi"; return result; }
-
-        // Build full URL
-        String urlStr = (m_baseUrl + endpoint).c_str();
-        String host; int port = 80; String path = endpoint.c_str();
-
-        int schemeEnd = urlStr.indexOf("://");
-        if (schemeEnd >= 0)
+        if (WiFi.status() != WL_CONNECTED)
         {
-            String rest  = urlStr.substring(schemeEnd + 3);
-            int sl       = rest.indexOf('/');
-            String hp    = (sl >= 0) ? rest.substring(0, sl) : rest;
-            path         = (sl >= 0) ? rest.substring(sl) : "/";
-            int col      = hp.indexOf(':');
-            host = (col >= 0) ? hp.substring(0, col) : hp;
-            port = (col >= 0) ? hp.substring(col + 1).toInt() : 80;
+            result.error = "No Wi-Fi";
+            return result;
         }
 
-        WiFiClient client;
-        client.setTimeout(API_READ_MS);
-        if (!client.connect(host.c_str(), port))
+        String url = String(m_baseUrl.c_str()) + endpoint.c_str();
+
+        HTTPClient http;
+        http.begin(url);
+        http.setTimeout(10000); // 10 seconds
+
+        const char* headerKeys[] = {"Content-Type"};
+        http.collectHeaders(headerKeys, 1);
+
+        int httpCode = http.GET();
+        result.httpCode = httpCode;
+
+        if (httpCode == HTTP_CODE_OK)
         {
-            Serial.printf("[ApiClient] GET Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
-            std::string discoveredUrl = discoverBackendIP();
-            if (!discoveredUrl.empty())
+            result.body = http.getString().c_str();
+            result.contentType = http.header("Content-Type").c_str();
+            result.success = true;
+        }
+        else
+        {
+            result.success = false;
+            result.error = "HTTP " + std::to_string(httpCode);
+            if (httpCode < 0)
             {
-                saveBaseUrl(discoveredUrl);
-                String newUrlStr = (discoveredUrl + endpoint).c_str();
-                int newSchemeEnd = newUrlStr.indexOf("://");
-                if (newSchemeEnd >= 0)
-                {
-                    String rest  = newUrlStr.substring(newSchemeEnd + 3);
-                    int sl       = rest.indexOf('/');
-                    String hp    = (sl >= 0) ? rest.substring(0, sl) : rest;
-                    path         = (sl >= 0) ? rest.substring(sl) : "/";
-                    int col      = hp.indexOf(':');
-                    host = (col >= 0) ? hp.substring(0, col) : hp;
-                    port = (col >= 0) ? hp.substring(col + 1).toInt() : 80;
-                }
-                Serial.printf("[ApiClient] Retrying connection to auto-discovered backend: %s:%d\n", host.c_str(), port);
-                if (!client.connect(host.c_str(), port))
-                {
-                    result.error = "Cannot connect";
-                    return result;
-                }
-            }
-            else
-            {
-                result.error = "Cannot connect";
-                return result;
+                Serial.printf("[ApiClient] GET failed with network error: %d (%s)\n", 
+                              httpCode, http.errorToString(httpCode).c_str());
             }
         }
-
-        client.printf("GET %s HTTP/1.1\r\nHost: %s:%d\r\nConnection: close\r\n\r\n",
-                      path.c_str(), host.c_str(), port);
-
-        uint32_t t0 = millis();
-        while (!client.available() && millis() - t0 < (uint32_t)API_READ_MS) delay(10);
-
-        String statusLine = readLineWithTimeout(client, API_READ_MS);
-        int sp = statusLine.indexOf(' ');
-        result.httpCode = (sp >= 0) ? statusLine.substring(sp + 1, sp + 4).toInt() : 0;
-
-        std::string contentType = "";
-        while (client.connected())
-        {
-            String l = readLineWithTimeout(client, API_READ_MS);
-            String l_trimmed = l;
-            l_trimmed.trim();
-            if (l_trimmed.isEmpty()) break;
-            
-            Serial.printf("[ApiClient GET Header] %s\n", l_trimmed.c_str());
-
-            String l_lower = l;
-            l_lower.toLowerCase();
-            if (l_lower.startsWith("content-type:"))
-            {
-                int colonIdx = l.indexOf(':');
-                if (colonIdx >= 0)
-                {
-                    String val = l.substring(colonIdx + 1);
-                    val.trim();
-                    val.toLowerCase();
-                    contentType = val.c_str();
-                }
-            }
-        }
-        String body = readBodyWithTimeout(client, API_READ_MS);
-        client.stop();
-
-        result.body = body.c_str();
-        result.contentType = contentType;
-        result.success = (result.httpCode == 200);
-        if (!result.success) result.error = "HTTP " + std::to_string(result.httpCode);
+        http.end();
         return result;
     }
 
     // ── Generic POST (JSON) ───────────────────────────────────────────────────
-    ApiResult ApiClient::post(const std::string& endpoint, const std::string& jsonBody)
+    ApiResult ApiClient::post(const std::string &endpoint, const std::string &jsonBody)
     {
         ApiResult result;
-        if (WiFi.status() != WL_CONNECTED) { result.error = "No Wi-Fi"; return result; }
-
-        String urlStr = (m_baseUrl + endpoint).c_str();
-        String host; int port = 80; String path = endpoint.c_str();
-
-        int schemeEnd = urlStr.indexOf("://");
-        if (schemeEnd >= 0)
+        if (WiFi.status() != WL_CONNECTED)
         {
-            String rest = urlStr.substring(schemeEnd + 3);
-            int sl      = rest.indexOf('/');
-            String hp   = (sl >= 0) ? rest.substring(0, sl) : rest;
-            path        = (sl >= 0) ? rest.substring(sl) : "/";
-            int col     = hp.indexOf(':');
-            host = (col >= 0) ? hp.substring(0, col) : hp;
-            port = (col >= 0) ? hp.substring(col + 1).toInt() : 80;
+            result.error = "No Wi-Fi";
+            return result;
         }
 
-        WiFiClient client;
-        client.setTimeout(API_READ_MS);
-        if (!client.connect(host.c_str(), port))
+        String url = String(m_baseUrl.c_str()) + endpoint.c_str();
+
+        HTTPClient http;
+        http.begin(url);
+        http.setTimeout(10000); // 10 seconds
+        http.addHeader("Content-Type", "application/json");
+
+        const char* headerKeys[] = {"Content-Type"};
+        http.collectHeaders(headerKeys, 1);
+
+        int httpCode = http.POST(jsonBody.c_str());
+        result.httpCode = httpCode;
+
+        if (httpCode == HTTP_CODE_OK || httpCode == 201)
         {
-            Serial.printf("[ApiClient] POST Connection failed to %s:%d. Attempting auto-discovery...\n", host.c_str(), port);
-            std::string discoveredUrl = discoverBackendIP();
-            if (!discoveredUrl.empty())
-            {
-                saveBaseUrl(discoveredUrl);
-                String newUrlStr = (discoveredUrl + endpoint).c_str();
-                int newSchemeEnd = newUrlStr.indexOf("://");
-                if (newSchemeEnd >= 0)
-                {
-                    String rest  = newUrlStr.substring(newSchemeEnd + 3);
-                    int sl       = rest.indexOf('/');
-                    String hp    = (sl >= 0) ? rest.substring(0, sl) : rest;
-                    path         = (sl >= 0) ? rest.substring(sl) : "/";
-                    int col      = hp.indexOf(':');
-                    host = (col >= 0) ? hp.substring(0, col) : hp;
-                    port = (col >= 0) ? hp.substring(col + 1).toInt() : 80;
-                }
-                Serial.printf("[ApiClient] Retrying connection to auto-discovered backend: %s:%d\n", host.c_str(), port);
-                if (!client.connect(host.c_str(), port))
-                {
-                    result.error = "Cannot connect";
-                    return result;
-                }
-            }
-            else
-            {
-                result.error = "Cannot connect";
-                return result;
-            }
-        }
-
-        client.printf("POST %s HTTP/1.1\r\n",        path.c_str());
-        client.printf("Host: %s:%d\r\n",             host.c_str(), port);
-        client.printf("Content-Type: application/json\r\n");
-        client.printf("Content-Length: %u\r\n",      jsonBody.size());
-        client.print("Connection: close\r\n\r\n");
-        client.print(jsonBody.c_str());
-
-        uint32_t t0 = millis();
-        while (!client.available() && millis() - t0 < (uint32_t)API_READ_MS) delay(10);
-
-        String statusLine = readLineWithTimeout(client, API_READ_MS);
-        int sp = statusLine.indexOf(' ');
-        result.httpCode = (sp >= 0) ? statusLine.substring(sp + 1, sp + 4).toInt() : 0;
-
-        std::string contentType = "";
-        while (client.connected())
-        {
-            String l = readLineWithTimeout(client, API_READ_MS);
-            String l_trimmed = l;
-            l_trimmed.trim();
-            if (l_trimmed.isEmpty()) break;
-            
-            String l_lower = l;
-            l_lower.toLowerCase();
-            if (l_lower.startsWith("content-type:"))
-            {
-                int colonIdx = l.indexOf(':');
-                if (colonIdx >= 0)
-                {
-                    String val = l.substring(colonIdx + 1);
-                    val.trim();
-                    val.toLowerCase();
-                    contentType = val.c_str();
-                }
-            }
-        }
-        String body = readBodyWithTimeout(client, API_READ_MS);
-        client.stop();
-
-        result.body    = body.c_str();
-        result.contentType = contentType;
-        result.success = (result.httpCode == 200 || result.httpCode == 201);
-        if (!result.success) result.error = "HTTP " + std::to_string(result.httpCode);
-        else
-        {
+            result.body = http.getString().c_str();
+            result.contentType = http.header("Content-Type").c_str();
+            result.success = true;
             result.text = parseTextField(result.body);
         }
+        else
+        {
+            result.success = false;
+            result.error = "HTTP " + std::to_string(httpCode);
+            if (httpCode < 0)
+            {
+                Serial.printf("[ApiClient] POST failed with network error: %d (%s)\n", 
+                              httpCode, http.errorToString(httpCode).c_str());
+            }
+        }
+        http.end();
         return result;
     }
 
     std::string ApiClient::discoverBackendIP()
     {
-        if (WiFi.status() != WL_CONNECTED) return "";
+        if (WiFi.status() != WL_CONNECTED)
+            return "";
 
         IPAddress localIP = WiFi.localIP();
         IPAddress subnet = WiFi.subnetMask();
@@ -746,25 +445,27 @@ namespace VOXA
 
             for (int i = 1; i < 255; ++i)
             {
-                if (i == localIP[3]) continue; // Skip own IP
+                if (i == localIP[3])
+                    continue; // Skip own IP
 
                 targetIP[3] = i;
                 WiFiClient testClient;
                 testClient.setTimeout(100); // 100ms socket timeout for local network sweep
-                
+
                 // Fast connect sweep: local port 8000 closed/open handshake is very fast
-                if (testClient.connect(targetIP, 8000))
+                bool connected = testClient.connect(targetIP, 8000);
+                if (connected)
                 {
-                    testClient.stop();
                     String discoveredUrl = "http://" + targetIP.toString() + ":8000";
+                    testClient.stop(); // always release the socket, success or not
                     Serial.printf("[ApiClient] Auto-discovered backend at: %s\n", discoveredUrl.c_str());
                     return discoveredUrl.c_str();
                 }
-                delay(1); // Yield to prevent watchdog triggers
+                testClient.stop(); // release the socket even after a failed/timed-out attempt
+                delay(1);          // Yield to prevent watchdog triggers
             }
             Serial.println("[ApiClient] Subnet scan complete: no backend found on port 8000");
         }
         return "";
     }
 }
-

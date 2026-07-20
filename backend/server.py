@@ -70,6 +70,23 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
         transcript = process_audio(audio_id, s3_key)
         print(f"[Background] Transcription completed: \"{transcript}\"")
 
+        if not transcript or not transcript.strip():
+            print("[Background] Transcript is empty (no speech detected). Updating MongoDB with empty transcript notice.")
+            structured_data = {
+                "category": "Empty",
+                "summary": "Empty transcript — please record again.",
+                "tasks": [],
+                "reminders": [],
+                "ideas": [],
+                "questions": [],
+                "thoughts": [],
+                "notes": [],
+                "priority": "Low"
+            }
+            update_llm_result(audio_id, structured_data, ACTIVE_MODEL)
+            print(f"[Background] Pipeline finished for audio_id: {audio_id} (empty transcript).")
+            return
+
         # 3. LLM Analysis and parsing
         print("[Background] Processing transcript with LLM...")
         structured_data = process_transcript(transcript, ACTIVE_MODEL)
@@ -165,6 +182,7 @@ async def upload_voice(
         return JSONResponse(content={
             "success": True,
             "audio_id": audio_id,
+            "text": "Processing...",
             "status": "processing"
         })
 
@@ -206,10 +224,23 @@ async def upload_voice_raw(
     temp_filepath = os.path.join(temp_dir, temp_filename)
 
     try:
-        # Stream raw request body into local temporary WAV file
-        with open(temp_filepath, "wb") as buffer:
-            async for chunk in request.stream():
-                await run_in_threadpool(buffer.write, chunk)
+        # Read the entire raw WAV body at once (fully async, no per-chunk thread overhead)
+        # This avoids TCP receive-buffer stalls caused by spawning a new thread per chunk
+        raw_body = await request.body()
+        file_size = len(raw_body)
+        print(f"[Server] Received raw body: {file_size} bytes")
+
+        if file_size == 0:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Empty request body"}
+            )
+
+        # Write the entire body to disk in one blocking call (offloaded to thread pool)
+        def write_file():
+            with open(temp_filepath, "wb") as f:
+                f.write(raw_body)
+        await run_in_threadpool(write_file)
         print(f"[Server] Saved raw uploaded file to temporary path: {temp_filepath}")
 
         # Store initial metadata with "processing" status in MongoDB
@@ -231,6 +262,7 @@ async def upload_voice_raw(
         return JSONResponse(content={
             "success": True,
             "audio_id": audio_id,
+            "text": "Processing...",
             "status": "processing"
         })
 
@@ -255,4 +287,4 @@ if __name__ == "__main__":
     import uvicorn
     # Start uvicorn server on port 8000
     print("[Server] Starting VOXA FastAPI server...")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True, log_level="trace")
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, log_level="trace")

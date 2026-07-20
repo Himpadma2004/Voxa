@@ -1,4 +1,5 @@
 #include "MicrophoneService.h"
+#include "../storage/SpiffsMutex.h"
 #include <driver/i2s.h>
 #include <SPIFFS.h>
 #include <algorithm>
@@ -77,24 +78,59 @@ namespace VOXA
     }
 
 
-    bool MicrophoneService::startRecording(const std::string& filePath)
+    bool MicrophoneService::startRecording(const std::string& filePath, const char* caller)
     {
-        if (m_recording) return false;
-        if (!m_initialized && !begin()) return false;
+        uint32_t nowMs = millis();
+        Serial.printf("[MicrophoneService] startRecording() called by: %s, timestamp: %u ms\n", caller, nowMs);
 
-        m_filePath = filePath;
-        
-        m_file = SPIFFS.open(filePath.c_str(), "w");
-        if (!m_file)
+        if (m_recording)
         {
-            Serial.printf("[MicrophoneService] Failed to open file for writing: %s\n", filePath.c_str());
+            Serial.printf("[MicrophoneService] Already recording! Rejecting startRecording call from: %s\n", caller);
             return false;
         }
 
-        // Write dummy WAV header first (will update it on stop)
-        writeWavHeader(m_file, 0);
+        if (!m_initialized && !begin())
+        {
+            Serial.printf("[MicrophoneService] ERROR: I2S initialization failed on startRecording() called by: %s\n", caller);
+            return false;
+        }
 
-        m_startMs = millis();
+        m_filePath = filePath;
+
+        // Allocate PSRAM/DRAM buffer if not already done
+        if (!m_psramBuffer)
+        {
+            size_t trySizes[] = { 2000000, 1048576, 524288, 262144 };
+            for (size_t sz : trySizes)
+            {
+                m_psramBuffer = (uint8_t*)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                if (m_psramBuffer)
+                {
+                    m_allocatedBufferSize = sz;
+                    Serial.printf("[MicrophoneService] PSRAM buffer successfully allocated (%u bytes)\n", (unsigned int)sz);
+                    break;
+                }
+            }
+
+            if (!m_psramBuffer)
+            {
+                // Fallback to internal DRAM if PSRAM capability is not present/available
+                m_psramBuffer = (uint8_t*)malloc(131072); // 128KB (~4 seconds)
+                if (m_psramBuffer)
+                {
+                    m_allocatedBufferSize = 131072;
+                    Serial.println("[MicrophoneService] WARNING: Allocated 128KB internal DRAM buffer (PSRAM unavailable)");
+                }
+                else
+                {
+                    Serial.println("[MicrophoneService] ERROR: Failed to allocate audio recording buffer!");
+                    return false;
+                }
+            }
+        }
+
+        m_bufferOffset = 0;
+        m_startMs = nowMs;
         m_durationMs = 0;
         m_recording = true;
 
@@ -109,36 +145,90 @@ namespace VOXA
             1  // Run on Core 1 (UI is on Core 0)
         );
 
-        Serial.printf("[MicrophoneService] Recording started → %s\n", filePath.c_str());
+        Serial.printf("[MicrophoneService] Recording started → %s (caller: %s)\n", filePath.c_str(), caller);
         return true;
     }
 
-    bool MicrophoneService::stopRecording()
+    bool MicrophoneService::stopRecording(const char* caller, const char* reason)
     {
-        if (!m_recording) return false;
+        uint32_t nowMs = millis();
+        Serial.printf("[MicrophoneService] stopRecording() called by: %s, timestamp: %u ms, reason: %s\n", caller, nowMs, reason);
+
+        // Allow saving if the task is still running OR if it auto-stopped but has data in the buffer
+        if (!m_recording && m_bufferOffset == 0)
+        {
+            Serial.printf("[MicrophoneService] stopRecording() early return: not recording and 0 bufferOffset (caller: %s, reason: %s)\n", caller, reason);
+            return false;
+        }
 
         m_recording = false;
-        m_durationMs = millis() - m_startMs;
+        m_saving = true;
+        m_durationMs = nowMs - m_startMs;
 
         // Wait for background task to self-terminate
         if (m_taskHandle != nullptr)
         {
-            delay(100);
+            vTaskDelay(pdMS_TO_TICKS(100)); // yield to task so it can exit
             m_taskHandle = nullptr;
         }
 
-        if (m_file)
+        bool isValidWav = false;
+        uint32_t sz = 0;
+
         {
-            uint32_t dataSize = m_file.size() - 44;
-            // Seek to start and rewrite the correct WAV header with actual data size
-            m_file.seek(0);
-            writeWavHeader(m_file, dataSize);
+            SpiffsLock lock("MicrophoneService::stopRecording");
+
+            Serial.printf("[MicrophoneService] Saving %u bytes from PSRAM to SPIFFS: %s...\n", (unsigned int)m_bufferOffset, m_filePath.c_str());
+
+            m_file = SPIFFS.open(m_filePath.c_str(), "w");
+            if (!m_file)
+            {
+                Serial.printf("[MicrophoneService] ERROR: Failed to open SPIFFS file for writing: %s (caller: %s, reason: %s)\n", m_filePath.c_str(), caller, reason);
+                m_saving = false;
+                return false;
+            }
+            Serial.printf("[MicrophoneService] File successfully opened for writing: %s\n", m_filePath.c_str());
+
+            // Write WAV header
+            bool hdrWritten = writeWavHeader(m_file, m_bufferOffset);
+            if (hdrWritten)
+            {
+                Serial.printf("[MicrophoneService] WAV header written (44 bytes header, dataSize: %u bytes)\n", (unsigned int)m_bufferOffset);
+            }
+            else
+            {
+                Serial.printf("[MicrophoneService] ERROR: WAV header write failed for %s\n", m_filePath.c_str());
+            }
+
+            // Write raw audio samples from PSRAM in 32KB chunks
+            size_t written = 0;
+            const size_t chunkSize = 32768;
+            while (written < m_bufferOffset)
+            {
+                size_t toWrite = std::min(chunkSize, m_bufferOffset - written);
+                size_t bytesWritten = m_file.write(m_psramBuffer + written, toWrite);
+                if (bytesWritten != toWrite)
+                {
+                    Serial.printf("[MicrophoneService] ERROR: file.write() mismatch! Expected bytes: %u, Actual bytes: %u, ESP error: SPIFFS write failed\n",
+                                  (unsigned int)toWrite, (unsigned int)bytesWritten);
+                    break;
+                }
+                written += bytesWritten;
+                Serial.printf("[MicrophoneService] bytesWritten: %u (Total recorded bytes dumped to SPIFFS: %u/%u)\n",
+                              (unsigned int)bytesWritten, (unsigned int)written, (unsigned int)m_bufferOffset);
+            }
+
+            m_file.flush();
+            Serial.println("[MicrophoneService] file.flush() executed");
+
+            size_t sizeBeforeClose = m_file.size();
+            Serial.printf("[MicrophoneService] Final file size before closing: %u bytes\n", (unsigned int)sizeBeforeClose);
+
             m_file.close();
-            
+            Serial.println("[MicrophoneService] File closed successfully");
+
             // Validate recorded WAV file on SPIFFS
             File checkFile = SPIFFS.open(m_filePath.c_str(), "r");
-            bool isValidWav = false;
-            uint32_t sz = 0;
             if (checkFile)
             {
                 sz = checkFile.size();
@@ -155,22 +245,26 @@ namespace VOXA
                 }
                 checkFile.close();
             }
+        } // SpiffsLock released here
 
-            if (isValidWav)
-            {
-                Serial.printf("[MicrophoneService] WAV file validation SUCCESS: %s (%u bytes, %u ms)\n",
-                              m_filePath.c_str(), sz, m_durationMs);
-            }
-            else
-            {
-                Serial.printf("[MicrophoneService] WAV file validation ERROR (invalid format/size): %s (%u bytes)\n",
-                              m_filePath.c_str(), sz);
-            }
+        m_saving = false;
+        m_bufferOffset = 0; // Clear buffer so any duplicate stopRecording calls exit safely
+
+        Serial.printf("[MicrophoneService] Final file size after close: %u bytes for %s\n", (unsigned int)sz, m_filePath.c_str());
+
+        if (isValidWav)
+        {
+            Serial.printf("[MicrophoneService] WAV file validation SUCCESS: %s (%u bytes, %u ms duration)\n",
+                          m_filePath.c_str(), sz, m_durationMs);
+        }
+        else
+        {
+            Serial.printf("[MicrophoneService] WAV file validation ERROR (invalid format/size): %s (%u bytes)\n",
+                          m_filePath.c_str(), sz);
         }
 
-        return true;
+        return isValidWav;
     }
-
 
     uint32_t MicrophoneService::getDurationMs() const
     {
@@ -179,66 +273,86 @@ namespace VOXA
     }
 
     void MicrophoneService::recordTask()
-{
-    constexpr int BUFFER_SAMPLES = 256;
-
-    int32_t rawBuffer[BUFFER_SAMPLES];
-    int16_t pcmBuffer[BUFFER_SAMPLES];
-
-    i2s_zero_dma_buffer(I2S_NUM_0);
-
-    while (m_recording)
     {
-        size_t bytesRead = 0;
+        Serial.println("[MicrophoneService] recordTask background thread started");
+        constexpr int BUFFER_SAMPLES = 256;
 
-        esp_err_t err = i2s_read(
-            I2S_NUM_0,
-            rawBuffer,
-            sizeof(rawBuffer),
-            &bytesRead,
-            portMAX_DELAY);
-        static bool once = true;
+        int32_t rawBuffer[BUFFER_SAMPLES];
+        int16_t pcmBuffer[BUFFER_SAMPLES];
 
-        // if (once)
-        // {
-        //     once = false;
+        i2s_zero_dma_buffer(I2S_NUM_0);
 
-        //     Serial.println("===== RAW I2S SAMPLES =====");
+        size_t totalReads = 0;
+        size_t totalBytesReadCount = 0;
+        const char* exitReason = "m_recording flag became false";
 
-        //     for (int i = 0; i < 50; i++)
-        //     {
-        //         Serial.println(rawBuffer[i]);
-        //     }
-
-        //     Serial.println("===========================");
-        // }
-
-        if (err == ESP_OK && bytesRead > 0)
+        while (m_recording)
         {
-            int sampleCount = bytesRead / sizeof(int32_t);
+            size_t bytesRead = 0;
 
-            for (int i = 0; i < sampleCount; i++)
+            esp_err_t err = i2s_read(
+                I2S_NUM_0,
+                rawBuffer,
+                sizeof(rawBuffer),
+                &bytesRead,
+                portMAX_DELAY);
+
+            totalReads++;
+
+            if (err == ESP_OK && bytesRead > 0)
             {
-                int32_t sample = rawBuffer[i];
+                totalBytesReadCount += bytesRead;
 
-                // Extract the upper 16 bits from the 32-bit sample
-                sample = sample >> 16;
+                if (totalReads == 1 || totalReads % 100 == 0)
+                {
+                    Serial.printf("[MicrophoneService] i2s_read() result: err=0 (ESP_OK), bytesRead=%u, Total bytesRead=%u, m_bufferOffset=%u\n",
+                                  (unsigned int)bytesRead, (unsigned int)totalBytesReadCount, (unsigned int)m_bufferOffset);
+                }
 
-                // Clamp
-                if (sample > 32767) sample = 32767;
-                if (sample < -32768) sample = -32768;
+                int sampleCount = bytesRead / sizeof(int32_t);
 
-                pcmBuffer[i] = (int16_t)sample;
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    int32_t sample = rawBuffer[i];
+
+                    // Extract the upper 16 bits from the 32-bit sample
+                    sample = sample >> 16;
+
+                    // Clamp
+                    if (sample > 32767) sample = 32767;
+                    if (sample < -32768) sample = -32768;
+
+                    pcmBuffer[i] = (int16_t)sample;
+                }
+
+                size_t chunkBytes = sampleCount * sizeof(int16_t);
+                if (m_bufferOffset + chunkBytes <= m_allocatedBufferSize)
+                {
+                    memcpy(m_psramBuffer + m_bufferOffset, pcmBuffer, chunkBytes);
+                    m_bufferOffset += chunkBytes;
+                }
+                else
+                {
+                    exitReason = "Audio Buffer limit reached";
+                    Serial.println("[MicrophoneService] Audio Buffer limit reached! Auto-stopping task.");
+                    m_recording = false;
+                    break;
+                }
             }
-
-            m_file.write(
-                (uint8_t*)pcmBuffer,
-                sampleCount * sizeof(int16_t));
+            else
+            {
+                Serial.printf("[MicrophoneService] i2s_read() result: err=%d, bytesRead=%u\n", (int)err, (unsigned int)bytesRead);
+                if (err != ESP_OK)
+                {
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+            }
         }
-    }
 
-    vTaskDelete(nullptr);
-}
+        Serial.printf("[MicrophoneService] recordTask thread exiting. Exact reason: %s. Final bufferOffset (Total recorded bytes): %u\n",
+                      exitReason, (unsigned int)m_bufferOffset);
+        vTaskDelete(nullptr);
+    }
 
     // WAV Header format
     struct WavHeader

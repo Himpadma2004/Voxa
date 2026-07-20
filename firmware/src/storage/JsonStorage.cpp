@@ -1,4 +1,5 @@
 #include "JsonStorage.h"
+#include "SpiffsMutex.h"
 #include <Arduino.h>
 #include <SPIFFS.h>
 #include <algorithm>
@@ -71,6 +72,7 @@ namespace VOXA
 
     std::string JsonStorage::loadJson(const std::string& filename) const
     {
+        SpiffsLock lock("JsonStorage::loadJson");
         String path = "/" + String(filename.c_str());
         if (!SPIFFS.exists(path)) return {};
 
@@ -84,17 +86,20 @@ namespace VOXA
 
     bool JsonStorage::saveJson(const std::string& filename, const std::string& json)
     {
+        SpiffsLock lock("JsonStorage::saveJson");
         String path = "/" + String(filename.c_str());
         File f = SPIFFS.open(path, "w");
         if (!f) return false;
 
         f.print(json.c_str());
+        f.flush();
         f.close();
         return true;
     }
 
     bool JsonStorage::deleteFile(const std::string& filename)
     {
+        SpiffsLock lock("JsonStorage::deleteFile");
         String path = "/" + String(filename.c_str());
         return SPIFFS.remove(path);
     }

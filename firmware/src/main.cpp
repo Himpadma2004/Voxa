@@ -34,25 +34,26 @@
 #include "services/SearchService.h"
 #include "services/DataService.h"
 #include "services/ApiClient.h"
+#include "storage/SpiffsMutex.h"
 
 using namespace VOXA;
 
 // Global services instantiations
 namespace VOXA
 {
-    JsonStorage storage("/spiffs");
-    StorageService storageService(&storage);
-    MemoryStorage memoryStorage(&storage);
-    
-    ReminderService reminderService(&storageService);
-    IdeaService ideaService(&storageService);
-    QuestionService questionService(&storageService);
-    RecordingService recordingService(&storageService);
-    SettingsService settingsService(&storageService);
-    MemoryService memoryService(&memoryStorage);
-    SearchService searchService(&storageService);
-    TimeService timeService;
-    WiFiManager wifiManager;
+  JsonStorage storage("/spiffs");
+  StorageService storageService(&storage);
+  MemoryStorage memoryStorage(&storage);
+
+  ReminderService reminderService(&storageService);
+  IdeaService ideaService(&storageService);
+  QuestionService questionService(&storageService);
+  RecordingService recordingService(&storageService);
+  SettingsService settingsService(&storageService);
+  MemoryService memoryService(&memoryStorage);
+  SearchService searchService(&storageService);
+  TimeService timeService;
+  WiFiManager wifiManager;
 }
 
 Touch touch;
@@ -76,7 +77,7 @@ ScreenId activeScreen = ScreenId::Home;
 
 namespace
 {
-  void waitForWiFiConnection(const char* tag)
+  void waitForWiFiConnection(const char *tag)
   {
     if (WiFi.status() == WL_CONNECTED)
     {
@@ -91,98 +92,125 @@ namespace
     Serial.printf("[%s] Wi-Fi connected.\n", tag);
   }
 
-    void backgroundDataSyncTask(void* /*param*/)
+  void backgroundDataSyncTask(void * /*param*/)
+  {
+    uint32_t lastSyncMs = 0;
+    bool lastConnected = false;
+
+    while (true)
     {
-        uint32_t lastSyncMs = 0;
-        bool lastConnected = false;
+      if (microphoneService.isBusy())
+      {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        continue;
+      }
 
-        while (true)
+      waitForWiFiConnection("DataSync");
+      bool connected = true;
+      uint32_t now = millis();
+
+      if (connected)
+      {
+        if (!VOXA::apiClient.isHealthy())
         {
-            waitForWiFiConnection("DataSync");
-          bool connected = true;
-          uint32_t now = millis();
-
-            if (connected)
-            {
-              if (!VOXA::apiClient.isHealthy())
-              {
-                Serial.println("[DataSync] Backend not responding. Will retry later.");
-                lastConnected = false;
-                vTaskDelay(pdMS_TO_TICKS(15000));
-                continue;
-              }
-
-                // Sync on reconnection OR if 60 seconds have elapsed since the last sync
-                if (!lastConnected || (now - lastSyncMs >= 60000) || lastSyncMs == 0)
-                {
-                    Serial.println("[DataSync] Syncing backend data in background...");
-                    VOXA::dataService.syncAll();
-                    lastSyncMs = millis();
-                }
-            }
-
-            lastConnected = connected;
-            vTaskDelay(pdMS_TO_TICKS(5000)); // Check connectivity state every 5 seconds
+          Serial.println("[DataSync] Backend not responding. Will retry later.");
+          lastConnected = false;
+          vTaskDelay(pdMS_TO_TICKS(15000));
+          continue;
         }
-    }
 
-    void backgroundUploadTask(void* /*param*/)
-    {
-        while (true)
+        // Sync on reconnection OR if 60 seconds have elapsed since the last sync
+        if (!lastConnected || (now - lastSyncMs >= 60000) || lastSyncMs == 0)
         {
-            // Delay 10 seconds between checks
-            vTaskDelay(pdMS_TO_TICKS(10000));
+          Serial.println("[DataSync] Syncing backend data in background...");
+          VOXA::dataService.syncAll();
+          lastSyncMs = millis();
+        }
+      }
 
-          waitForWiFiConnection("BackgroundUpload");
+      lastConnected = connected;
+      vTaskDelay(pdMS_TO_TICKS(5000)); // Check connectivity state every 5 seconds
+    }
+  }
 
-          if (!apiClient.isHealthy())
+  void backgroundUploadTask(void * /*param*/)
+  {
+    while (true)
+    {
+      // Delay 10 seconds between checks
+      vTaskDelay(pdMS_TO_TICKS(10000));
+
+      if (microphoneService.isBusy())
+      {
+        Serial.println("[BackgroundUpload] MicrophoneService is busy recording/saving. Pausing upload check.");
+        continue;
+      }
+
+      waitForWiFiConnection("BackgroundUpload");
+
+      if (!apiClient.isHealthy())
+      {
+        Serial.println("[BackgroundUpload] Backend not responding. Will retry later.");
+        continue;
+      }
+
+      auto recordings = recordingService.getAll();
+      for (auto &rec : recordings)
+      {
+        if (microphoneService.isBusy())
+        {
+          Serial.println("[BackgroundUpload] MicrophoneService started recording/saving. Pausing upload.");
+          break;
+        }
+
+        if (rec.timestamp == "Pending")
+        {
+          // Prevent duplicate concurrent uploads
+          if (rec.filePath == g_currentlyUploadingPath)
           {
-            Serial.println("[BackgroundUpload] Backend not responding. Will retry later.");
+            Serial.printf("[BackgroundUpload] File %s is already being uploaded. Skipping.\n", rec.filePath.c_str());
             continue;
           }
 
-            auto recordings = recordingService.getAll();
-            for (auto& rec : recordings)
+          Serial.printf("[BackgroundUpload] Found pending voice note: %s\n", rec.filePath.c_str());
+
+          // Check server availability before attempting upload
+          if (!apiClient.isHealthy())
+          {
+            Serial.println("[BackgroundUpload] Server unreachable. Will retry later.");
+            break; // Stop iterating if server is unreachable
+          }
+
+          g_currentlyUploadingPath = rec.filePath;
+          ApiResult res = apiClient.uploadVoice(rec.filePath);
+          g_currentlyUploadingPath = "";
+          if (res.success)
+          {
+            Serial.printf("[BackgroundUpload] Successfully uploaded pending note: %s\n", res.text.c_str());
+            rec.title = res.text;
+            rec.timestamp = "Uploaded";
+            recordingService.update(rec);
+          }
+          else
+          {
+            Serial.printf("[BackgroundUpload] Upload failed: %s\n", res.error.c_str());
+            // Don't retry forever: a 0-byte/empty file can never succeed.
+            // Mark it Failed so it stops clogging the retry queue.
+            if (res.error.find("empty") != std::string::npos ||
+                res.error.find("not found") != std::string::npos)
             {
-                if (rec.timestamp == "Pending")
-                {
-                    // Prevent duplicate concurrent uploads
-                    if (rec.filePath == g_currentlyUploadingPath)
-                    {
-                        Serial.printf("[BackgroundUpload] File %s is already being uploaded. Skipping.\n", rec.filePath.c_str());
-                        continue;
-                    }
-
-                    Serial.printf("[BackgroundUpload] Found pending voice note: %s\n", rec.filePath.c_str());
-
-                    // Check server availability before attempting upload
-                    if (!apiClient.isHealthy())
-                    {
-                        Serial.println("[BackgroundUpload] Server unreachable. Will retry later.");
-                        break; // Stop iterating if server is unreachable
-                    }
-
-                    g_currentlyUploadingPath = rec.filePath;
-                    ApiResult res = apiClient.uploadVoice(rec.filePath);
-                    g_currentlyUploadingPath = "";
-                    if (res.success)
-                    {
-                        Serial.printf("[BackgroundUpload] Successfully uploaded pending note: %s\n", res.text.c_str());
-                        rec.title = res.text;
-                        rec.timestamp = "Uploaded";
-                        recordingService.update(rec);
-                    }
-                    else
-                    {
-                        Serial.printf("[BackgroundUpload] Upload failed: %s\n", res.error.c_str());
-                    }
-
-                    // Delay 2 seconds between consecutive uploads
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                }
+              rec.timestamp = "Failed";
+              recordingService.update(rec);
+              Serial.printf("[BackgroundUpload] Giving up on unrecoverable file: %s\n", rec.filePath.c_str());
             }
+          }
+
+          // Delay 2 seconds between consecutive uploads
+          vTaskDelay(pdMS_TO_TICKS(2000));
         }
+      }
     }
+  }
 }
 
 void setup()
@@ -198,15 +226,8 @@ void setup()
   Serial.printf("SRAM Free Heap: %d bytes\n", ESP.getFreeHeap());
   Serial.println("=================================");
 
-    Serial.println("[Startup] Display");
-  Display::begin();
-  touch.begin();
-    Serial.println("[Startup] Display ready");
-
-  // Show boot screen immediately to give visual feedback
-  boot.show();
-
-    Serial.println("[Startup] SPIFFS");
+  Serial.println("[Startup] SPIFFS");
+  initSpiffsMutex();
   if (!SPIFFS.begin(true))
   {
     Serial.println("[SPIFFS] Mount FAILED!");
@@ -216,217 +237,236 @@ void setup()
     Serial.println("[SPIFFS] Mounted successfully.");
   }
 
-    Serial.println("[Startup] Preferences");
-    apiClient.begin();
-    wifiManager.begin();
-    Serial.println("[Startup] Preferences ready");
+  Serial.println("[Startup] Display");
+  Display::begin();
+  touch.begin();
+  Serial.println("[Startup] Display ready");
 
-    Serial.println("[Startup] WiFi");
-    bool wifiConnected = false;
-    if (wifiManager.shouldForcePortal())
+  // Show boot screen immediately to give visual feedback
+  boot.show();
+
+  Serial.println("[Startup] SPIFFS");
+  if (!SPIFFS.begin(true))
+  {
+    Serial.println("[SPIFFS] Mount FAILED!");
+  }
+  else
+  {
+    Serial.println("[SPIFFS] Mounted successfully.");
+  }
+
+  Serial.println("[Startup] Preferences");
+  apiClient.begin();
+  apiClient.setBaseUrl("http://192.168.0.148:8000"); // force-update saved backend IP to current network
+  wifiManager.begin();
+  Serial.println("[Startup] Preferences ready");
+
+  Serial.println("[Startup] WiFi");
+  bool wifiConnected = false;
+  if (wifiManager.shouldForcePortal())
+  {
+    Serial.println("[WiFi] Force portal flag set. Launching captive portal...");
+    wifiManager.clearForcePortal();
+  }
+  else if (wifiManager.hasSavedCredentials())
+  {
+    Serial.println("[WiFi] Saved credentials found. Connecting in background...");
+    wifiManager.connect();
+    activeScreen = ScreenId::Home;
+    wifiConnected = true;
+  }
+
+  if (!wifiConnected)
+  {
+    Serial.println("[WiFi] Entering Setup Mode (Captive Portal)...");
+    wifiManager.startPortal();
+
+    bool skipSetup = false;
+    bool skipPressed = false;
+
+    auto drawSetupScreen = [](const char *status, bool showSkipPressed)
     {
-      Serial.println("[WiFi] Force portal flag set. Launching captive portal...");
-      wifiManager.clearForcePortal();
-    }
-    else if (wifiManager.hasSavedCredentials())
-    {
-      Serial.println("[WiFi] Saved credentials found. Connecting in background...");
-      wifiManager.connect();
-      activeScreen = ScreenId::Home;
-      wifiConnected = true;
-    }
+      uint16_t w = Display::width();
+      uint16_t h = Display::height();
 
-    if (!wifiConnected)
-    {
-      Serial.println("[WiFi] Entering Setup Mode (Captive Portal)...");
-      wifiManager.startPortal();
-
-      bool skipSetup = false;
-      bool skipPressed = false;
-
-      auto drawSetupScreen = [](const char* status, bool showSkipPressed)
+      // Draw vertical gradient background
+      for (int y = 0; y < h; ++y)
       {
-        uint16_t w = Display::width();
-        uint16_t h = Display::height();
+        float t = (float)y / (h - 1);
+        uint8_t r = (uint8_t)((1.0f - t) * 8 + t * 18);
+        uint8_t g = (uint8_t)((1.0f - t) * 8 + t * 14);
+        uint8_t b = (uint8_t)((1.0f - t) * 12 + t * 28);
+        Display::lcd.drawFastHLine(0, y, w, Display::lcd.color565(r, g, b));
+      }
 
-        // Draw vertical gradient background
-        for (int y = 0; y < h; ++y)
-        {
-          float t = (float)y / (h - 1);
-          uint8_t r = (uint8_t)((1.0f - t) * 8 + t * 18);
-          uint8_t g = (uint8_t)((1.0f - t) * 8 + t * 14);
-          uint8_t b = (uint8_t)((1.0f - t) * 12 + t * 28);
-          Display::lcd.drawFastHLine(0, y, w, Display::lcd.color565(r, g, b));
-        }
+      // Check softAP station count
+      int stations = WiFi.softAPgetStationNum();
 
-        // Check softAP station count
-        int stations = WiFi.softAPgetStationNum();
+      const char *qrText = "WIFI:S:VOXA-Setup;T:WPA;P:12345678;;";
+      const char *stepText = "1. Scan to Connect";
 
-        const char* qrText = "WIFI:S:VOXA-Setup;T:WPA;P:12345678;;";
-        const char* stepText = "1. Scan to Connect";
-
-        if (stations > 0)
-        {
-          qrText = "http://192.168.4.1/";
-          stepText = "2. Scan to Open Portal";
-        }
-
-        // Draw QR Code on the left side
-        QRCode qrcode;
-        uint8_t qrcodeBytes[qrcode_getBufferSize(4)];
-        qrcode_initText(&qrcode, qrcodeBytes, 4, ECC_LOW, qrText);
-
-        int scale = 3;
-        int qrSize = qrcode.size * scale; // 33 * 3 = 99
-        int qrX = 25;
-        int qrY = 70;
-
-        // Draw white background border for the QR code
-        Display::lcd.fillRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, TFT_WHITE);
-
-        for (uint8_t y = 0; y < qrcode.size; y++)
-        {
-          for (uint8_t x = 0; x < qrcode.size; x++)
-          {
-            uint16_t color = qrcode_getModule(&qrcode, x, y) ? TFT_BLACK : TFT_WHITE;
-            Display::lcd.fillRect(qrX + x * scale, qrY + y * scale, scale, scale, color);
-          }
-        }
-
-        // Draw title on the right
-        Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
-        Display::lcd.setTextDatum(textdatum_t::middle_center);
-        Display::lcd.setTextColor(Display::lcd.color565(124, 92, 255));
-        Display::lcd.drawString("VOXA Setup", w * 0.72f, 32);
-
-        // Draw Instructions on the right
-        Display::lcd.setFont(&fonts::FreeSans9pt7b);
-        Display::lcd.setTextColor(TFT_WHITE);
-        Display::lcd.drawString(stepText, w * 0.72f, 75);
-
-        Display::lcd.setTextColor(Display::lcd.color565(166, 123, 250));
-        if (stations == 0)
-        {
-          Display::lcd.drawString("SSID: VOXA-Setup", w * 0.72f, 105);
-          Display::lcd.drawString("Pass: 12345678", w * 0.72f, 125);
-        }
-        else
-        {
-          Display::lcd.drawString("Connected to AP", w * 0.72f, 105);
-          Display::lcd.drawString("IP: 192.168.4.1", w * 0.72f, 125);
-        }
-
-        // Draw Status
-        Display::lcd.setTextColor(TFT_YELLOW);
-        Display::lcd.drawString(status, w * 0.72f, 160);
-
-        // Draw Skip Button (bottom right)
-        uint16_t skipBg = showSkipPressed ? Display::lcd.color565(124, 92, 255) : Display::lcd.color565(48, 48, 60);
-        uint16_t skipText = showSkipPressed ? TFT_BLACK : TFT_WHITE;
-
-        int skipX = w * 0.72f - 50;
-        int skipY = h - 45;
-        Display::lcd.fillRoundRect(skipX, skipY, 100, 26, 4, skipBg);
-        Display::lcd.drawRoundRect(skipX, skipY, 100, 26, 4, Display::lcd.color565(100, 100, 110));
-
-        Display::lcd.setTextColor(skipText);
-        Display::lcd.drawString("Skip Setup", w * 0.72f, skipY + 13);
-      };
-
-      while (!wifiManager.isConnected() && !skipSetup)
+      if (stations > 0)
       {
-        wifiManager.loopPortal();
+        qrText = "http://192.168.4.1/";
+        stepText = "2. Scan to Open Portal";
+      }
 
-        // Update Watch UI Status
-        std::string statusText = "Waiting for user...";
-        auto portalStatus = wifiManager.getPortalStatus();
-        if (portalStatus == WiFiManager::PortalStatus::Connecting)
-        {
-          statusText = "Connecting...";
-        }
-        else if (portalStatus == WiFiManager::PortalStatus::Failed)
-        {
-          statusText = "Connect Failed!";
-        }
-        else if (portalStatus == WiFiManager::PortalStatus::Success)
-        {
-          statusText = "Connected!";
-        }
+      // Draw QR Code on the left side
+      QRCode qrcode;
+      uint8_t qrcodeBytes[qrcode_getBufferSize(4)];
+      qrcode_initText(&qrcode, qrcodeBytes, 4, ECC_LOW, qrText);
 
-        // Draw portal screen
-        drawSetupScreen(statusText.c_str(), skipPressed);
+      int scale = 3;
+      int qrSize = qrcode.size * scale; // 33 * 3 = 99
+      int qrX = 25;
+      int qrY = 70;
 
-        // Handle Skip button touch input
-        uint16_t tx = 0, ty = 0;
-        if (touch.getPoint(tx, ty))
+      // Draw white background border for the QR code
+      Display::lcd.fillRect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, TFT_WHITE);
+
+      for (uint8_t y = 0; y < qrcode.size; y++)
+      {
+        for (uint8_t x = 0; x < qrcode.size; x++)
         {
-          // Skip button bounds (right half, bottom corner)
-          if (tx >= 170 && tx <= 290 &&
+          uint16_t color = qrcode_getModule(&qrcode, x, y) ? TFT_BLACK : TFT_WHITE;
+          Display::lcd.fillRect(qrX + x * scale, qrY + y * scale, scale, scale, color);
+        }
+      }
+
+      // Draw title on the right
+      Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
+      Display::lcd.setTextDatum(textdatum_t::middle_center);
+      Display::lcd.setTextColor(Display::lcd.color565(124, 92, 255));
+      Display::lcd.drawString("VOXA Setup", w * 0.72f, 32);
+
+      // Draw Instructions on the right
+      Display::lcd.setFont(&fonts::FreeSans9pt7b);
+      Display::lcd.setTextColor(TFT_WHITE);
+      Display::lcd.drawString(stepText, w * 0.72f, 75);
+
+      Display::lcd.setTextColor(Display::lcd.color565(166, 123, 250));
+      if (stations == 0)
+      {
+        Display::lcd.drawString("SSID: VOXA-Setup", w * 0.72f, 105);
+        Display::lcd.drawString("Pass: 12345678", w * 0.72f, 125);
+      }
+      else
+      {
+        Display::lcd.drawString("Connected to AP", w * 0.72f, 105);
+        Display::lcd.drawString("IP: 192.168.4.1", w * 0.72f, 125);
+      }
+
+      // Draw Status
+      Display::lcd.setTextColor(TFT_YELLOW);
+      Display::lcd.drawString(status, w * 0.72f, 160);
+
+      // Draw Skip Button (bottom right)
+      uint16_t skipBg = showSkipPressed ? Display::lcd.color565(124, 92, 255) : Display::lcd.color565(48, 48, 60);
+      uint16_t skipText = showSkipPressed ? TFT_BLACK : TFT_WHITE;
+
+      int skipX = w * 0.72f - 50;
+      int skipY = h - 45;
+      Display::lcd.fillRoundRect(skipX, skipY, 100, 26, 4, skipBg);
+      Display::lcd.drawRoundRect(skipX, skipY, 100, 26, 4, Display::lcd.color565(100, 100, 110));
+
+      Display::lcd.setTextColor(skipText);
+      Display::lcd.drawString("Skip Setup", w * 0.72f, skipY + 13);
+    };
+
+    while (!wifiManager.isConnected() && !skipSetup)
+    {
+      wifiManager.loopPortal();
+
+      // Update Watch UI Status
+      std::string statusText = "Waiting for user...";
+      auto portalStatus = wifiManager.getPortalStatus();
+      if (portalStatus == WiFiManager::PortalStatus::Connecting)
+      {
+        statusText = "Connecting...";
+      }
+      else if (portalStatus == WiFiManager::PortalStatus::Failed)
+      {
+        statusText = "Connect Failed!";
+      }
+      else if (portalStatus == WiFiManager::PortalStatus::Success)
+      {
+        statusText = "Connected!";
+      }
+
+      // Draw portal screen
+      drawSetupScreen(statusText.c_str(), skipPressed);
+
+      // Handle Skip button touch input
+      uint16_t tx = 0, ty = 0;
+      if (touch.getPoint(tx, ty))
+      {
+        // Skip button bounds (right half, bottom corner)
+        if (tx >= 170 && tx <= 290 &&
             ty >= 180 && ty <= 235)
-          {
-            skipPressed = true;
-          }
-        }
-        else
         {
-          if (skipPressed)
-          {
-            skipPressed = false;
-            skipSetup = true;
-            wifiManager.skipPortal();
-            wifiManager.stopPortal();
-            Serial.println("[WiFi] Setup Portal skipped by user.");
-
-            // Show Skip feedback
-            uint16_t w = Display::width();
-            uint16_t h = Display::height();
-            Display::lcd.fillScreen(TFT_BLACK);
-            Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
-            Display::lcd.setTextColor(TFT_YELLOW);
-            Display::lcd.setTextDatum(textdatum_t::middle_center);
-            Display::lcd.drawString("Setup Skipped", w * 0.5f, h * 0.5f);
-            delay(1000);
-          }
+          skipPressed = true;
         }
-
-        delay(50);
       }
-
-      if (wifiManager.isConnected())
+      else
       {
-        // Show Connected feedback
-        uint16_t w = Display::width();
-        uint16_t h = Display::height();
-        Display::lcd.fillScreen(TFT_BLACK);
-        Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
-        Display::lcd.setTextColor(TFT_GREEN);
-        Display::lcd.setTextDatum(textdatum_t::middle_center);
-        Display::lcd.drawString("Wi-Fi Connected!", w * 0.5f, h * 0.40f);
+        if (skipPressed)
+        {
+          skipPressed = false;
+          skipSetup = true;
+          wifiManager.skipPortal();
+          wifiManager.stopPortal();
+          Serial.println("[WiFi] Setup Portal skipped by user.");
 
-        Display::lcd.setFont(&fonts::FreeSans9pt7b);
-        Display::lcd.setTextColor(TFT_WHITE);
-        Display::lcd.drawString(wifiManager.getIPAddress().c_str(), w * 0.5f, h * 0.65f);
-        delay(1500);
-
-        wifiManager.stopPortal();
+          // Show Skip feedback
+          uint16_t w = Display::width();
+          uint16_t h = Display::height();
+          Display::lcd.fillScreen(TFT_BLACK);
+          Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
+          Display::lcd.setTextColor(TFT_YELLOW);
+          Display::lcd.setTextDatum(textdatum_t::middle_center);
+          Display::lcd.drawString("Setup Skipped", w * 0.5f, h * 0.5f);
+          delay(1000);
+        }
       }
+
+      delay(50);
     }
 
-    Serial.println("[Startup] TimeService");
+    if (wifiManager.isConnected())
+    {
+      // Show Connected feedback
+      uint16_t w = Display::width();
+      uint16_t h = Display::height();
+      Display::lcd.fillScreen(TFT_BLACK);
+      Display::lcd.setFont(&fonts::FreeSansBold12pt7b);
+      Display::lcd.setTextColor(TFT_GREEN);
+      Display::lcd.setTextDatum(textdatum_t::middle_center);
+      Display::lcd.drawString("Wi-Fi Connected!", w * 0.5f, h * 0.40f);
+
+      Display::lcd.setFont(&fonts::FreeSans9pt7b);
+      Display::lcd.setTextColor(TFT_WHITE);
+      Display::lcd.drawString(wifiManager.getIPAddress().c_str(), w * 0.5f, h * 0.65f);
+      delay(1500);
+
+      wifiManager.stopPortal();
+    }
+  }
+
+  Serial.println("[Startup] TimeService");
   timeService.begin();
-    Serial.println("[Startup] TimeService ready");
+  Serial.println("[Startup] TimeService ready");
 
-    Serial.println("[Startup] Services");
-    dataService.begin();
-    Serial.println("[Startup] Services ready");
+  Serial.println("[Startup] Services");
+  dataService.begin();
+  Serial.println("[Startup] Services ready");
 
-    Serial.println("[Startup] HomeScreen");
-    home.begin();
-    Serial.println("[Startup] HomeScreen ready");
+  Serial.println("[Startup] HomeScreen");
+  home.begin();
+  Serial.println("[Startup] HomeScreen ready");
 
   Serial.println("Boot complete. Starting main screen loop...");
   xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);
-    xTaskCreatePinnedToCore(backgroundDataSyncTask, "BgDataSync", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(backgroundDataSyncTask, "BgDataSync", 8192, nullptr, 1, nullptr, 0);
 }
 
 void loop()
@@ -435,64 +475,64 @@ void loop()
 
   switch (activeScreen)
   {
-    case ScreenId::Home:
-      nextScreen = home.show(touch);
-      break;
-    case ScreenId::Reminders:
-      Serial.println("Opening Reminder Screen...");
-      nextScreen = reminderScreen.show(touch);
-      break;
-    case ScreenId::Ideas:
-      Serial.println("Opening Ideas Screen...");
-      nextScreen = ideasScreen.show(touch);
-      break;
-    case ScreenId::Questions:
-      Serial.println("Opening Questions Screen...");
-      nextScreen = questionsScreen.show(touch);
-      break;
-    case ScreenId::Search:
-      Serial.println("Opening Search Screen...");
-      nextScreen = searchScreen.show(touch);
-      break;
-    case ScreenId::Record:
-      Serial.println("Opening Record Screen...");
-      nextScreen = recordScreen.show(touch);
-      break;
-    case ScreenId::Others:
-      Serial.println("Opening Others Screen...");
-      nextScreen = othersScreen.show(touch);
-      break;
-    case ScreenId::Settings:
-      Serial.println("Opening Settings Screen...");
-      nextScreen = settingsScreen.show(touch);
-      break;
-    case ScreenId::SyncStatus:
-      Serial.println("Opening Sync Status Screen...");
-      nextScreen = syncStatusScreen.show(touch);
-      break;
-    case ScreenId::Detail:
-      Serial.println("Opening Detail Screen...");
-      nextScreen = detailScreen.show(touch);
-      break;
-    case ScreenId::RecordingsLibrary:
-      Serial.println("Opening Recordings Library Screen...");
-      nextScreen = recordingsLibraryScreen.show(touch);
-      break;
-    case ScreenId::AudioPlayer:
-      Serial.println("Opening Audio Player Screen...");
-      nextScreen = audioPlayerScreen.show(touch);
-      break;
-    case ScreenId::WiFiSettings:
-      Serial.println("Opening Wi-Fi Settings Screen...");
-      nextScreen = wifiSettingsScreen.show(touch);
-      break;
-    case ScreenId::TextInput:
-      Serial.println("Opening Text Input Screen...");
-      nextScreen = textInputScreen.show(touch);
-      break;
-    default:
-      nextScreen = ScreenId::Home;
-      break;
+  case ScreenId::Home:
+    nextScreen = home.show(touch);
+    break;
+  case ScreenId::Reminders:
+    Serial.println("Opening Reminder Screen...");
+    nextScreen = reminderScreen.show(touch);
+    break;
+  case ScreenId::Ideas:
+    Serial.println("Opening Ideas Screen...");
+    nextScreen = ideasScreen.show(touch);
+    break;
+  case ScreenId::Questions:
+    Serial.println("Opening Questions Screen...");
+    nextScreen = questionsScreen.show(touch);
+    break;
+  case ScreenId::Search:
+    Serial.println("Opening Search Screen...");
+    nextScreen = searchScreen.show(touch);
+    break;
+  case ScreenId::Record:
+    Serial.println("Opening Record Screen...");
+    nextScreen = recordScreen.show(touch);
+    break;
+  case ScreenId::Others:
+    Serial.println("Opening Others Screen...");
+    nextScreen = othersScreen.show(touch);
+    break;
+  case ScreenId::Settings:
+    Serial.println("Opening Settings Screen...");
+    nextScreen = settingsScreen.show(touch);
+    break;
+  case ScreenId::SyncStatus:
+    Serial.println("Opening Sync Status Screen...");
+    nextScreen = syncStatusScreen.show(touch);
+    break;
+  case ScreenId::Detail:
+    Serial.println("Opening Detail Screen...");
+    nextScreen = detailScreen.show(touch);
+    break;
+  case ScreenId::RecordingsLibrary:
+    Serial.println("Opening Recordings Library Screen...");
+    nextScreen = recordingsLibraryScreen.show(touch);
+    break;
+  case ScreenId::AudioPlayer:
+    Serial.println("Opening Audio Player Screen...");
+    nextScreen = audioPlayerScreen.show(touch);
+    break;
+  case ScreenId::WiFiSettings:
+    Serial.println("Opening Wi-Fi Settings Screen...");
+    nextScreen = wifiSettingsScreen.show(touch);
+    break;
+  case ScreenId::TextInput:
+    Serial.println("Opening Text Input Screen...");
+    nextScreen = textInputScreen.show(touch);
+    break;
+  default:
+    nextScreen = ScreenId::Home;
+    break;
   }
 
   if (nextScreen != activeScreen)
@@ -503,4 +543,3 @@ void loop()
 
   delay(10);
 }
-

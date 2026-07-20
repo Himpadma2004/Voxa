@@ -1,4 +1,5 @@
 #include "WiFiManager.h"
+#include "../storage/SpiffsMutex.h"
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <WebServer.h>
@@ -216,10 +217,13 @@ namespace VOXA
     void WiFiManager::begin()
     {
         // Delete legacy SPIFFS JSON to prevent conflicts and keep Preferences as source of truth
-        if (SPIFFS.exists("/wifi.json"))
         {
-            SPIFFS.remove("/wifi.json");
-            Serial.println("[WiFiManager] Deleted legacy /wifi.json");
+            SpiffsLock lock("WiFiManager::begin");
+            if (SPIFFS.exists("/wifi.json"))
+            {
+                SPIFFS.remove("/wifi.json");
+                Serial.println("[WiFiManager] Deleted legacy /wifi.json");
+            }
         }
 
         loadCredentials();

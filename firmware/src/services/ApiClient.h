@@ -7,8 +7,8 @@ namespace VOXA
     /// Result returned by every ApiClient call.
     struct ApiResult
     {
-        bool        success  { false };
-        int         httpCode { 0 };
+        bool success{false};
+        int httpCode{0};
         std::string body;        ///< raw response body
         std::string text;        ///< parsed "text" field from JSON
         std::string error;       ///< human-readable error (empty on success)
@@ -32,36 +32,37 @@ namespace VOXA
     public:
         ApiClient();
 
-        void        begin();
+        void begin();
 
         // --- Configuration ---
-        void        setBaseUrl(const std::string& url);
+        void setBaseUrl(const std::string &url);
         std::string getBaseUrl() const;
 
         // --- Health ---
-        bool        isReachable();
-        bool        isHealthy();
+        bool isReachable();
+        bool isHealthy();
 
         // --- Voice Upload ---
         /// POST multipart/form-data to /api/voice/upload
         /// Returns ApiResult with transcribed text in result.text
-        ApiResult   uploadVoice(const std::string& filePath);
+        ApiResult uploadVoice(const std::string &filePath);
 
         // --- Generic helpers (future: AI chat, sync, OTA, ...) ---
-        ApiResult   get(const std::string& endpoint);
-        ApiResult   post(const std::string& endpoint, const std::string& jsonBody);
+        ApiResult get(const std::string &endpoint);
+        ApiResult post(const std::string &endpoint, const std::string &jsonBody);
 
     private:
         std::string m_baseUrl{"http://192.168.0.148:8000"};
+        bool m_lastHealthResult{false};
+        uint32_t m_lastHealthCheckMs{0};
 
-        void        loadBaseUrl();
-        void        saveBaseUrl(const std::string& url);
+        void loadBaseUrl();
+        void saveBaseUrl(const std::string &url);
         std::string discoverBackendIP();
 
-        std::string parseTextField(const std::string& json);
-        bool        parseBoolField(const std::string& json, const std::string& key);
+        std::string parseTextField(const std::string &json);
+        bool parseBoolField(const std::string &json, const std::string &key);
     };
-
 
     extern ApiClient apiClient;
     extern std::string g_currentlyUploadingPath;

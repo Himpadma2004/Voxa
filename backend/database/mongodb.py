@@ -2,8 +2,20 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 from datetime import datetime
 import os
+import dns.resolver
 
 load_dotenv()
+
+# Override dnspython's default resolver to use public DNS servers (Google/Cloudflare).
+# This prevents LifetimeTimeout / ConfigurationError when local router/adapter DNS servers fail SRV resolution.
+try:
+    custom_resolver = dns.resolver.Resolver()
+    custom_resolver.nameservers = ['8.8.8.8', '8.8.4.4', '1.1.1.1', '1.0.0.1']
+    custom_resolver.timeout = 5.0
+    custom_resolver.lifetime = 10.0
+    dns.resolver.default_resolver = custom_resolver
+except Exception as dns_err:
+    print(f"Warning: Could not set custom DNS resolver: {dns_err}")
 
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB = os.getenv("MONGO_DB")

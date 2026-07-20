@@ -3,6 +3,7 @@
 #include "../ui/Theme.h"
 #include "../services/SettingsService.h"
 #include "../services/WiFiManager.h"
+#include "../storage/SpiffsMutex.h"
 #include "Transition.h"
 #include "../services/ApiClient.h"
 #include <SPIFFS.h>
@@ -194,13 +195,16 @@ namespace VOXA
                                 Serial.println("[Settings] Factory Resetting...");
                                 wifiManager.clearCredentials();
                                 wifiManager.clearForcePortal();
-                                SPIFFS.remove("/reminders.json");
-                                SPIFFS.remove("/memory.json");
-                                SPIFFS.remove("/ideas.json");
-                                SPIFFS.remove("/questions.json");
-                                SPIFFS.remove("/settings.json");
-                                SPIFFS.remove("/history.json");
-                                SPIFFS.remove("/recordings.json");
+                                {
+                                    SpiffsLock lock("SettingsScreen::factoryReset");
+                                    SPIFFS.remove("/reminders.json");
+                                    SPIFFS.remove("/memory.json");
+                                    SPIFFS.remove("/ideas.json");
+                                    SPIFFS.remove("/questions.json");
+                                    SPIFFS.remove("/settings.json");
+                                    SPIFFS.remove("/history.json");
+                                    SPIFFS.remove("/recordings.json");
+                                }
                                 delay(500);
                                 ESP.restart();
                             }
