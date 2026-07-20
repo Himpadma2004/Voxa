@@ -15,6 +15,7 @@
 
 namespace
 {
+    volatile VOXA::AiSearchState s_globalSearchState = VOXA::AiSearchState::Idle;
     volatile bool s_aiSearchDone = false;
     volatile bool s_aiSearchOk = false;
     char s_aiSearchQuery[256] = {};
@@ -25,24 +26,78 @@ namespace
 
     void aiAudioSearchTaskFn(void*)
     {
+        s_globalSearchState = VOXA::AiSearchState::TranscribingWhisper;
+        vTaskDelay(pdMS_TO_TICKS(500)); // Show Stage 2 animation smoothly
+
+        s_globalSearchState = VOXA::AiSearchState::SearchingLLM;
         VOXA::AiSearchResult res = VOXA::apiClient.searchAiAudio(s_aiSearchPath);
+
         s_aiSearchOk = res.success;
         strncpy(s_aiSearchQuery, res.query.c_str(), 255);
         strncpy(s_aiSearchAnswer, res.answer.c_str(), 511);
         strncpy(s_aiSearchError, res.error.c_str(), 127);
+
+        s_globalSearchState = VOXA::AiSearchState::HasResult;
         s_aiSearchDone = true;
         vTaskDelete(nullptr);
     }
 
     void aiTextSearchTaskFn(void*)
     {
+        s_globalSearchState = VOXA::AiSearchState::SearchingLLM;
         VOXA::AiSearchResult res = VOXA::apiClient.searchAi(s_aiSearchTextQuery);
+
         s_aiSearchOk = res.success;
         strncpy(s_aiSearchQuery, res.query.c_str(), 255);
         strncpy(s_aiSearchAnswer, res.answer.c_str(), 511);
         strncpy(s_aiSearchError, res.error.c_str(), 127);
+
+        s_globalSearchState = VOXA::AiSearchState::HasResult;
         s_aiSearchDone = true;
         vTaskDelete(nullptr);
+    }
+
+    void drawWrappedText(LGFX_Sprite& canvas, const char* text, float x, float y, float maxW, uint16_t color)
+    {
+        canvas.setFont(&fonts::FreeSans9pt7b);
+        canvas.setTextColor(color);
+        canvas.setTextDatum(textdatum_t::top_left);
+
+        std::string s(text);
+        std::string line = "";
+        float currentY = y;
+        
+        std::size_t start = 0;
+        while (start < s.length() && (currentY - y) < 80.0f)
+        {
+            std::size_t spacePos = s.find(' ', start);
+            if (spacePos == std::string::npos) spacePos = s.length();
+            
+            std::string word = s.substr(start, spacePos - start);
+            std::string testLine = line.empty() ? word : (line + " " + word);
+            
+            if (canvas.textWidth(testLine.c_str()) > maxW && !line.empty())
+            {
+                canvas.drawString(line.c_str(), x, currentY);
+                currentY += 18.0f;
+                line = word;
+            }
+            else
+            {
+                line = testLine;
+            }
+            
+            start = spacePos + 1;
+        }
+        
+        if (!line.empty() && (currentY - y) < 80.0f)
+        {
+            if (canvas.textWidth(line.c_str()) > maxW)
+            {
+                line = line.substr(0, 24) + "...";
+            }
+            canvas.drawString(line.c_str(), x, currentY);
+        }
     }
 }
 
@@ -76,7 +131,8 @@ namespace VOXA
         if (!typedText.empty())
         {
             m_lastQuery = typedText;
-            m_state = AiSearchState::Searching;
+            m_state = AiSearchState::SearchingLLM;
+            s_globalSearchState = AiSearchState::SearchingLLM;
             s_aiSearchTextQuery = typedText;
             s_aiSearchDone = false;
             s_aiSearchOk = false;
@@ -87,7 +143,7 @@ namespace VOXA
         // OPTIMIZATION: Fetch recent search items ONCE at screen start (prevents 60FPS disk lag)
         auto searchItems = searchService.getRecent(10);
         float visibleHeight = h - 70.0f - 18.0f;
-        float contentHeight = 130.0f + (m_lastAnswer.empty() ? 0.0f : 70.0f) + searchItems.size() * 50.0f;
+        float contentHeight = 130.0f + (m_lastAnswer.empty() ? 0.0f : 95.0f) + searchItems.size() * 50.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         while (targetScreen == ScreenId::Search)
@@ -96,8 +152,8 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            // Check async search completion
-            if (m_state == AiSearchState::Searching && s_aiSearchDone)
+            // Sync global search state from background worker task
+            if (s_aiSearchDone && m_state != AiSearchState::HasResult)
             {
                 s_aiSearchDone = false;
                 if (s_aiSearchOk)
@@ -114,8 +170,12 @@ namespace VOXA
                     Serial.printf("[SearchScreen] AI Search Failed: %s\n", m_lastAnswer.c_str());
                 }
             }
+            else if (!s_aiSearchDone && (m_state == AiSearchState::TranscribingWhisper || m_state == AiSearchState::SearchingLLM))
+            {
+                m_state = s_globalSearchState;
+            }
 
-            contentHeight = 130.0f + (m_lastAnswer.empty() ? 0.0f : 70.0f) + (m_state == AiSearchState::RecordingVoice ? 50.0f : 0.0f) + searchItems.size() * 50.0f;
+            contentHeight = 130.0f + (m_lastAnswer.empty() ? 0.0f : 95.0f) + (m_state != AiSearchState::Idle && m_state != AiSearchState::HasResult ? 65.0f : 0.0f) + searchItems.size() * 50.0f;
             maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // 1. Process Touch
@@ -164,7 +224,7 @@ namespace VOXA
                     }
 
                     // Recent Item Cards
-                    float itemsStartY = 125.0f + (m_lastAnswer.empty() ? 0.0f : 70.0f) + (m_state == AiSearchState::RecordingVoice ? 50.0f : 0.0f);
+                    float itemsStartY = 125.0f + (m_lastAnswer.empty() ? 0.0f : 95.0f) + (m_state != AiSearchState::Idle && m_state != AiSearchState::HasResult ? 65.0f : 0.0f);
                     if (ty >= 70.0f && ty <= (h - 18.0f))
                     {
                         float leftX = w * 0.04f;
@@ -242,7 +302,8 @@ namespace VOXA
                                 bool stopOk = microphoneService.stopRecording("SearchScreen::voiceSearch", "stop");
                                 if (stopOk)
                                 {
-                                    m_state = AiSearchState::Searching;
+                                    m_state = AiSearchState::TranscribingWhisper;
+                                    s_globalSearchState = AiSearchState::TranscribingWhisper;
                                     s_aiSearchPath = queryPath;
                                     s_aiSearchDone = false;
                                     s_aiSearchOk = false;
@@ -265,6 +326,7 @@ namespace VOXA
                                 if (startOk)
                                 {
                                     m_state = AiSearchState::RecordingVoice;
+                                    s_globalSearchState = AiSearchState::RecordingVoice;
                                     Serial.println("[SearchScreen] Voice recording query started");
                                 }
                             }
@@ -330,7 +392,7 @@ namespace VOXA
 
             canvas.setClipRect(0, 70, w, h - 70 - 18);
 
-            // 1. Voice Search & Type Search Top Action Cards
+            // 1. Voice Search & Type Search Action Cards
             float leftCardX = w * 0.04f;
             float rightCardX = w * 0.52f;
             float cardWidth = w * 0.44f;
@@ -361,60 +423,90 @@ namespace VOXA
                 canvas.drawString("Type Search", rightCardX + 32.0f, topBtnY + 19.0f);
             }
 
-            // 2. Animated Voice Recording Banner or AI Searching Status or Answer Card
+            // 2. Multi-Stage Animated Processing Banner & Result Cards
             float resultY = topBtnY + 46.0f;
+            
             if (m_state == AiSearchState::RecordingVoice)
             {
-                // Animated live mic visualizer card
-                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 55, 8, canvas.color565(35, 10, 15));
-                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 55, 8, canvas.color565(220, 50, 50));
+                // STAGE 1: Live Voice Recording Spectrum Animation
+                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 58, 8, canvas.color565(35, 10, 15));
+                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 58, 8, canvas.color565(255, 60, 60));
 
                 canvas.setFont(&fonts::FreeSansBold9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_center);
                 canvas.setTextColor(canvas.color565(255, 120, 120));
                 canvas.drawString("Listening... Speak your question!", w * 0.5f, resultY + 18.0f);
 
-                // Draw pulsating audio wave
-                float waveCy = resultY + 38.0f;
+                // Animated Live Spectrum Waveform
+                float waveCy = resultY + 40.0f;
                 float pulseSec = (nowMs % 1000) / 1000.0f;
-                for (int bar = 0; bar < 12; ++bar)
+                for (int bar = 0; bar < 14; ++bar)
                 {
-                    float barX = w * 0.30f + bar * 12.0f;
-                    float hFactor = std::abs(std::sin(pulseSec * 6.28f + bar * 0.5f));
-                    float barH = 4.0f + hFactor * 14.0f;
+                    float barX = w * 0.26f + bar * 11.0f;
+                    float hFactor = std::abs(std::sin(pulseSec * 6.28f + bar * 0.45f));
+                    float barH = 4.0f + hFactor * 16.0f;
                     canvas.fillRoundRect((int)barX, (int)(waveCy - barH * 0.5f), 4, (int)barH, 2, canvas.color565(255, 80, 80));
                 }
             }
-            else if (m_state == AiSearchState::Searching)
+            else if (m_state == AiSearchState::TranscribingWhisper)
             {
-                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 55, 8, VoxaTheme::getSurface());
-                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 55, 8, VoxaTheme::getPrimary());
+                // STAGE 2: Whisper AI Transcription Animation
+                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 58, 8, canvas.color565(35, 25, 10));
+                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 58, 8, canvas.color565(255, 180, 40));
+
+                canvas.setFont(&fonts::FreeSansBold9pt7b);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(canvas.color565(255, 200, 80));
+                canvas.drawString("Transcribing Voice (Whisper AI)...", w * 0.5f, resultY + 18.0f);
+
+                // Scanning Dot Radar Animation
+                float scanX = w * 0.5f + std::sin(nowMs * 0.007f) * 60.0f;
+                canvas.fillCircle((int)scanX, (int)(resultY + 40.0f), 5, canvas.color565(255, 220, 100));
+                canvas.drawFastHLine((int)(w * 0.20f), (int)(resultY + 40.0f), (int)(w * 0.60f), canvas.color565(120, 90, 40));
+            }
+            else if (m_state == AiSearchState::SearchingLLM)
+            {
+                // STAGE 3: LLM Database Recall Animation
+                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 58, 8, canvas.color565(25, 15, 45));
+                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 58, 8, VoxaTheme::getPrimaryLight());
 
                 canvas.setFont(&fonts::FreeSansBold9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_center);
                 canvas.setTextColor(VoxaTheme::getPrimaryLight());
-                canvas.drawString("Searching Database & AI Memories...", w * 0.5f, resultY + 28.0f);
+                canvas.drawString("Querying Database & LLM Engine...", w * 0.5f, resultY + 18.0f);
+
+                // Rotating AI Orbit Animation
+                float orbCx = w * 0.5f;
+                float orbCy = resultY + 40.0f;
+                float orbAngle = nowMs * 0.005f;
+                for (int p = 0; p < 6; ++p)
+                {
+                    float a = orbAngle + p * (6.28318f / 6.0f);
+                    float px = orbCx + std::cos(a) * 22.0f;
+                    float py = orbCy + std::sin(a) * 6.0f;
+                    canvas.fillCircle((int)px, (int)py, 3, VoxaTheme::getPrimaryLight());
+                }
             }
             else if (!m_lastAnswer.empty())
             {
-                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 64, 8, VoxaTheme::getSurface());
-                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 64, 8, VoxaTheme::getPrimaryLight());
+                // STAGE 4: AI Answer Card with Wrapped Text
+                canvas.fillRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 90, 8, VoxaTheme::getSurface());
+                canvas.drawRoundRect((int)leftCardX, (int)resultY, (int)(w * 0.92f), 90, 8, VoxaTheme::getPrimaryLight());
 
-                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setFont(&fonts::FreeSansBold9pt7b);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(VoxaTheme::getPrimaryLight());
                 std::string qDisp = "Q: " + (m_lastQuery.empty() ? "Voice Search" : m_lastQuery);
-                if (qDisp.length() > 30) qDisp = qDisp.substr(0, 27) + "...";
+                if (qDisp.length() > 32) qDisp = qDisp.substr(0, 29) + "...";
                 canvas.drawString(qDisp.c_str(), leftCardX + 10.0f, resultY + 8.0f);
 
-                canvas.setTextColor(VoxaTheme::getTextPrimary());
-                std::string aDisp = m_lastAnswer;
-                if (aDisp.length() > 38) aDisp = aDisp.substr(0, 35) + "...";
-                canvas.drawString(aDisp.c_str(), leftCardX + 10.0f, resultY + 34.0f);
+                canvas.drawFastHLine((int)(leftCardX + 10.0f), (int)(resultY + 28.0f), (int)(w * 0.92f - 20.0f), VoxaTheme::getDivider());
+
+                drawWrappedText(canvas, m_lastAnswer.c_str(), leftCardX + 10.0f, resultY + 34.0f, w * 0.92f - 20.0f, VoxaTheme::getTextPrimary());
             }
 
             // 3. Recent Items Header & List
-            float itemsStartY = 125.0f + (m_lastAnswer.empty() ? 0.0f : 70.0f) + (m_state == AiSearchState::RecordingVoice ? 50.0f : 0.0f) - m_scrollY;
+            float itemsStartY = 125.0f + (m_lastAnswer.empty() ? 0.0f : 95.0f) + (m_state != AiSearchState::Idle && m_state != AiSearchState::HasResult ? 65.0f : 0.0f) - m_scrollY;
             if (itemsStartY + 15.0f >= 70.0f && itemsStartY <= (h - 18.0f))
             {
                 canvas.setFont(&fonts::FreeSansBold9pt7b);

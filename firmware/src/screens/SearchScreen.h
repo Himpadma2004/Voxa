@@ -8,9 +8,10 @@ namespace VOXA
     enum class AiSearchState
     {
         Idle,
-        RecordingVoice,
-        Searching,
-        HasResult
+        RecordingVoice,      // Stage 1: Audio capture
+        TranscribingWhisper, // Stage 2: Whisper AI transcription
+        SearchingLLM,        // Stage 3: LLM Database Memory Recall
+        HasResult            // Stage 4: AI Answer display
     };
 
     class SearchScreen

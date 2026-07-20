@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace VOXA
 {
@@ -25,11 +26,17 @@ namespace VOXA
         [[nodiscard]] std::string getSSID() const;
         [[nodiscard]] std::string getIPAddress() const;
 
-        // Secure Credentials Management
+        // Secure Multi-Network Credentials Management
         bool hasSavedCredentials();
         void getSavedCredentials(std::string& ssid, std::string& password);
         void saveCredentials(const std::string& ssid, const std::string& password);
         void clearCredentials();
+
+        // Multi-network memory store methods
+        [[nodiscard]] bool hasSavedPassword(const std::string& ssid) const;
+        [[nodiscard]] std::string getSavedPassword(const std::string& ssid) const;
+        void forgetNetwork(const std::string& ssid);
+
         bool shouldForcePortal();
         void clearForcePortal();
         void setForcePortal(bool force);
@@ -50,7 +57,6 @@ namespace VOXA
 
         void loadCredentials();
 
-        // Opaque pointers to avoid exposing web server headers to consumer files
         void* m_dnsServer { nullptr };
         void* m_webServer { nullptr };
 

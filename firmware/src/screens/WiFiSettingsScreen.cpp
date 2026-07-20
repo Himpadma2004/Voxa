@@ -15,10 +15,11 @@ namespace VOXA
         m_networks.clear();
         m_isScanning = true;
         
-        Serial.println("[WiFiSettings] Scanning for networks...");
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect();
-        delay(100);
+        Serial.println("[WiFiSettings] Scanning for networks without disconnecting...");
+        if (WiFi.getMode() != WIFI_STA)
+        {
+            WiFi.mode(WIFI_STA);
+        }
         
         int16_t n = WiFi.scanNetworks(false, false);
         if (n > 0)
@@ -259,16 +260,19 @@ namespace VOXA
                                 if (netIdx >= 0 && netIdx < (int)m_networks.size())
                                 {
                                     m_selectedSSID = m_networks[netIdx].ssid;
-                                    if (m_networks[netIdx].isSecure)
+                                    bool hasSaved = wifiManager.hasSavedPassword(m_selectedSSID);
+                                    if (hasSaved || !m_networks[netIdx].isSecure)
+                                    {
+                                        std::string savedPass = wifiManager.getSavedPassword(m_selectedSSID);
+                                        wifiManager.saveCredentials(m_selectedSSID, savedPass);
+                                        wifiManager.connect();
+                                        Serial.printf("[WiFiSettings] Auto-connecting to saved network: %s\n", m_selectedSSID.c_str());
+                                    }
+                                    else
                                     {
                                         TextInputScreen::prepare("Enter Password", ScreenId::WiFiSettings, true);
                                         m_wizardState = WizardState::InputSelectedPassword;
                                         targetScreen = ScreenId::TextInput;
-                                    }
-                                    else
-                                    {
-                                        wifiManager.saveCredentials(m_selectedSSID, "");
-                                        wifiManager.connect();
                                     }
                                 }
                             }
@@ -358,16 +362,19 @@ namespace VOXA
                     canvas.setFont(&fonts::FreeSans9pt7b);
                     canvas.setTextDatum(textdatum_t::middle_left);
                     canvas.setTextColor(titleColor);
-                    canvas.drawString("Forget Wi-Fi Network", leftX + 42.0f, cy - 8.0f);
+                    canvas.drawString("Forget All Saved Wi-Fi", leftX + 42.0f, cy - 8.0f);
 
                     canvas.setTextColor(subColor);
-                    canvas.drawString("Clear credentials & disconnect", leftX + 42.0f, cy + 8.0f);
+                    canvas.drawString("Clear all saved credentials", leftX + 42.0f, cy + 8.0f);
                 }
                 else
                 {
                     int netIdx = i - 2;
                     bool isCurrent = wifiManager.isConnected() && (wifiManager.getSSID() == m_networks[netIdx].ssid);
-                    uint16_t wifiIconCol = isCurrent ? 0x07E0 : 0x79CF; // Green if connected, blue if available
+                    bool hasSaved = wifiManager.hasSavedPassword(m_networks[netIdx].ssid);
+                    std::string savedPass = wifiManager.getSavedPassword(m_networks[netIdx].ssid);
+
+                    uint16_t wifiIconCol = isCurrent ? 0x07E0 : (hasSaved ? VoxaTheme::getPrimary() : 0x79CF);
 
                     canvas.fillCircle((int)iconCx, (int)cy, 12, wifiIconCol);
                     ScreenCommon::drawIcon(canvas, Icon::Wifi, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
@@ -384,8 +391,26 @@ namespace VOXA
                     canvas.drawString(drawSSID.c_str(), leftX + 42.0f, cy - 8.0f);
 
                     canvas.setTextColor(subColor);
-                    std::string subText = m_networks[netIdx].isSecure ? "Secure Network" : "Open Network";
-                    if (isCurrent) subText += "  |  Connected";
+                    std::string subText;
+                    if (isCurrent)
+                    {
+                        subText = "Connected";
+                        if (!savedPass.empty()) subText += " | Pass: " + savedPass;
+                    }
+                    else if (hasSaved)
+                    {
+                        subText = "Saved";
+                        if (!savedPass.empty()) subText += " | Pass: " + savedPass;
+                    }
+                    else
+                    {
+                        subText = m_networks[netIdx].isSecure ? "Secure Network" : "Open Network";
+                    }
+
+                    if (subText.length() > 28)
+                    {
+                        subText = subText.substr(0, 26) + "...";
+                    }
                     canvas.drawString(subText.c_str(), leftX + 42.0f, cy + 8.0f);
 
                     // Connected badge or chevron

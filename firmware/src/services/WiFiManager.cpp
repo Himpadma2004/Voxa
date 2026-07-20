@@ -298,11 +298,88 @@ namespace VOXA
         prefs.begin("voxa-wifi", false);
         prefs.putString("ssid", ssid.c_str());
         prefs.putString("password", password.c_str());
+
+        // Also save to multi-network memory store for seamless automatic reconnection
+        String passKey = "p_" + String(ssid.c_str());
+        if (passKey.length() > 15) passKey = passKey.substring(0, 15);
+        prefs.putString(passKey.c_str(), password.c_str());
+
         prefs.end();
 
         m_ssid = ssid;
         m_password = password;
-        Serial.println("[WiFiManager] Saved new credentials to Preferences");
+        Serial.printf("[WiFiManager] Saved network '%s' to persistent memory\n", ssid.c_str());
+    }
+
+    bool WiFiManager::hasSavedPassword(const std::string& ssid) const
+    {
+        if (ssid.empty()) return false;
+        Preferences prefs;
+        prefs.begin("voxa-wifi", true);
+
+        String activeSsid = prefs.getString("ssid", "");
+        if (activeSsid == String(ssid.c_str()))
+        {
+            prefs.end();
+            return true;
+        }
+
+        String passKey = "p_" + String(ssid.c_str());
+        if (passKey.length() > 15) passKey = passKey.substring(0, 15);
+
+        bool exists = prefs.isKey(passKey.c_str());
+        prefs.end();
+        return exists;
+    }
+
+    std::string WiFiManager::getSavedPassword(const std::string& ssid) const
+    {
+        if (ssid.empty()) return "";
+        Preferences prefs;
+        prefs.begin("voxa-wifi", true);
+
+        String activeSsid = prefs.getString("ssid", "");
+        if (activeSsid == String(ssid.c_str()))
+        {
+            String activePass = prefs.getString("password", "");
+            prefs.end();
+            return activePass.c_str();
+        }
+
+        String passKey = "p_" + String(ssid.c_str());
+        if (passKey.length() > 15) passKey = passKey.substring(0, 15);
+
+        String savedPass = prefs.getString(passKey.c_str(), "");
+        prefs.end();
+
+        return savedPass.c_str();
+    }
+
+    void WiFiManager::forgetNetwork(const std::string& ssid)
+    {
+        Preferences prefs;
+        prefs.begin("voxa-wifi", false);
+
+        String passKey = "p_" + String(ssid.c_str());
+        if (passKey.length() > 15) passKey = passKey.substring(0, 15);
+
+        prefs.remove(passKey.c_str());
+
+        String activeSsid = prefs.getString("ssid", "");
+        if (activeSsid == String(ssid.c_str()))
+        {
+            prefs.remove("ssid");
+            prefs.remove("password");
+        }
+        prefs.end();
+
+        if (m_ssid == ssid)
+        {
+            disconnect();
+            m_ssid = "";
+            m_password = "";
+        }
+        Serial.printf("[WiFiManager] Forgot network '%s'\n", ssid.c_str());
     }
 
     void WiFiManager::clearCredentials()
@@ -314,7 +391,7 @@ namespace VOXA
 
         m_ssid = "";
         m_password = "";
-        Serial.println("[WiFiManager] Cleared credentials from Preferences");
+        Serial.println("[WiFiManager] Cleared all saved networks from Preferences");
     }
 
     bool WiFiManager::shouldForcePortal()

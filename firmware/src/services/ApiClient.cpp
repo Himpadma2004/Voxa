@@ -518,36 +518,53 @@ namespace VOXA
             return result;
         }
 
-        SpiffsLock lock("ApiClient::searchAiAudio");
-        if (!SPIFFS.exists(filePath.c_str()))
-        {
-            result.error = "Audio query file missing";
-            return result;
-        }
+        uint8_t* audioBuf = nullptr;
+        size_t fileSize = 0;
 
-        File file = SPIFFS.open(filePath.c_str(), "r");
-        if (!file)
         {
-            result.error = "Failed to open WAV file";
-            return result;
-        }
+            SpiffsLock lock("ApiClient::searchAiAudio");
+            if (!SPIFFS.exists(filePath.c_str()))
+            {
+                result.error = "Audio file missing";
+                return result;
+            }
 
-        size_t fileSize = file.size();
-        if (fileSize < 44)
-        {
+            File file = SPIFFS.open(filePath.c_str(), "r");
+            if (!file)
+            {
+                result.error = "Failed to open WAV file";
+                return result;
+            }
+
+            fileSize = file.size();
+            if (fileSize < 44)
+            {
+                file.close();
+                result.error = "Audio recording is empty";
+                return result;
+            }
+
+            audioBuf = (uint8_t*)malloc(fileSize);
+            if (!audioBuf)
+            {
+                file.close();
+                result.error = "Memory allocation failed";
+                return result;
+            }
+
+            file.read(audioBuf, fileSize);
             file.close();
-            result.error = "Audio recording is empty";
-            return result;
+            // SPIFFS file is now closed and SpiffsLock is released!
         }
 
         String url = String(m_baseUrl.c_str()) + "/api/search/audio-raw";
         HTTPClient http;
         http.begin(url);
-        http.setTimeout(45000); // 45 seconds for Whisper transcription + LLM recall
+        http.setTimeout(45000); // 45 seconds timeout for Whisper + LLM recall
         http.addHeader("Content-Type", "audio/wav");
 
-        int httpCode = http.sendRequest("POST", &file, fileSize);
-        file.close();
+        int httpCode = http.POST(audioBuf, fileSize);
+        free(audioBuf);
 
         if (httpCode == HTTP_CODE_OK || httpCode == 201)
         {
@@ -563,7 +580,7 @@ namespace VOXA
         else
         {
             result.success = false;
-            result.error = "HTTP Error " + std::to_string(httpCode);
+            result.error = "Server Error (" + std::to_string(httpCode) + ")";
         }
         http.end();
         return result;
