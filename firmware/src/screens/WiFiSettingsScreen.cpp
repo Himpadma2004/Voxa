@@ -20,12 +20,11 @@ namespace VOXA
         WiFi.disconnect();
         delay(100);
         
-        int16_t n = WiFi.scanNetworks(false, false); // Block for scan (takes ~1.5 sec)
+        int16_t n = WiFi.scanNetworks(false, false);
         if (n > 0)
         {
             for (int i = 0; i < n; ++i)
             {
-                // De-duplicate SSID names
                 bool dup = false;
                 std::string ssid = WiFi.SSID(i).c_str();
                 for (const auto& net : m_networks)
@@ -47,7 +46,6 @@ namespace VOXA
             }
         }
         
-        // Sort by RSSI strength (strongest first)
         std::sort(m_networks.begin(), m_networks.end(), [](const WiFiNetwork& a, const WiFiNetwork& b) {
             return a.rssi > b.rssi;
         });
@@ -75,7 +73,7 @@ namespace VOXA
             return ScreenId::Settings;
         }
 
-        // 0. Handle Wizard State Transition from Keyboard Screen
+        // Handle Wizard State Transition from Keyboard Screen
         if (m_wizardState == WizardState::InputManualSSID)
         {
             m_manualSSID = TextInputScreen::getResult();
@@ -84,7 +82,7 @@ namespace VOXA
                 TextInputScreen::prepare("Enter Password", ScreenId::WiFiSettings, true);
                 m_wizardState = WizardState::InputManualPassword;
                 canvas.deleteSprite();
-                return ScreenId::TextInput; // Transit immediately to keyboard
+                return ScreenId::TextInput;
             }
             else
             {
@@ -106,12 +104,11 @@ namespace VOXA
             m_wizardState = WizardState::None;
         }
 
-        // 1. Initial Scan
+        // Initial Scan
         if (!m_hasScanned && !m_isScanning)
         {
-            // Draw "Scanning..."
             ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Wi-Fi", true, false, Icon::Rotate, w, h);
+            ScreenCommon::renderHeader(canvas, "Wi-Fi Networks", true, false, Icon::Rotate, w, h);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setFont(&fonts::FreeSansBold12pt7b);
             canvas.setTextColor(VoxaTheme::getTextPrimary());
@@ -124,7 +121,8 @@ namespace VOXA
         ScreenId targetScreen = ScreenId::WiFiSettings;
         uint32_t lastMs = millis();
 
-        float contentHeight = (m_networks.size() + 2) * 50.0f + 20.0f;
+        int totalItems = (int)m_networks.size() + 2;
+        float contentHeight = totalItems * 52.0f + 10.0f;
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
@@ -134,7 +132,11 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            // 1. Process Touch
+            totalItems = (int)m_networks.size() + 2;
+            contentHeight = totalItems * 52.0f + 10.0f;
+            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+            // Process Touch
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
 
@@ -172,12 +174,11 @@ namespace VOXA
                     {
                         float leftX = w * 0.04f;
                         float cardW = w * 0.92f;
-                        int totalItems = m_networks.size() + 2;
                         for (int i = 0; i < totalItems; ++i)
                         {
-                            float itemY = 72.0f + i * 50.0f - m_scrollY;
+                            float itemY = 72.0f + i * 52.0f - m_scrollY;
                             if (tx >= leftX && tx <= (leftX + cardW) &&
-                                ty >= itemY && ty <= (itemY + 44.0f))
+                                ty >= itemY && ty <= (itemY + 46.0f))
                             {
                                 m_pressedItemIndex = i;
                             }
@@ -237,39 +238,38 @@ namespace VOXA
                         {
                             m_hasScanned = false;
                             targetScreen = ScreenId::WiFiSettings;
-                            break; // break loop to trigger rescan
+                            break;
                         }
                         else if (m_pressedItemIndex >= 0)
                         {
                             if (m_pressedItemIndex == 0)
                             {
-                                // Add network manually
                                 TextInputScreen::prepare("Enter SSID", ScreenId::WiFiSettings, false);
                                 m_wizardState = WizardState::InputManualSSID;
                                 targetScreen = ScreenId::TextInput;
                             }
                             else if (m_pressedItemIndex == 1)
                             {
-                                // Clear credentials
                                 wifiManager.clearCredentials();
                                 wifiManager.disconnect();
                             }
                             else
                             {
-                                // Connect to scanned network
                                 int netIdx = m_pressedItemIndex - 2;
-                                m_selectedSSID = m_networks[netIdx].ssid;
-                                
-                                if (m_networks[netIdx].isSecure)
+                                if (netIdx >= 0 && netIdx < (int)m_networks.size())
                                 {
-                                    TextInputScreen::prepare("Enter Password", ScreenId::WiFiSettings, true);
-                                    m_wizardState = WizardState::InputSelectedPassword;
-                                    targetScreen = ScreenId::TextInput;
-                                }
-                                else
-                                {
-                                    wifiManager.saveCredentials(m_selectedSSID, "");
-                                    wifiManager.connect();
+                                    m_selectedSSID = m_networks[netIdx].ssid;
+                                    if (m_networks[netIdx].isSecure)
+                                    {
+                                        TextInputScreen::prepare("Enter Password", ScreenId::WiFiSettings, true);
+                                        m_wizardState = WizardState::InputSelectedPassword;
+                                        targetScreen = ScreenId::TextInput;
+                                    }
+                                    else
+                                    {
+                                        wifiManager.saveCredentials(m_selectedSSID, "");
+                                        wifiManager.connect();
+                                    }
                                 }
                             }
                         }
@@ -280,7 +280,7 @@ namespace VOXA
                 }
             }
 
-            // Perform Scroll Inertia
+            // Scroll Inertia
             if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
             {
                 m_targetScrollY += m_scrollVelocity * deltaSecs;
@@ -298,75 +298,112 @@ namespace VOXA
                 m_scrollY = m_targetScrollY;
             }
 
-            // 2. Render Screen Layout
+            // Render Layout
             ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Wi-Fi", true, true, Icon::Rotate, w, h);
+            ScreenCommon::renderHeader(canvas, "Wi-Fi Networks", true, true, Icon::Rotate, w, h);
+
+            // Back button
+            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, backFill, backColor, w, h);
+
+            // Refresh button
+            uint16_t refFill = m_isRefreshPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+            uint16_t refColor = m_isRefreshPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, Icon::Rotate, refFill, refColor, w, h);
 
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;
 
             canvas.setClipRect(0, 70, w, h - 70 - 18);
 
-            // Row 0: Add network manually
+            for (int i = 0; i < totalItems; ++i)
             {
-                float itemY = 72.0f - m_scrollY;
-                uint16_t keyColor = (m_pressedItemIndex == 0) ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                canvas.fillRoundRect(leftX, itemY, cardW, 44, 8, keyColor);
-                ScreenCommon::drawIcon(canvas, Icon::Plus, leftX + 12, itemY + 12, 20, (m_pressedItemIndex == 0) ? TFT_WHITE : VoxaTheme::getPrimary());
-                
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextColor((m_pressedItemIndex == 0) ? TFT_WHITE : VoxaTheme::getTextPrimary());
-                canvas.drawString("Add Manually", leftX + 44, itemY + 14);
-                
-                canvas.setTextColor((m_pressedItemIndex == 0) ? TFT_WHITE : VoxaTheme::getTextSecondary());
-                canvas.drawString("Enter SSID and Password", leftX + 44, itemY + 30);
-            }
+                float itemY = 72.0f + i * 52.0f - m_scrollY;
+                if (itemY + 46.0f < 70.0f || itemY > (h - 18.0f))
+                    continue;
 
-            // Row 1: Clear credentials / disconnect
-            {
-                float itemY = 72.0f + 50.0f - m_scrollY;
-                uint16_t keyColor = (m_pressedItemIndex == 1) ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                canvas.fillRoundRect(leftX, itemY, cardW, 44, 8, keyColor);
-                ScreenCommon::drawIcon(canvas, Icon::Settings, leftX + 12, itemY + 12, 20, (m_pressedItemIndex == 1) ? TFT_WHITE : 0xF800);
-                
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextColor((m_pressedItemIndex == 1) ? TFT_WHITE : VoxaTheme::getTextPrimary());
-                canvas.drawString("Forget Wi-Fi", leftX + 44, itemY + 14);
-                
-                canvas.setTextColor((m_pressedItemIndex == 1) ? TFT_WHITE : VoxaTheme::getTextSecondary());
-                canvas.drawString("Forget credentials & disconnect", leftX + 44, itemY + 30);
-            }
+                bool isPressed = (m_pressedItemIndex == i);
+                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
+                uint16_t titleColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
 
-            // Scanned rows starting at index 2
-            for (size_t i = 0; i < m_networks.size(); ++i)
-            {
-                int itemIdx = i + 2;
-                float itemY = 72.0f + itemIdx * 50.0f - m_scrollY;
-                if (itemY < 20.0f || itemY > h - 18.0f) continue; // Skip off-screen rendering
+                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 46, 8, cardBg);
+                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 46, 8, cardBorder);
 
-                uint16_t keyColor = (m_pressedItemIndex == itemIdx) ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                canvas.fillRoundRect(leftX, itemY, cardW, 44, 8, keyColor);
+                float cy = itemY + 23.0f;
+                float iconCx = leftX + 22.0f;
 
-                // Highlight currently connected SSID with Primary Theme Color
-                bool isCurrent = wifiManager.isConnected() && (wifiManager.getSSID() == m_networks[i].ssid);
-                uint16_t iconColor = isCurrent ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary();
-                if (m_pressedItemIndex == itemIdx) iconColor = TFT_WHITE;
+                if (i == 0)
+                {
+                    // Add Network Manually
+                    canvas.fillCircle((int)iconCx, (int)cy, 12, 0x067F);
+                    ScreenCommon::drawIcon(canvas, Icon::Plus, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
 
-                ScreenCommon::drawIcon(canvas, Icon::Wifi, leftX + 12, itemY + 12, 20, iconColor);
-                
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextColor((m_pressedItemIndex == itemIdx) ? TFT_WHITE : VoxaTheme::getTextPrimary());
-                canvas.drawString(m_networks[i].ssid.c_str(), leftX + 44, itemY + 14);
-                
-                canvas.setTextColor((m_pressedItemIndex == itemIdx) ? TFT_WHITE : VoxaTheme::getTextSecondary());
-                std::string secureText = m_networks[i].isSecure ? "Secure" : "Open";
-                if (isCurrent) secureText += " (Connected)";
-                canvas.drawString(secureText.c_str(), leftX + 44, itemY + 30);
+                    canvas.setFont(&fonts::FreeSans9pt7b);
+                    canvas.setTextDatum(textdatum_t::middle_left);
+                    canvas.setTextColor(titleColor);
+                    canvas.drawString("Add Network Manually", leftX + 42.0f, cy - 8.0f);
+
+                    canvas.setTextColor(subColor);
+                    canvas.drawString("Enter SSID and password", leftX + 42.0f, cy + 8.0f);
+                }
+                else if (i == 1)
+                {
+                    // Forget Wi-Fi
+                    canvas.fillCircle((int)iconCx, (int)cy, 12, canvas.color565(220, 60, 60));
+                    ScreenCommon::drawIcon(canvas, Icon::Settings, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+
+                    canvas.setFont(&fonts::FreeSans9pt7b);
+                    canvas.setTextDatum(textdatum_t::middle_left);
+                    canvas.setTextColor(titleColor);
+                    canvas.drawString("Forget Wi-Fi Network", leftX + 42.0f, cy - 8.0f);
+
+                    canvas.setTextColor(subColor);
+                    canvas.drawString("Clear credentials & disconnect", leftX + 42.0f, cy + 8.0f);
+                }
+                else
+                {
+                    int netIdx = i - 2;
+                    bool isCurrent = wifiManager.isConnected() && (wifiManager.getSSID() == m_networks[netIdx].ssid);
+                    uint16_t wifiIconCol = isCurrent ? 0x07E0 : 0x79CF; // Green if connected, blue if available
+
+                    canvas.fillCircle((int)iconCx, (int)cy, 12, wifiIconCol);
+                    ScreenCommon::drawIcon(canvas, Icon::Wifi, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+
+                    canvas.setFont(&fonts::FreeSans9pt7b);
+                    canvas.setTextDatum(textdatum_t::middle_left);
+                    canvas.setTextColor(titleColor);
+
+                    std::string drawSSID = m_networks[netIdx].ssid;
+                    if (drawSSID.length() > 16)
+                    {
+                        drawSSID = drawSSID.substr(0, 14) + "...";
+                    }
+                    canvas.drawString(drawSSID.c_str(), leftX + 42.0f, cy - 8.0f);
+
+                    canvas.setTextColor(subColor);
+                    std::string subText = m_networks[netIdx].isSecure ? "Secure Network" : "Open Network";
+                    if (isCurrent) subText += "  |  Connected";
+                    canvas.drawString(subText.c_str(), leftX + 42.0f, cy + 8.0f);
+
+                    // Connected badge or chevron
+                    if (isCurrent)
+                    {
+                        float chevX = leftX + cardW - 20.0f;
+                        canvas.fillCircle((int)chevX, (int)cy, 5, 0x07E0); // Green dot indicator
+                    }
+                    else
+                    {
+                        float chevX = leftX + cardW - 16.0f;
+                        ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+                    }
+                }
             }
 
             canvas.clearClipRect();
 
-            // Slide in / double buffer push
             if (entryFrame < 10)
             {
                 playSlideInFrame(canvas, getTransitionType(g_lastScreenId, ScreenId::WiFiSettings), entryFrame, 10);
