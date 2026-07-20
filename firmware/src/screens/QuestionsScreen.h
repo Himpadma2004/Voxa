@@ -23,6 +23,7 @@ namespace VOXA
         int   m_pressedItemIndex { -1 };
         bool  m_isBackPressed { false };
         bool  m_isAddPressed { false };
+        bool  m_isSearchPressed { false };
         bool  m_wasTouched { false };
 
         float m_lastDragX { 0.0f };

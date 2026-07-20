@@ -1,9 +1,18 @@
 #pragma once
 #include "ScreenCommon.h"
 #include "../touch/Touch.h"
+#include <string>
 
 namespace VOXA
 {
+    enum class AiSearchState
+    {
+        Idle,
+        RecordingVoice,
+        Searching,
+        HasResult
+    };
+
     class SearchScreen
     {
     public:
@@ -22,8 +31,16 @@ namespace VOXA
 
         int   m_pressedItemIndex { -1 };
         bool  m_isBackPressed { false };
+        bool  m_isVoiceSearchPressed { false };
+        bool  m_isTypeSearchPressed { false };
         bool  m_wasTouched { false };
 
         float m_lastDragX { 0.0f };
+
+        AiSearchState m_state { AiSearchState::Idle };
+        std::string   m_lastQuery;
+        std::string   m_lastAnswer;
+        std::string   m_searchError;
+        uint32_t      m_searchStartMs { 0 };
     };
 }

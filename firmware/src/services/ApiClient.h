@@ -15,17 +15,17 @@ namespace VOXA
         std::string contentType; ///< parsed Content-Type header
     };
 
+    /// Result returned by AI database search queries.
+    struct AiSearchResult
+    {
+        bool success{false};
+        std::string query;
+        std::string answer;
+        std::string error;
+    };
+
     /**
      * Independent HTTP client for all VOXA ↔ Python backend communication.
-     *
-     * Usage:
-     *   apiClient.setBaseUrl("http://192.168.0.148:8000");
-     *   ApiResult r = apiClient.uploadVoice("/voice_rec.wav");
-     *
-     * Future endpoints (no code changes needed, just call get/post):
-     *   apiClient.get("/api/reminders");
-     *   apiClient.post("/api/chat", "{\"message\":\"hello\"}");
-     *   apiClient.get("/api/ota/check");
      */
     class ApiClient
     {
@@ -44,10 +44,15 @@ namespace VOXA
 
         // --- Voice Upload ---
         /// POST multipart/form-data to /api/voice/upload
-        /// Returns ApiResult with transcribed text in result.text
         ApiResult uploadVoice(const std::string &filePath);
 
-        // --- Generic helpers (future: AI chat, sync, OTA, ...) ---
+        // --- AI Database Search ---
+        /// Type Search (POST /api/search)
+        AiSearchResult searchAi(const std::string &query);
+        /// Audio Search (POST /api/search/audio-raw)
+        AiSearchResult searchAiAudio(const std::string &filePath);
+
+        // --- Generic helpers ---
         ApiResult get(const std::string &endpoint);
         ApiResult post(const std::string &endpoint, const std::string &jsonBody);
 
@@ -61,6 +66,8 @@ namespace VOXA
         std::string discoverBackendIP();
 
         std::string parseTextField(const std::string &json);
+        std::string parseQueryField(const std::string &json);
+        std::string parseAnswerField(const std::string &json);
         bool parseBoolField(const std::string &json, const std::string &key);
     };
 

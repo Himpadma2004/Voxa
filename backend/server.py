@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 
 # Import existing backend modules and services
 from config.settings import ACTIVE_MODEL
@@ -23,6 +24,15 @@ from vector_db.memory_formatter import build_memory_text
 from vector_db.chroma_client import add_memory
 
 app = FastAPI(title="VOXA REST API Server")
+
+# Enable CORS for web applications
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

@@ -112,6 +112,12 @@ namespace VOXA
                             m_isAddPressed = true;
                         }
 
+                        // Search button bounds
+                        if (!isSelectMode && std::sqrt((tx - (w - 55.0f))*(tx - (w - 55.0f)) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                        {
+                            m_isSearchPressed = true;
+                        }
+
                         // Action Bar bounds (bottom Y = h - 28)
                         if (isSelectMode && ty >= h - 55.0f)
                         {
@@ -298,6 +304,10 @@ namespace VOXA
                             {
                                 targetScreen = ScreenId::Home;
                             }
+                            else if (m_isSearchPressed)
+                            {
+                                targetScreen = ScreenId::Search;
+                            }
                             else if (m_isAddPressed)
                             {
                                 int count = questions.size() + 1;
@@ -313,6 +323,7 @@ namespace VOXA
                             }
                             m_isBackPressed = false;
                             m_isAddPressed = false;
+                            m_isSearchPressed = false;
                             m_pressedItemIndex = -1;
                         }
                     }
@@ -355,6 +366,14 @@ namespace VOXA
             uint16_t addColor = m_isAddPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
             ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, isSelectMode ? Icon::Plus : Icon::Plus, 
                                               addFill, addColor, w, h);
+
+            if (!isSelectMode)
+            {
+                uint16_t searchFill = m_isSearchPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+                uint16_t searchColor = m_isSearchPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+                ScreenCommon::renderCircularButton(canvas, w - 55.0f, 45.0f, Icon::Search, 
+                                                  searchFill, searchColor, w, h);
+            }
 
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;

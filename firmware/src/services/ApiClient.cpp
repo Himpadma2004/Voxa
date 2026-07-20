@@ -468,4 +468,180 @@ namespace VOXA
         }
         return "";
     }
+
+    // ── AI Memory Search (Type Search) ────────────────────────────────────────
+    AiSearchResult ApiClient::searchAi(const std::string &query)
+    {
+        AiSearchResult result;
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            result.error = "No Wi-Fi Connection";
+            return result;
+        }
+
+        String url = String(m_baseUrl.c_str()) + "/api/search";
+        HTTPClient http;
+        http.begin(url);
+        http.setTimeout(35000); // 35 seconds for LLM recall query
+        http.addHeader("Content-Type", "application/json");
+
+        String jsonBody = "{\"query\":\"" + String(query.c_str()) + "\"}";
+        int httpCode = http.POST(jsonBody);
+
+        if (httpCode == HTTP_CODE_OK || httpCode == 201)
+        {
+            String body = http.getString();
+            result.success = true;
+            result.query = query;
+            result.answer = parseAnswerField(body.c_str());
+            if (result.answer.empty())
+            {
+                result.answer = parseTextField(body.c_str());
+            }
+        }
+        else
+        {
+            result.success = false;
+            result.error = "HTTP Error " + std::to_string(httpCode);
+        }
+        http.end();
+        return result;
+    }
+
+    // ── AI Memory Search (Audio Search) ───────────────────────────────────────
+    AiSearchResult ApiClient::searchAiAudio(const std::string &filePath)
+    {
+        AiSearchResult result;
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            result.error = "No Wi-Fi Connection";
+            return result;
+        }
+
+        SpiffsLock lock("ApiClient::searchAiAudio");
+        if (!SPIFFS.exists(filePath.c_str()))
+        {
+            result.error = "Audio query file missing";
+            return result;
+        }
+
+        File file = SPIFFS.open(filePath.c_str(), "r");
+        if (!file)
+        {
+            result.error = "Failed to open WAV file";
+            return result;
+        }
+
+        size_t fileSize = file.size();
+        if (fileSize < 44)
+        {
+            file.close();
+            result.error = "Audio recording is empty";
+            return result;
+        }
+
+        String url = String(m_baseUrl.c_str()) + "/api/search/audio-raw";
+        HTTPClient http;
+        http.begin(url);
+        http.setTimeout(45000); // 45 seconds for Whisper transcription + LLM recall
+        http.addHeader("Content-Type", "audio/wav");
+
+        int httpCode = http.sendRequest("POST", &file, fileSize);
+        file.close();
+
+        if (httpCode == HTTP_CODE_OK || httpCode == 201)
+        {
+            String body = http.getString();
+            result.success = true;
+            result.query = parseQueryField(body.c_str());
+            result.answer = parseAnswerField(body.c_str());
+            if (result.answer.empty())
+            {
+                result.answer = parseTextField(body.c_str());
+            }
+        }
+        else
+        {
+            result.success = false;
+            result.error = "HTTP Error " + std::to_string(httpCode);
+        }
+        http.end();
+        return result;
+    }
+
+    std::string ApiClient::parseQueryField(const std::string &json)
+    {
+        std::size_t pos = json.find("\"query\":");
+        if (pos == std::string::npos)
+            return "";
+
+        std::size_t startQuote = json.find('"', pos + 8);
+        if (startQuote == std::string::npos)
+            return "";
+
+        std::string val;
+        bool escaped = false;
+        for (std::size_t i = startQuote + 1; i < json.length(); ++i)
+        {
+            char c = json[i];
+            if (escaped)
+            {
+                if (c == 'n') val += '\n';
+                else if (c == 't') val += '\t';
+                else val += c;
+                escaped = false;
+            }
+            else if (c == '\\')
+            {
+                escaped = true;
+            }
+            else if (c == '"')
+            {
+                break;
+            }
+            else
+            {
+                val += c;
+            }
+        }
+        return val;
+    }
+
+    std::string ApiClient::parseAnswerField(const std::string &json)
+    {
+        std::size_t pos = json.find("\"answer\":");
+        if (pos == std::string::npos)
+            return "";
+
+        std::size_t startQuote = json.find('"', pos + 9);
+        if (startQuote == std::string::npos)
+            return "";
+
+        std::string val;
+        bool escaped = false;
+        for (std::size_t i = startQuote + 1; i < json.length(); ++i)
+        {
+            char c = json[i];
+            if (escaped)
+            {
+                if (c == 'n') val += '\n';
+                else if (c == 't') val += '\t';
+                else val += c;
+                escaped = false;
+            }
+            else if (c == '\\')
+            {
+                escaped = true;
+            }
+            else if (c == '"')
+            {
+                break;
+            }
+            else
+            {
+                val += c;
+            }
+        }
+        return val;
+    }
 }
