@@ -194,7 +194,10 @@ namespace VOXA
                 File f = root.openNextFile();
                 while (f)
                 {
+                    // Normalize: ensure fname always starts with '/'
                     String fname = f.name();
+                    if (fname.length() > 0 && fname[0] != '/')
+                        fname = "/" + fname;
                     // Never delete the file we're currently about to write
                     if (!f.isDirectory() && fname != String(m_filePath.c_str()) &&
                         (oldestTime == 0 || f.getLastWrite() < oldestTime))
@@ -211,7 +214,11 @@ namespace VOXA
 
                 Serial.printf("[MicrophoneService] Low on space (need %u bytes) — deleting oldest file: %s\n",
                               (unsigned int)neededBytes, oldestName.c_str());
-                SPIFFS.remove(oldestName);
+                if (!SPIFFS.remove(oldestName))
+                {
+                    Serial.printf("[MicrophoneService] WARNING: SPIFFS.remove(%s) failed! Breaking cleanup loop.\n", oldestName.c_str());
+                    break; // Prevent infinite loop if remove fails
+                }
                 freedCount++;
             }
             Serial.printf("[MicrophoneService] SPIFFS free space before write: %u / %u bytes\n",
@@ -237,23 +244,46 @@ namespace VOXA
                 Serial.printf("[MicrophoneService] ERROR: WAV header write failed for %s\n", m_filePath.c_str());
             }
 
-            // Write raw audio samples from PSRAM in 32KB chunks
+            // Write raw audio samples from PSRAM to SPIFFS via internal RAM staging buffer.
+            // CRITICAL: On ESP32-S3, PSRAM and SPI flash share the SPI bus.
+            // file.write() directly from a PSRAM pointer causes bus contention,
+            // resulting in only ~84 bytes written per 32KB request.
+            // Solution: copy small chunks from PSRAM into internal RAM first,
+            // then write from internal RAM to SPIFFS.
             size_t written = 0;
-            const size_t chunkSize = 32768;
+            const size_t stagingSize = 4096; // 4KB in internal RAM
+            uint8_t *stagingBuf = (uint8_t *)malloc(stagingSize); // internal RAM, NOT PSRAM
+            if (!stagingBuf)
+            {
+                Serial.println("[MicrophoneService] ERROR: Failed to allocate staging buffer in internal RAM!");
+                m_file.close();
+                m_saving = false;
+                return false;
+            }
+            bool writeError = false;
             while (written < m_bufferOffset)
             {
-                size_t toWrite = std::min(chunkSize, m_bufferOffset - written);
-                size_t bytesWritten = m_file.write(m_psramBuffer + written, toWrite);
+                size_t toWrite = std::min(stagingSize, m_bufferOffset - written);
+                // Copy from PSRAM to internal RAM
+                memcpy(stagingBuf, m_psramBuffer + written, toWrite);
+                // Write from internal RAM to SPIFFS flash
+                size_t bytesWritten = m_file.write(stagingBuf, toWrite);
                 if (bytesWritten != toWrite)
                 {
                     Serial.printf("[MicrophoneService] ERROR: file.write() mismatch! Expected bytes: %u, Actual bytes: %u, ESP error: SPIFFS write failed\n",
                                   (unsigned int)toWrite, (unsigned int)bytesWritten);
+                    writeError = true;
                     break;
                 }
                 written += bytesWritten;
-                Serial.printf("[MicrophoneService] bytesWritten: %u (Total recorded bytes dumped to SPIFFS: %u/%u)\n",
-                              (unsigned int)bytesWritten, (unsigned int)written, (unsigned int)m_bufferOffset);
+                // Log progress every 32KB
+                if ((written % 32768) == 0 || written == m_bufferOffset)
+                {
+                    Serial.printf("[MicrophoneService] SPIFFS write progress: %u/%u bytes\n",
+                                  (unsigned int)written, (unsigned int)m_bufferOffset);
+                }
             }
+            free(stagingBuf);
 
             m_file.flush();
             Serial.println("[MicrophoneService] file.flush() executed");

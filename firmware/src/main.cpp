@@ -187,6 +187,20 @@ namespace
           if (res.success)
           {
             Serial.printf("[BackgroundUpload] Successfully uploaded pending note: %s\n", res.text.c_str());
+
+            // Delete WAV from SPIFFS — it's been uploaded
+            {
+              SpiffsLock lock("BackgroundUpload::deleteAfterUpload");
+              if (SPIFFS.remove(rec.filePath.c_str()))
+              {
+                Serial.printf("[BackgroundUpload] Deleted uploaded WAV from SPIFFS: %s\n", rec.filePath.c_str());
+              }
+              else
+              {
+                Serial.printf("[BackgroundUpload] WARNING: Failed to delete WAV: %s\n", rec.filePath.c_str());
+              }
+            }
+
             rec.title = res.text;
             rec.timestamp = "Uploaded";
             recordingService.update(rec);

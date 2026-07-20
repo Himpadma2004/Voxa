@@ -5,8 +5,10 @@
 #include "../services/MicrophoneService.h"
 #include "../services/ApiClient.h"
 #include "../services/WiFiManager.h"
+#include "../storage/SpiffsMutex.h"
 #include "Transition.h"
 #include <cmath>
+#include <SPIFFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -98,6 +100,19 @@ namespace VOXA
                     // Save to the library using the transcription text as the title
                     recordingService.add(resultText, s_recUploadPath, durS, "Uploaded");
                     Serial.printf("[RecordScreen] Upload success: %s\n", resultText.c_str());
+
+                    // Delete the WAV file from SPIFFS — it's been uploaded to the server
+                    {
+                        SpiffsLock lock("RecordScreen::deleteAfterUpload");
+                        if (SPIFFS.remove(s_recUploadPath.c_str()))
+                        {
+                            Serial.printf("[RecordScreen] Deleted uploaded WAV from SPIFFS: %s\n", s_recUploadPath.c_str());
+                        }
+                        else
+                        {
+                            Serial.printf("[RecordScreen] WARNING: Failed to delete WAV from SPIFFS: %s\n", s_recUploadPath.c_str());
+                        }
+                    }
                 }
                 else
                 {
@@ -166,14 +181,19 @@ namespace VOXA
                         m_isBackPressed = true;
                     }
 
-                    // Center mic button bounds
+                    // Center mic/stop button bounds (expanded hit radius when recording to cover pulsing red ring)
                     float micCx = w * 0.5f;
                     float micCy = h * 0.52f;
-                    if (std::sqrt((tx - micCx) * (tx - micCx) + (ty - micCy) * (ty - micCy)) <= 42.0f)
+                    float touchRadius = (uiState == UIState::Recording) ? 70.0f : 50.0f;
+                    float dist = std::sqrt((tx - micCx) * (tx - micCx) + (ty - micCy) * (ty - micCy));
+
+                    if (dist <= touchRadius)
                     {
-                        // Mic button is pressed
+                        Serial.printf("[RecordScreen] Mic/Stop button touched at tx=%u, ty=%u (dist=%.1f, uiState=%d)\n",
+                                      tx, ty, dist, (int)uiState);
+
                         // Action depends on current state
-                        if (uiState == UIState::Idle && microphoneService.getState() == RecordingState::Idle)
+                        if (uiState == UIState::Idle)
                         {
                             static uint32_t s_recSeq = 0;
                             s_recSeq++;
@@ -186,20 +206,12 @@ namespace VOXA
                                 uiState = UIState::Recording;
                             }
                         }
-                        else if (uiState == UIState::Recording && microphoneService.getState() == RecordingState::Recording)
+                        else if (uiState == UIState::Recording)
                         {
-                            // Guard against a touch-debounce blip (finger still down,
-                            // but the touch driver briefly reported a release) being
-                            // misread as a full release-and-new-tap, which would
-                            // instantly stop a recording that just started. Require a
-                            // short minimum duration before a stop-toggle is honored.
-                            const uint32_t MIN_RECORDING_MS = 700;
-                            if (microphoneService.getDurationMs() < MIN_RECORDING_MS)
+                            const uint32_t MIN_RECORDING_MS = 300;
+                            if (microphoneService.getDurationMs() >= MIN_RECORDING_MS)
                             {
-                                // Too soon — ignore this tap, keep recording.
-                            }
-                            else
-                            {
+                                Serial.println("[RecordScreen] Stop button pressed -> Executing stopRecording()");
                                 bool stopOk = microphoneService.stopRecording("RecordScreen::micButtonToggle", "user_button_tap");
                                 if (stopOk)
                                 {
