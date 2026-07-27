@@ -5,10 +5,13 @@
 #include "../services/MicrophoneService.h"
 #include "../services/ApiClient.h"
 #include "../services/WiFiManager.h"
+#include "../services/DataService.h"
+#include "../services/SDCardService.h"
 #include "../storage/SpiffsMutex.h"
 #include "Transition.h"
 #include <cmath>
 #include <SPIFFS.h>
+#include <SD.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -30,6 +33,14 @@ namespace
         s_recUploadOk = res.success;
         strncpy(s_recUploadText, res.text.c_str(), 255);
         strncpy(s_recUploadError, res.error.c_str(), 127);
+
+        if (res.success)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1200)); // Wait for LLM classification
+            VOXA::dataService.syncAll();
+            Serial.println("[RecordScreen] Triggered immediate DataSync after voice upload!");
+        }
+
         s_recUploadDone = true;
         vTaskDelete(nullptr);
     }

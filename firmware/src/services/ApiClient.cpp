@@ -1,9 +1,12 @@
 #include "ApiClient.h"
+#include "SDCardService.h"
 #include "../storage/SpiffsMutex.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
 #include <SPIFFS.h>
+#include <SD.h>
+#include <ArduinoJson.h>
 #include <Preferences.h>
 #include <Arduino.h>
 #include <algorithm>

@@ -24,7 +24,7 @@ namespace
     std::string s_aiSearchPath;
     std::string s_aiSearchTextQuery;
 
-    void aiAudioSearchTaskFn(void*)
+    void aiAudioSearchTaskFn(void *)
     {
         s_globalSearchState = VOXA::AiSearchState::TranscribingWhisper;
         vTaskDelay(pdMS_TO_TICKS(500)); // Show Stage 2 animation smoothly
@@ -42,7 +42,7 @@ namespace
         vTaskDelete(nullptr);
     }
 
-    void aiTextSearchTaskFn(void*)
+    void aiTextSearchTaskFn(void *)
     {
         s_globalSearchState = VOXA::AiSearchState::SearchingLLM;
         VOXA::AiSearchResult res = VOXA::apiClient.searchAi(s_aiSearchTextQuery);
@@ -57,7 +57,7 @@ namespace
         vTaskDelete(nullptr);
     }
 
-    void drawWrappedText(LGFX_Sprite& canvas, const char* text, float x, float y, float maxW, uint16_t color)
+    void drawWrappedText(LGFX_Sprite &canvas, const char *text, float x, float y, float maxW, uint16_t color)
     {
         canvas.setFont(&fonts::FreeSans9pt7b);
         canvas.setTextColor(color);
@@ -66,16 +66,17 @@ namespace
         std::string s(text);
         std::string line = "";
         float currentY = y;
-        
+
         std::size_t start = 0;
         while (start < s.length() && (currentY - y) < 80.0f)
         {
             std::size_t spacePos = s.find(' ', start);
-            if (spacePos == std::string::npos) spacePos = s.length();
-            
+            if (spacePos == std::string::npos)
+                spacePos = s.length();
+
             std::string word = s.substr(start, spacePos - start);
             std::string testLine = line.empty() ? word : (line + " " + word);
-            
+
             if (canvas.textWidth(testLine.c_str()) > maxW && !line.empty())
             {
                 canvas.drawString(line.c_str(), x, currentY);
@@ -86,10 +87,10 @@ namespace
             {
                 line = testLine;
             }
-            
+
             start = spacePos + 1;
         }
-        
+
         if (!line.empty() && (currentY - y) < 80.0f)
         {
             if (canvas.textWidth(line.c_str()) > maxW)
@@ -105,7 +106,7 @@ namespace VOXA
 {
     extern SearchService searchService;
 
-    ScreenId SearchScreen::show(Touch& touch)
+    ScreenId SearchScreen::show(Touch &touch)
     {
         int entryFrame = 0;
         float dragStartX = 0.0f;
@@ -200,7 +201,7 @@ namespace VOXA
                     m_scrollVelocity = 0.0f;
 
                     // Header Back button bounds Y = 45
-                    if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    if (std::sqrt((tx - 20.0f) * (tx - 20.0f) + (ty - 45.0f) * (ty - 45.0f)) <= 18.0f)
                     {
                         m_isBackPressed = true;
                     }
@@ -294,25 +295,29 @@ namespace VOXA
                         {
                             if (m_state == AiSearchState::RecordingVoice)
                             {
-                                static uint32_t s_querySeq = 0;
-                                s_querySeq++;
-                                char queryPath[64];
-                                snprintf(queryPath, sizeof(queryPath), "/search_q_%u_%u.wav", (unsigned int)millis(), (unsigned int)s_querySeq);
-
-                                bool stopOk = microphoneService.stopRecording("SearchScreen::voiceSearch", "stop");
-                                if (stopOk)
+                                if (microphoneService.getDurationMs() < 700)
                                 {
-                                    m_state = AiSearchState::TranscribingWhisper;
-                                    s_globalSearchState = AiSearchState::TranscribingWhisper;
-                                    s_aiSearchPath = queryPath;
-                                    s_aiSearchDone = false;
-                                    s_aiSearchOk = false;
-                                    xTaskCreate(aiAudioSearchTaskFn, "AiAudioSearch", 8192, nullptr, 1, nullptr);
-                                    Serial.println("[SearchScreen] Voice query recorded — analyzing AI search");
+                                    // Too soon — likely a touch debounce blip, ignore and keep recording.
                                 }
                                 else
                                 {
-                                    m_state = AiSearchState::Idle;
+                                    std::string recordedPath = microphoneService.getFilePath();
+
+                                    bool stopOk = microphoneService.stopRecording("SearchScreen::voiceSearch", "stop");
+                                    if (stopOk)
+                                    {
+                                        m_state = AiSearchState::TranscribingWhisper;
+                                        s_globalSearchState = AiSearchState::TranscribingWhisper;
+                                        s_aiSearchPath = recordedPath; // the file that was actually recorded
+                                        s_aiSearchDone = false;
+                                        s_aiSearchOk = false;
+                                        xTaskCreate(aiAudioSearchTaskFn, "AiAudioSearch", 8192, nullptr, 1, nullptr);
+                                        Serial.println("[SearchScreen] Voice query recorded — analyzing AI search");
+                                    }
+                                    else
+                                    {
+                                        m_state = AiSearchState::Idle;
+                                    }
                                 }
                             }
                             else
@@ -341,9 +346,12 @@ namespace VOXA
                             std::string cat = searchItems[m_pressedItemIndex].category;
                             uint32_t srcId = searchItems[m_pressedItemIndex].sourceId;
                             std::string catPlural = cat;
-                            if (cat == "reminder") catPlural = "reminders";
-                            else if (cat == "idea") catPlural = "ideas";
-                            else if (cat == "question") catPlural = "questions";
+                            if (cat == "reminder")
+                                catPlural = "reminders";
+                            else if (cat == "idea")
+                                catPlural = "ideas";
+                            else if (cat == "question")
+                                catPlural = "questions";
 
                             if (cat == "reminder" || cat == "idea" || cat == "question")
                             {
@@ -425,7 +433,7 @@ namespace VOXA
 
             // 2. Multi-Stage Animated Processing Banner & Result Cards
             float resultY = topBtnY + 46.0f;
-            
+
             if (m_state == AiSearchState::RecordingVoice)
             {
                 // STAGE 1: Live Voice Recording Spectrum Animation
@@ -497,7 +505,8 @@ namespace VOXA
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(VoxaTheme::getPrimaryLight());
                 std::string qDisp = "Q: " + (m_lastQuery.empty() ? "Voice Search" : m_lastQuery);
-                if (qDisp.length() > 32) qDisp = qDisp.substr(0, 29) + "...";
+                if (qDisp.length() > 32)
+                    qDisp = qDisp.substr(0, 29) + "...";
                 canvas.drawString(qDisp.c_str(), leftCardX + 10.0f, resultY + 8.0f);
 
                 canvas.drawFastHLine((int)(leftCardX + 10.0f), (int)(resultY + 28.0f), (int)(w * 0.92f - 20.0f), VoxaTheme::getDivider());
@@ -537,9 +546,21 @@ namespace VOXA
                 Icon itemIcon = Icon::Folder;
                 uint16_t itemColor = 0x52AA;
                 std::string cat = searchItems[i].category;
-                if (cat == "reminder") { itemIcon = Icon::Bell; itemColor = 0x79CF; }
-                else if (cat == "idea") { itemIcon = Icon::Lightbulb; itemColor = 0xFD20; }
-                else if (cat == "question") { itemIcon = Icon::Question; itemColor = 0x067F; }
+                if (cat == "reminder")
+                {
+                    itemIcon = Icon::Bell;
+                    itemColor = 0x79CF;
+                }
+                else if (cat == "idea")
+                {
+                    itemIcon = Icon::Lightbulb;
+                    itemColor = 0xFD20;
+                }
+                else if (cat == "question")
+                {
+                    itemIcon = Icon::Question;
+                    itemColor = 0x067F;
+                }
 
                 canvas.fillCircle((int)iconCx, (int)cy, 12, itemColor);
                 ScreenCommon::drawIcon(canvas, itemIcon, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());

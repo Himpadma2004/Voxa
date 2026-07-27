@@ -1,7 +1,9 @@
 #include "MicrophoneService.h"
+#include "SDCardService.h"
 #include "../storage/SpiffsMutex.h"
 #include <driver/i2s.h>
 #include <SPIFFS.h>
+#include <SD.h>
 #include <algorithm>
 
 namespace VOXA
@@ -28,7 +30,18 @@ namespace VOXA
 
         Serial.println("[MicrophoneService] Initializing I2S...");
 
-        // Setup I2S configuration for I2S microphone (e.g., INMP441)
+        // ===== TEMPORARY: Power microphone from GPIO15 =====
+        constexpr gpio_num_t MIC_POWER_PIN = GPIO_NUM_15;
+
+        pinMode(MIC_POWER_PIN, OUTPUT);
+        digitalWrite(MIC_POWER_PIN, HIGH);
+
+        // Give microphone time to stabilize after GPIO15 is HIGH
+        delay(100);
+
+        Serial.println("[MicrophoneService] Microphone powered from GPIO15 (HIGH)");
+
+        // Setup I2S configuration for I2S microphone (INMP441)
         i2s_config_t i2s_config = {
             .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
             .sample_rate = 16000,
@@ -43,10 +56,10 @@ namespace VOXA
             .fixed_mclk = 0};
 
         i2s_pin_config_t pin_config = {
-            .bck_io_num = 4,    // BCLK pin 4
-            .ws_io_num = 5,     // LRCK pin 5
+            .bck_io_num = 4,    // BCLK -> GPIO4
+            .ws_io_num = 5,     // LRCK -> GPIO5
             .data_out_num = -1, // Not used
-            .data_in_num = 7    // SD pin 6
+            .data_in_num = 7    // DATA -> GPIO7
         };
 
         Serial.println("[MicrophoneService] Configuring I2S parameters:");
@@ -54,8 +67,8 @@ namespace VOXA
         Serial.printf("  - Bits per Sample: %d-bit\n", i2s_config.bits_per_sample);
         Serial.printf("  - Mode: RX Master\n");
         Serial.printf("  - Format: Mono\n");
-        Serial.printf("  - Pin Mapping: BCLK=GPIO %d, LRCK=GPIO %d, SD=GPIO %d\n",
-                      pin_config.bck_io_num, pin_config.ws_io_num, pin_config.data_in_num);
+        Serial.printf("  - Pin Mapping: BCLK=GPIO %d, LRCK=GPIO %d, DATA=GPIO %d, VCC=GPIO %d\n",
+                      pin_config.bck_io_num, pin_config.ws_io_num, pin_config.data_in_num, MIC_POWER_PIN);
 
         esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
         if (err != ESP_OK)
@@ -180,10 +193,6 @@ namespace VOXA
 
             Serial.printf("[MicrophoneService] Saving %u bytes from PSRAM to SPIFFS: %s...\n", (unsigned int)m_bufferOffset, m_filePath.c_str());
 
-            // Make sure there's enough room for the WHOLE recording before writing
-            // a single byte — freeing just one old file isn't enough if this
-            // recording is bigger than that. Keep deleting the oldest file on
-            // SPIFFS until there's enough free space, or nothing left to delete.
             const size_t neededBytes = m_bufferOffset + 44 + 4096; // data + header + safety margin
             int freedCount = 0;
             while ((SPIFFS.totalBytes() - SPIFFS.usedBytes()) < neededBytes && freedCount < 50)
@@ -194,11 +203,9 @@ namespace VOXA
                 File f = root.openNextFile();
                 while (f)
                 {
-                    // Normalize: ensure fname always starts with '/'
                     String fname = f.name();
                     if (fname.length() > 0 && fname[0] != '/')
                         fname = "/" + fname;
-                    // Never delete the file we're currently about to write
                     if (!f.isDirectory() && fname != String(m_filePath.c_str()) &&
                         (oldestTime == 0 || f.getLastWrite() < oldestTime))
                     {
@@ -210,14 +217,14 @@ namespace VOXA
                 root.close();
 
                 if (oldestName.isEmpty())
-                    break; // nothing left to free
+                    break;
 
                 Serial.printf("[MicrophoneService] Low on space (need %u bytes) — deleting oldest file: %s\n",
                               (unsigned int)neededBytes, oldestName.c_str());
                 if (!SPIFFS.remove(oldestName))
                 {
                     Serial.printf("[MicrophoneService] WARNING: SPIFFS.remove(%s) failed! Breaking cleanup loop.\n", oldestName.c_str());
-                    break; // Prevent infinite loop if remove fails
+                    break;
                 }
                 freedCount++;
             }
@@ -233,7 +240,6 @@ namespace VOXA
             }
             Serial.printf("[MicrophoneService] File successfully opened for writing: %s\n", m_filePath.c_str());
 
-            // Write WAV header
             bool hdrWritten = writeWavHeader(m_file, m_bufferOffset);
             if (hdrWritten)
             {
@@ -244,15 +250,9 @@ namespace VOXA
                 Serial.printf("[MicrophoneService] ERROR: WAV header write failed for %s\n", m_filePath.c_str());
             }
 
-            // Write raw audio samples from PSRAM to SPIFFS via internal RAM staging buffer.
-            // CRITICAL: On ESP32-S3, PSRAM and SPI flash share the SPI bus.
-            // file.write() directly from a PSRAM pointer causes bus contention,
-            // resulting in only ~84 bytes written per 32KB request.
-            // Solution: copy small chunks from PSRAM into internal RAM first,
-            // then write from internal RAM to SPIFFS.
             size_t written = 0;
-            const size_t stagingSize = 4096; // 4KB in internal RAM
-            uint8_t *stagingBuf = (uint8_t *)malloc(stagingSize); // internal RAM, NOT PSRAM
+            const size_t stagingSize = 4096;
+            uint8_t *stagingBuf = (uint8_t *)malloc(stagingSize);
             if (!stagingBuf)
             {
                 Serial.println("[MicrophoneService] ERROR: Failed to allocate staging buffer in internal RAM!");
@@ -264,9 +264,7 @@ namespace VOXA
             while (written < m_bufferOffset)
             {
                 size_t toWrite = std::min(stagingSize, m_bufferOffset - written);
-                // Copy from PSRAM to internal RAM
                 memcpy(stagingBuf, m_psramBuffer + written, toWrite);
-                // Write from internal RAM to SPIFFS flash
                 size_t bytesWritten = m_file.write(stagingBuf, toWrite);
                 if (bytesWritten != toWrite)
                 {
@@ -276,7 +274,6 @@ namespace VOXA
                     break;
                 }
                 written += bytesWritten;
-                // Log progress every 32KB
                 if ((written % 32768) == 0 || written == m_bufferOffset)
                 {
                     Serial.printf("[MicrophoneService] SPIFFS write progress: %u/%u bytes\n",
@@ -294,7 +291,6 @@ namespace VOXA
             m_file.close();
             Serial.println("[MicrophoneService] File closed successfully");
 
-            // Validate recorded WAV file on SPIFFS
             File checkFile = SPIFFS.open(m_filePath.c_str(), "r");
             if (checkFile)
             {
@@ -303,15 +299,10 @@ namespace VOXA
                 {
                     uint8_t hdr[44];
                     checkFile.read(hdr, 44);
-                    // Confirm standard riff chunk markers
                     bool riffOk = (memcmp(&hdr[0], "RIFF", 4) == 0);
                     bool waveOk = (memcmp(&hdr[8], "WAVE", 4) == 0);
                     bool fmtOk = (memcmp(&hdr[12], "fmt ", 4) == 0);
                     bool dataOk = (memcmp(&hdr[36], "data", 4) == 0);
-                    // Also confirm the file's actual size matches what the header
-                    // claims — a partial/failed write (SPIFFS ran out of room
-                    // mid-write) still has valid magic bytes but far less data
-                    // than declared, and must not be treated as a good recording.
                     uint32_t declaredDataSize;
                     memcpy(&declaredDataSize, &hdr[40], 4);
                     bool sizeOk = (sz == 44 + declaredDataSize);

@@ -252,7 +252,7 @@ namespace VOXA
         uint16_t tx = 0, ty = 0;
         bool touched = touch.getPoint(tx, ty);
 
-        float contentHeight = 7.0f * 50.0f + 10.0f;
+        float contentHeight = 8.0f * 50.0f + 10.0f;
         float visibleHeight = h - 70.0f - 18.0f; // safe viewport Y bounds Y=70..h-18
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
@@ -312,7 +312,7 @@ namespace VOXA
                     {
                         float leftX = w * 0.04f;
                         float cardW = w * 0.92f;
-                        for (int i = 0; i < 7; ++i)
+                        for (int i = 0; i < 8; ++i)
                         {
                             float itemY = 72.0f + i * 50.0f - m_menuScrollY;
                             if (tx >= leftX && tx <= (leftX + cardW) &&
@@ -552,7 +552,7 @@ namespace VOXA
             h = Display::height();
 
             // 2. Perform vertical scroll inertia calculations
-            float contentHeight = 7.0f * 50.0f + 10.0f;
+            float contentHeight = 8.0f * 50.0f + 10.0f;
             float visibleHeight = h - 70.0f - 18.0f; // Y=70..h-18 viewport bounds
             float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 

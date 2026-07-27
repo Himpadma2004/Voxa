@@ -6,6 +6,7 @@
 #include "../storage/SpiffsMutex.h"
 #include "Transition.h"
 #include "../services/ApiClient.h"
+#include "../services/SDCardService.h"
 #include <SPIFFS.h>
 
 #include <cmath>
@@ -261,7 +262,36 @@ namespace VOXA
                 }
             }
             std::string syncStatus = settings.autoSync ? "Auto Sync: On" : "Auto Sync: Off";
-            std::string storageInfo = "12.4 GB / 32 GB";
+            std::string storageInfo;
+            if (sdCardService.isMounted())
+            {
+                uint64_t freeMB  = sdCardService.getFreeSpaceMB();
+                uint64_t totalMB = sdCardService.getTotalSpaceMB();
+                char buf[64];
+                if (totalMB >= 1024)
+                {
+                    snprintf(buf, sizeof(buf), "SD: %.1f GB Free / %.1f GB", freeMB / 1024.0f, totalMB / 1024.0f);
+                }
+                else
+                {
+                    snprintf(buf, sizeof(buf), "SD: %llu MB Free / %llu MB", freeMB, totalMB);
+                }
+                storageInfo = buf;
+            }
+            else if (sdCardService.isCardAttached())
+            {
+                storageInfo = "SD Card: Attached (Unmounted)";
+            }
+            else
+            {
+                size_t spiffsTotal = SPIFFS.totalBytes();
+                size_t spiffsUsed  = SPIFFS.usedBytes();
+                size_t spiffsFree  = spiffsTotal > spiffsUsed ? spiffsTotal - spiffsUsed : 0;
+                char buf[64];
+                snprintf(buf, sizeof(buf), "Internal: %.1f MB Free / %.1f MB",
+                         spiffsFree / (1024.0f * 1024.0f), spiffsTotal / (1024.0f * 1024.0f));
+                storageInfo = buf;
+            }
             std::string deviceInfo = settings.deviceName + " (v" + settings.firmwareVersion + ")";
             std::string backendUrl = VOXA::apiClient.getBaseUrl();
 

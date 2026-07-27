@@ -34,8 +34,10 @@
 #include "services/MemoryService.h"
 #include "services/SearchService.h"
 #include "services/DataService.h"
+#include "services/SDCardService.h"
 #include "services/ApiClient.h"
 #include "storage/SpiffsMutex.h"
+#include "storage/StorageManager.h"
 
 using namespace VOXA;
 
@@ -139,12 +141,11 @@ namespace
   {
     while (true)
     {
-      // Delay 10 seconds between checks
-      vTaskDelay(pdMS_TO_TICKS(10000));
+      // Check for pending voice uploads every 1.5 seconds for fast live updates
+      vTaskDelay(pdMS_TO_TICKS(1500));
 
       if (microphoneService.isBusy())
       {
-        Serial.println("[BackgroundUpload] MicrophoneService is busy recording/saving. Pausing upload check.");
         continue;
       }
 
@@ -206,6 +207,11 @@ namespace
             rec.title = res.text;
             rec.timestamp = "Uploaded";
             recordingService.update(rec);
+
+            // Live Update: Wait 1.2 seconds for backend Whisper + LLM processing, then SYNC ALL IMMEDIATELY!
+            vTaskDelay(pdMS_TO_TICKS(1200));
+            VOXA::dataService.syncAll();
+            Serial.println("[BackgroundUpload] Live DataSync complete — reflected in UI within seconds!");
           }
           else
           {
@@ -242,16 +248,8 @@ void setup()
   Serial.printf("SRAM Free Heap: %d bytes\n", ESP.getFreeHeap());
   Serial.println("=================================");
 
-  Serial.println("[Startup] SPIFFS");
-  initSpiffsMutex();
-  if (!SPIFFS.begin(true))
-  {
-    Serial.println("[SPIFFS] Mount FAILED!");
-  }
-  else
-  {
-    Serial.println("[SPIFFS] Mounted successfully.");
-  }
+  Serial.println("[Startup] Storage Subsystem (MicroSD + SPIFFS Architecture)");
+  storageManager.begin();
 
   Serial.println("[Startup] Display");
   Display::begin();
@@ -260,16 +258,6 @@ void setup()
 
   // Show boot screen immediately to give visual feedback
   boot.show();
-
-  Serial.println("[Startup] SPIFFS");
-  if (!SPIFFS.begin(true))
-  {
-    Serial.println("[SPIFFS] Mount FAILED!");
-  }
-  else
-  {
-    Serial.println("[SPIFFS] Mounted successfully.");
-  }
 
   Serial.println("[Startup] Preferences");
   apiClient.begin();
