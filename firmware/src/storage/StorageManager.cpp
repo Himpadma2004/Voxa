@@ -153,6 +153,7 @@ namespace VOXA
             for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) break; }
             digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
 
+            // ACMD41
             sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
             digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
             sdSPI.transfer(0x69); sdSPI.transfer(0x40); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x77);
@@ -162,9 +163,9 @@ namespace VOXA
             if (r1acmd == 0x00) break;
             delay(10);
         }
-        if (r1acmd != 0x00) { Serial.printf("[CMD17 Probe] ACMD41 Failed (R1=0x%02X).\n", r1acmd); return false; }
+        if (r1acmd != 0x00) { Serial.printf("[StorageManager] ACMD41 Failed (R1=0x%02X).\n", r1acmd); return false; }
 
-        // 4b. Send CMD58 (READ_OCR) - Required by SD SPI Specification to complete initialization state transition
+        // 4b. Send CMD58 (READ_OCR)
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
         digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
         sdSPI.transfer(0x7A); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0xFD);
