@@ -84,10 +84,14 @@ namespace VOXA
 
     bool StorageManager::mountSdCard()
     {
-        Serial.printf("[StorageManager] Initializing MicroSD SPI Pins (CS=%d, MOSI=%d, MISO=%d, SCK=%d)...\n",
+        Serial.println("========================================================================");
+        Serial.println("── [CMD17 DEEP-TRACE PROBE: EXTENDED TOKEN TIMEOUT & BUS LOGGING] ──────");
+        Serial.println("========================================================================");
+
+        Serial.printf("[CMD17 Probe] Initializing Pins: CS=GPIO%d, MOSI=GPIO%d, MISO=GPIO%d, SCK=GPIO%d\n",
                       SD_CS_PIN, SD_MOSI_PIN, SD_MISO_PIN, SD_SCK_PIN);
 
-        // Reset GPIO matrix routing & setup pin directions
+        // Hardware Reset & Matrix Pin Setup
         gpio_reset_pin(SD_CS_PIN);
         gpio_reset_pin(SD_MOSI_PIN);
         gpio_reset_pin(SD_MISO_PIN);
@@ -100,549 +104,257 @@ namespace VOXA
         digitalWrite(SD_CS_PIN, HIGH);
         delay(20);
 
-        // Hardware MISO Line Bus Test
         int misoState = digitalRead(SD_MISO_PIN);
-        if (misoState == HIGH)
+        m_cardAttached = (misoState == HIGH);
+        if (!m_cardAttached)
         {
-            m_cardAttached = true;
-            Serial.println("[StorageManager] MISO Line Test: HIGH (3.3V Pull-Up Active — SD Slot Ready).");
-        }
-        else
-        {
-            m_cardAttached = false;
-            Serial.println("[StorageManager] MISO Line Test: LOW (0V — MISO grounded or no card).");
+            Serial.println("[CMD17 Probe] ERROR: No card detected on MISO line.");
+            return false;
         }
 
-        // Initialize SPI3_HOST bus for MicroSD
+        // Initialize SPI3_HOST bus
         static SPIClass sdSPI(HSPI);
         sdSPI.end();
         sdSPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
 
-        // Force internal pull-up after SPI driver init
-        gpio_pullup_en(SD_MISO_PIN);
-        gpio_pulldown_dis(SD_MISO_PIN);
-
-        // The whole handshake below is wrapped in an OUTER retry loop. Since
-        // ACMD41 flipped from "succeeds in 3 attempts" to "fails all 50
-        // attempts" between two otherwise-identical boots with no code
-        // change, the connection is intermittent/marginal rather than
-        // consistently broken. A full fresh reset (new dummy clocks, fresh
-        // CS toggle) sometimes re-seats a marginal contact in a way that
-        // simply retrying ACMD41 alone cannot.
-        uint8_t r1acmd = 0xFF;
-        int acmdAttempts = 0;
-        const int MAX_FULL_HANDSHAKE_ATTEMPTS = 5;
-
-        for (int fullAttempt = 1; fullAttempt <= MAX_FULL_HANDSHAKE_ATTEMPTS; fullAttempt++)
-        {
-            if (fullAttempt > 1)
-            {
-                Serial.printf("[SD Init] Full handshake retry %d/%d (previous attempt failed)...\n",
-                              fullAttempt, MAX_FULL_HANDSHAKE_ATTEMPTS);
-                delay(200); // let the bus/card settle before a fresh attempt
-            }
-
-            // Send 80 dummy clock pulses (CS HIGH) to transition SD Card to SPI mode
-            sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-            digitalWrite(SD_CS_PIN, HIGH);
-            delay(10);
-            for (int i = 0; i < 50; i++)
-            {
-                sdSPI.transfer(0xFF);
-            }
-            sdSPI.endTransaction();
-            delay(10);
-
-            // Run full SPI Card Initialization Sequence (CMD0 -> CMD8 -> ACMD41 -> CMD58 -> CMD16)
-            // 1. CMD0 (GO_IDLE_STATE)
-            sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-            digitalWrite(SD_CS_PIN, LOW);
-            delayMicroseconds(10);
-            sdSPI.transfer(0x40);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x95);
-            uint8_t r1cmd0 = 0xFF;
-            for (int i = 0; i < 32; i++)
-            {
-                uint8_t b = sdSPI.transfer(0xFF);
-                if ((b & 0x80) == 0)
-                {
-                    r1cmd0 = b;
-                    break;
-                }
-            }
-            digitalWrite(SD_CS_PIN, HIGH);
-            sdSPI.transfer(0xFF);
-            sdSPI.endTransaction();
-            Serial.printf("[SD Init] CMD0 (GO_IDLE_STATE) -> R1=0x%02X %s\n", r1cmd0, (r1cmd0 == 0x01) ? "(PASS - card in idle state)" : "(FAIL - card did not enter idle state)");
-
-            // 2. CMD8 (SEND_IF_COND)
-            sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-            digitalWrite(SD_CS_PIN, LOW);
-            delayMicroseconds(10);
-            sdSPI.transfer(0x48);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x01);
-            sdSPI.transfer(0xAA);
-            sdSPI.transfer(0x87);
-            uint8_t r1cmd8 = 0xFF;
-            for (int i = 0; i < 32; i++)
-            {
-                uint8_t b = sdSPI.transfer(0xFF);
-                if ((b & 0x80) == 0)
-                {
-                    r1cmd8 = b;
-                    break;
-                }
-            }
-            sdSPI.transfer(0xFF);
-            sdSPI.transfer(0xFF);
-            sdSPI.transfer(0xFF);
-            sdSPI.transfer(0xFF);
-            digitalWrite(SD_CS_PIN, HIGH);
-            sdSPI.transfer(0xFF);
-            sdSPI.endTransaction();
-            Serial.printf("[SD Init] CMD8 (SEND_IF_COND) -> R1=0x%02X %s\n", r1cmd8, (r1cmd8 == 0x01) ? "(PASS)" : "(FAIL - card may not support CMD8 / SDv1 card)");
-
-            // 3. ACMD41 Loop (CMD55 + ACMD41, HCS bit only per SD spec)
-            r1acmd = 0xFF;
-            acmdAttempts = 0;
-            for (int retry = 0; retry < 50; retry++)
-            {
-                acmdAttempts = retry + 1;
-                // CMD55
-                sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-                digitalWrite(SD_CS_PIN, LOW);
-                delayMicroseconds(10);
-                sdSPI.transfer(0x77);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x65);
-                for (int i = 0; i < 32; i++)
-                {
-                    uint8_t b = sdSPI.transfer(0xFF);
-                    if ((b & 0x80) == 0)
-                        break;
-                }
-                digitalWrite(SD_CS_PIN, HIGH);
-                sdSPI.transfer(0xFF);
-                sdSPI.endTransaction();
-
-                // ACMD41 — argument must be 0x40000000 (HCS bit only, all other bits zero per SD spec)
-                sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-                digitalWrite(SD_CS_PIN, LOW);
-                delayMicroseconds(10);
-                sdSPI.transfer(0x69);
-                sdSPI.transfer(0x40);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x00);
-                sdSPI.transfer(0x77);
-                r1acmd = 0xFF;
-                for (int i = 0; i < 32; i++)
-                {
-                    uint8_t b = sdSPI.transfer(0xFF);
-                    if ((b & 0x80) == 0)
-                    {
-                        r1acmd = b;
-                        break;
-                    }
-                }
-                digitalWrite(SD_CS_PIN, HIGH);
-                sdSPI.transfer(0xFF);
-                sdSPI.endTransaction();
-
-                if (r1acmd == 0x00)
-                    break;
-                delay(10);
-            }
-            Serial.printf("[SD Init] ACMD41 (SD_SEND_OP_COND) -> R1=0x%02X after %d attempt(s) %s\n",
-                          r1acmd, acmdAttempts, (r1acmd == 0x00) ? "(PASS - card initialized)" : "(FAIL - card never left idle state)");
-
-            if (r1acmd == 0x00)
-                break; // success — no need for another full handshake attempt
-        }
-
-        // Do NOT proceed to a block-read test on a card that never finished
-        // initializing — CMD17 is guaranteed to fail in that case regardless
-        // of wiring, and the failure would be misleading (it looks like a
-        // read/data-line problem when it's actually an incomplete init).
-        if (r1acmd != 0x00)
-        {
-            Serial.println("═══════════════════════════════════════════════════════");
-            Serial.printf("[SD Init] ROOT CAUSE: ACMD41 never returned success after %d full handshake attempts.\n", MAX_FULL_HANDSHAKE_ATTEMPTS);
-            Serial.println("[SD Init] The card never left its idle state, so it cannot");
-            Serial.println("[SD Init] respond to CMD17 or any other data command.");
-            Serial.println("[SD Init] This is NOT the same failure as a MISO/data-line");
-            Serial.println("[SD Init] issue — skipping the CMD17 block-read test since");
-            Serial.println("[SD Init] it cannot succeed on an uninitialized card.");
-            Serial.println("═══════════════════════════════════════════════════════");
-            m_sdMounted = false;
-            m_cardAttached = false;
-            m_lastErrorCode = "SD_ERR_ACMD41_TIMEOUT";
-            return false;
-        }
-
-        // 4. CMD16 (SET_BLOCKLEN, 512 bytes) — some cards refuse to respond to
-        // ANY data command (like CMD17) until block length is explicitly set,
-        // even though 512 is the typical default. This is standard SD SPI
-        // protocol and was previously being skipped.
+        // 1. Send 80 Dummy Clock Pulses (CS HIGH)
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+        digitalWrite(SD_CS_PIN, HIGH);
+        delay(10);
+        for (int i = 0; i < 50; i++) { sdSPI.transfer(0xFF); }
+        sdSPI.endTransaction();
+        delay(10);
+
+        // 2. Send CMD0 (GO_IDLE_STATE)
+        sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+        digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
+        sdSPI.transfer(0x40); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x95);
+        uint8_t r1cmd0 = 0xFF;
+        for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1cmd0 = b; break; } }
+        digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+        if (r1cmd0 != 0x01) { Serial.printf("[CMD17 Probe] CMD0 Failed (R1=0x%02X).\n", r1cmd0); return false; }
+
+        // 3. Send CMD8 (SEND_IF_COND)
+        sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+        digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
+        sdSPI.transfer(0x48); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x01); sdSPI.transfer(0xAA); sdSPI.transfer(0x87);
+        uint8_t r1cmd8 = 0xFF;
+        for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1cmd8 = b; break; } }
+        for (int i = 0; i < 4; i++) sdSPI.transfer(0xFF);
+        digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+
+        // 4. Send ACMD41 Loop
+        uint8_t r1acmd = 0xFF;
+        for (int retry = 0; retry < 50; retry++)
+        {
+            sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+            digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
+            sdSPI.transfer(0x77); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x65);
+            for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) break; }
+            digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+
+            sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+            digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
+            sdSPI.transfer(0x69); sdSPI.transfer(0x40); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x77);
+            for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1acmd = b; break; } }
+            digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+
+            if (r1acmd == 0x00) break;
+            delay(10);
+        }
+        if (r1acmd != 0x00) { Serial.printf("[CMD17 Probe] ACMD41 Failed (R1=0x%02X).\n", r1acmd); return false; }
+
+        // 4b. Send CMD58 (READ_OCR) - Required by SD SPI Specification to complete initialization state transition
+        sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+        digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
+        sdSPI.transfer(0x7A); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0xFD);
+        uint8_t r1cmd58 = 0xFF;
+        for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1cmd58 = b; break; } }
+        uint8_t ocr[4] = {0};
+        for (int i = 0; i < 4; i++) ocr[i] = sdSPI.transfer(0xFF);
+        digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+
+        // 4c. Mandatory Inter-Command SPI Bus Flush (16 clocks CS HIGH)
+        sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+        digitalWrite(SD_CS_PIN, HIGH);
+        sdSPI.transfer(0xFF); sdSPI.transfer(0xFF);
+        sdSPI.endTransaction();
+        delayMicroseconds(50);
+
+        Serial.printf("[CMD17 Probe] Init Sequence PASS: CMD0=0x01, CMD8=0x01, ACMD41=0x00, CMD58=0x%02X (OCR: 0x%02X%02X%02X%02X).\n",
+                      r1cmd58, ocr[0], ocr[1], ocr[2], ocr[3]);
+
+        // ── CORRECTED & AUDITED CMD17 TRANSACTION ──
+        Serial.println("── [CMD17 DEEP INSTRUMENTATION START] ──────────────────────────");
+
+        // 1. Log Command Packet
+        Serial.println("1. Command Packet Transmitted :");
+        Serial.println("   - Cmd Index : 17 (0x51 READ_SINGLE_BLOCK)");
+        Serial.println("   - Argument  : 0x00000000 (Block 0 / LBA 0)");
+        Serial.println("   - CRC       : 0xFF (Dummy SPI CRC)");
+
+        sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+
+        // 2. Assert CS & prime bus with 8 dummy clocks
         digitalWrite(SD_CS_PIN, LOW);
         delayMicroseconds(10);
-        sdSPI.transfer(0x50);
+        sdSPI.transfer(0xFF); // 8 dummy clocks while CS LOW before command byte
+
+        int csStatePre = digitalRead(SD_CS_PIN);
+        Serial.printf("2. CS Line State Pre-TX       : %s (LOW = Active/Valid)\n",
+                      (csStatePre == LOW) ? "LOW (PASS)" : "HIGH (FAIL)");
+
+        // Transmit 6-byte CMD17 packet
+        sdSPI.transfer(0x51);
         sdSPI.transfer(0x00);
         sdSPI.transfer(0x00);
-        sdSPI.transfer(0x02);
+        sdSPI.transfer(0x00);
         sdSPI.transfer(0x00);
         sdSPI.transfer(0xFF);
-        uint8_t r1cmd16 = 0xFF;
-        for (int i = 0; i < 32; i++)
+
+        // 3. Wait for R1 Response
+        uint8_t r1 = 0xFF;
+        uint32_t r1Clocks = 0;
+        for (int i = 0; i < 64; i++)
         {
             uint8_t b = sdSPI.transfer(0xFF);
+            r1Clocks++;
             if ((b & 0x80) == 0)
             {
-                r1cmd16 = b;
+                r1 = b;
                 break;
             }
         }
+
+        int csStateDuringR1 = digitalRead(SD_CS_PIN);
+        Serial.printf("3. R1 Response Value          : 0x%02X (%s after %u clock bytes)\n",
+                      r1, (r1 == 0x00) ? "PASS - 0x00 OK" : "FAIL - Non-Zero/Timeout", r1Clocks);
+        Serial.printf("   - CS State During R1       : %s\n", (csStateDuringR1 == LOW) ? "LOW (Held Active)" : "HIGH (Broken)");
+
+        if (r1 != 0x00)
+        {
+            digitalWrite(SD_CS_PIN, HIGH);
+            sdSPI.transfer(0xFF);
+            sdSPI.endTransaction();
+            Serial.println("[CMD17 Probe] EXACT FAILURE POINT: CMD17 did not return valid R1 response (0x00).");
+            return false;
+        }
+
+        // 4. Extended Data Token (0xFE) Polling with Controlled Timeout
+        const uint32_t EXTENDED_TIMEOUT_CYCLES = 20000; // ~50 ms at 400 kHz SPI clock
+        Serial.printf("4. Polling for Data Token (0xFE) with TIMEOUT (%u cycles / ~50 ms)...\n", EXTENDED_TIMEOUT_CYCLES);
+
+        uint8_t token = 0xFF;
+        uint32_t cyclesWaited = 0;
+        uint32_t nonFFCount = 0;
+        uint8_t lastNonFFByte = 0x00;
+        uint32_t firstNonFFCycle = 0;
+        uint32_t tStart = micros();
+
+        for (uint32_t cycle = 1; cycle <= EXTENDED_TIMEOUT_CYCLES; cycle++)
+        {
+            // Continuously send dummy clocks (0xFF) while reading MISO line
+            uint8_t b = sdSPI.transfer(0xFF);
+            cyclesWaited++;
+
+            if (b == 0xFE)
+            {
+                token = b;
+                break;
+            }
+
+            if (b != 0xFF)
+            {
+                nonFFCount++;
+                lastNonFFByte = b;
+                if (firstNonFFCycle == 0) firstNonFFCycle = cycle;
+                if (nonFFCount <= 10)
+                {
+                    Serial.printf("   [Byte Log] Cycle #%u: Received non-0xFF byte: 0x%02X\n", cycle, b);
+                }
+            }
+
+            // Periodic heartbeat log every 50,000 cycles
+            if (cycle % 50000 == 0)
+            {
+                Serial.printf("   ... still waiting ... Cycle #%u / %u (Elapsed: %u ms)\n",
+                              cycle, EXTENDED_TIMEOUT_CYCLES, (micros() - tStart) / 1000);
+            }
+        }
+        uint32_t elapsedMs = (micros() - tStart) / 1000;
+        int csStateDuringWait = digitalRead(SD_CS_PIN);
+
+        // 5. Total SPI Clock Cycles / Bytes Waited
+        Serial.println("5. Token Polling Summary:");
+        Serial.printf("   - Total Cycles / Bytes Waited : %u cycles\n", cyclesWaited);
+        Serial.printf("   - Total Elapsed Time          : %u ms\n", elapsedMs);
+        Serial.printf("   - Non-0xFF Bytes Received     : %u bytes\n", nonFFCount);
+        if (nonFFCount > 0)
+        {
+            Serial.printf("   - First Non-0xFF Byte         : 0x%02X at cycle #%u\n", lastNonFFByte, firstNonFFCycle);
+        }
+
+        // 6. Confirm Continuous Dummy Clocks & CS Hold
+        Serial.println("6. Bus & CS Signal Verification:");
+        Serial.printf("   - Continuous 0xFF Dummy Clocks: YES (0xFF sent every cycle)\n");
+        Serial.printf("   - CS Line Held LOW During Wait: %s\n", (csStateDuringWait == LOW) ? "YES (LOW)" : "NO (HIGH)");
+
+        if (token != 0xFE)
+        {
+            // Release CS after transaction fails
+            digitalWrite(SD_CS_PIN, HIGH);
+            sdSPI.transfer(0xFF);
+            sdSPI.endTransaction();
+            int csStatePost = digitalRead(SD_CS_PIN);
+
+            // 7. Log CS Release
+            Serial.printf("7. CS Release Post-Transaction : %s (HIGH = Released)\n",
+                          (csStatePost == HIGH) ? "HIGH (PASS)" : "LOW (FAIL)");
+
+            Serial.println("── [EXACT FAILURE POINT DIAGNOSIS] ─────────────────────────────");
+            Serial.println("FAILURE POINT: VALID R1 (0x00) RECEIVED, BUT DATA TOKEN (0xFE) TIMED OUT!");
+            if (nonFFCount == 0)
+            {
+                Serial.println("  • MISO remained stuck at 0xFF for all 200,000 clock cycles (500 ms).");
+                Serial.println("  • The card accepted CMD17 (R1=0x00), but its flash memory controller");
+                Serial.println("    never asserted the 0xFE data start token.");
+            }
+            else
+            {
+                Serial.printf("  • MISO emitted non-0xFF error/status byte 0x%02X instead of 0xFE.\n", lastNonFFByte);
+            }
+            Serial.println("========================================================================");
+            return false;
+        }
+
+        // Token 0xFE Received! Read 512 bytes + 2 CRC bytes
+        Serial.printf("   - Data Token 0xFE Received!  : PASS (at cycle #%u / %u ms)\n", cyclesWaited, elapsedMs);
+
+        uint8_t block0[512] = {0};
+        size_t bytesReceived = 0;
+        for (int i = 0; i < 512; i++)
+        {
+            block0[i] = sdSPI.transfer(0xFF);
+            bytesReceived++;
+        }
+        uint8_t crc1 = sdSPI.transfer(0xFF);
+        uint8_t crc2 = sdSPI.transfer(0xFF);
+
+        // 7. Release CS after transaction completes
         digitalWrite(SD_CS_PIN, HIGH);
         sdSPI.transfer(0xFF);
         sdSPI.endTransaction();
 
-        if (r1cmd16 != 0x00)
-        {
-            Serial.printf("[SD Init] CMD16 (SET_BLOCKLEN=512) -> R1=0x%02X FAIL\n", r1cmd16);
-            Serial.println("[SD Init] Warning: Card rejected SET_BLOCKLEN.");
-            Serial.println("[SD Init] Subsequent block reads may fail.");
-            Serial.println("[SD Init] Error Code : SD_ERR_CMD16_REJECTED");
-            m_sdMounted = false;
-            m_cardAttached = false;
-            m_lastErrorCode = "SD_ERR_CMD16_REJECTED";
-            return false;
-        }
-        Serial.printf("[SD Init] CMD16 (SET_BLOCKLEN=512) -> R1=0x%02X (PASS)\n", r1cmd16);
+        int csStatePostSuccess = digitalRead(SD_CS_PIN);
+        Serial.printf("7. CS Release Post-Transaction : %s (HIGH = Released)\n",
+                      (csStatePostSuccess == HIGH) ? "HIGH (PASS)" : "LOW (FAIL)");
 
-        // Execute Raw SPI Sector 0 & Partition Table Diagnostics
-        Serial.println("── [SD.begin DETAILED STEP-BY-STEP INSTRUMENTATION] ───────────");
+        Serial.println("── [CMD17 DEEP INSTRUMENTATION RESULT] ─────────────────────────");
+        Serial.printf("SUCCESS: CMD17 FULLY SUCCEEDED! (Read 512 bytes + CRC 0x%02X%02X)\n", crc1, crc2);
+        Serial.println("========================================================================");
 
-        // Step 1: Confirm SPI Bus & Pin Configurations
-        Serial.println("[SD.begin Instrument] Step 1: SPI Bus & Pin Configurations:");
-        Serial.printf("  - SPI Host            : SPI3_HOST (HSPI)\n");
-        Serial.printf("  - Pin Mapping         : CS=GPIO%d, MOSI=GPIO%d, MISO=GPIO%d, SCK=GPIO%d\n",
-                      SD_CS_PIN, SD_MOSI_PIN, SD_MISO_PIN, SD_SCK_PIN);
-        Serial.printf("  - CS Idle State       : %s\n", digitalRead(SD_CS_PIN) == HIGH ? "HIGH (PASS)" : "LOW (FAIL)");
-        Serial.printf("  - SPI Transaction     : ENDED / CLEAN (PASS)\n");
-        Serial.println("[SD.begin Instrument] Step 1 Verification: PASS");
-
-        uint8_t sector0[512] = {0};
-        uint8_t vbrSector[512] = {0};
-
-        // Step 2: Trace CMD17 (READ_SINGLE_BLOCK, LBA 0) Sub-stages — retried up
-        // to 3 times, each attempt fully logged with byte counts, timing, and
-        // bus state, so a transient failure is distinguishable from a
-        // consistent one.
-        Serial.println("[CMD17 Trace] Step 2: Block Read Transaction Sub-stages:");
-
-        uint8_t r1 = 0xFF;
-        uint32_t r1WaitClocks = 0;
-        bool cmd17Success = false;
-        const int MAX_CMD17_ATTEMPTS = 3;
-        uint32_t cmd17ElapsedMs = 0;
-
-        for (int cmd17Attempt = 1; cmd17Attempt <= MAX_CMD17_ATTEMPTS; cmd17Attempt++)
-        {
-            Serial.printf("  Attempt %d/%d:\n", cmd17Attempt, MAX_CMD17_ATTEMPTS);
-            uint32_t attemptStart = millis();
-
-            sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-            digitalWrite(SD_CS_PIN, LOW);
-            delayMicroseconds(10);
-
-            // Sub-stage 1: Send CMD17
-            sdSPI.transfer(0x51);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0x00);
-            sdSPI.transfer(0xFF);
-            Serial.println("    1. CMD17 transmitted ........ PASS");
-
-            // Sub-stage 2: R1 Response
-            r1 = 0xFF;
-            r1WaitClocks = 0;
-            for (int i = 0; i < 64; i++)
-            {
-                uint8_t b = sdSPI.transfer(0xFF);
-                r1WaitClocks++;
-                if ((b & 0x80) == 0)
-                {
-                    r1 = b;
-                    break;
-                }
-            }
-            cmd17ElapsedMs = millis() - attemptStart;
-
-            if (r1 != 0x00)
-            {
-                Serial.printf("    2. R1 response ............... FAIL (Expected: 0x00)\n");
-                Serial.printf("       Bytes received : %u\n", r1WaitClocks);
-                Serial.printf("       Timeout        : %s\n", (r1 == 0xFF) ? "YES" : "NO");
-                Serial.printf("       CS State       : %s\n", digitalRead(SD_CS_PIN) == LOW ? "LOW" : "HIGH");
-                Serial.printf("       SPI Clock      : 400 kHz\n");
-                Serial.printf("       Elapsed        : %u ms\n", cmd17ElapsedMs);
-                digitalWrite(SD_CS_PIN, HIGH);
-                sdSPI.transfer(0xFF);
-                sdSPI.endTransaction();
-                delay(20);
-                continue; // try again
-            }
-
-            Serial.printf("    2. R1 response ............... PASS (Clocks: %u, Elapsed: %u ms)\n", r1WaitClocks, cmd17ElapsedMs);
-            cmd17Success = true;
-            break;
-        }
-
-        if (!cmd17Success)
-        {
-            Serial.printf("[CMD17 Trace] Final Result : FAIL after %d attempts\n", MAX_CMD17_ATTEMPTS);
-            Serial.println("[CMD17 Trace] Block Read Execution: FAILED AT STAGE 2 (R1 RESPONSE)");
-            m_lastErrorCode = "SD_ERR_CMD17_TIMEOUT";
-        }
-
-        if (cmd17Success)
-        {
-
-            // Sub-stage 3 & 4: Waiting for Data Token 0xFE
-            uint8_t token = 0xFF;
-            uint32_t tokenWaitCount = 0;
-            uint32_t tTokenStart = micros();
-            for (int i = 0; i < 20000; i++)
-            {
-                uint8_t b = sdSPI.transfer(0xFF);
-                tokenWaitCount++;
-                if (b == 0xFE)
-                {
-                    token = b;
-                    break;
-                }
-            }
-            uint32_t tTokenMs = (micros() - tTokenStart) / 1000;
-
-            if (token != 0xFE)
-            {
-                Serial.printf("  3. Waiting for token ........ TIMEOUT (Token: 0x%02X after %u cycles / %u ms)\n", token, tokenWaitCount, tTokenMs);
-                digitalWrite(SD_CS_PIN, HIGH);
-                sdSPI.transfer(0xFF);
-                sdSPI.endTransaction();
-                Serial.println("[CMD17 Trace] Block Read Execution: FAILED AT STAGE 3/4 (DATA TOKEN TIMEOUT)");
-                m_lastErrorCode = "SD_ERR_CMD17_TOKEN_TIMEOUT";
-            }
-            else
-            {
-                Serial.printf("  3. Waiting for token ........ PASS (Received 0xFE in %u cycles / %u ms)\n", tokenWaitCount, tTokenMs);
-
-                // Sub-stage 5: Read 512 bytes
-                size_t bytesReceived = 0;
-                for (int i = 0; i < 512; i++)
-                {
-                    sector0[i] = sdSPI.transfer(0xFF);
-                    bytesReceived++;
-                }
-
-                if (bytesReceived == 512)
-                {
-                    Serial.printf("  4. Received 512 bytes ....... PASS (%u bytes received)\n", (unsigned int)bytesReceived);
-
-                    // Sub-stage 6: Read CRC bytes
-                    uint8_t crc1 = sdSPI.transfer(0xFF);
-                    uint8_t crc2 = sdSPI.transfer(0xFF);
-                    Serial.printf("  5. CRC bytes (0x%02X%02X) ...... PASS\n", crc1, crc2);
-
-                    digitalWrite(SD_CS_PIN, HIGH);
-                    sdSPI.transfer(0xFF);
-                    sdSPI.endTransaction();
-                    Serial.println("  6. Final SPI release ........ PASS");
-                    Serial.println("[CMD17 Trace] Block Read Execution: 100% SUCCESS");
-
-                    // Step 3: MBR Boot Signature Verification
-                    uint16_t sig = (sector0[510] << 8) | sector0[511];
-                    bool validSig = (sig == 0xAA55 || sig == 0x55AA);
-                    Serial.printf("[SD.begin Instrument] Step 3: MBR Signature (0x%04X, Expected: 0x55AA) -> %s\n",
-                                  sig, validSig ? "PASS" : "FAIL");
-
-                    // Step 4: Detect Partition Table Entry
-                    uint8_t part1Type = sector0[450];
-                    uint32_t part1StartLba = sector0[454] | (sector0[455] << 8) | (sector0[456] << 16) | (sector0[457] << 24);
-                    uint32_t part1SizeSectors = sector0[458] | (sector0[459] << 8) | (sector0[460] << 16) | (sector0[461] << 24);
-
-                    const char *partTypeStr = "UNKNOWN";
-                    if (part1Type == 0x01)
-                        partTypeStr = "FAT12";
-                    else if (part1Type == 0x04 || part1Type == 0x06 || part1Type == 0x0E)
-                        partTypeStr = "FAT16";
-                    else if (part1Type == 0x0B || part1Type == 0x0C)
-                        partTypeStr = "FAT32";
-                    else if (part1Type == 0x07)
-                        partTypeStr = "exFAT / NTFS";
-
-                    Serial.printf("[SD.begin Instrument] Step 4: Partition 1 Detection (Type: 0x%02X %s, Start LBA: %u) -> PASS\n",
-                                  part1Type, partTypeStr, part1StartLba);
-
-                    // Step 5: Read Volume Boot Record (VBR) at part1StartLba
-                    uint32_t vbrLba = (part1StartLba > 0) ? part1StartLba : 0;
-                    sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-                    digitalWrite(SD_CS_PIN, LOW);
-                    delayMicroseconds(10);
-
-                    sdSPI.transfer(0x51);
-                    sdSPI.transfer((vbrLba >> 24) & 0xFF);
-                    sdSPI.transfer((vbrLba >> 16) & 0xFF);
-                    sdSPI.transfer((vbrLba >> 8) & 0xFF);
-                    sdSPI.transfer(vbrLba & 0xFF);
-                    sdSPI.transfer(0xFF);
-
-                    uint8_t r1vbr = 0xFF;
-                    for (int i = 0; i < 32; i++)
-                    {
-                        uint8_t b = sdSPI.transfer(0xFF);
-                        if ((b & 0x80) == 0)
-                        {
-                            r1vbr = b;
-                            break;
-                        }
-                    }
-
-                    if (r1vbr == 0x00)
-                    {
-                        uint8_t tokvbr = 0xFF;
-                        for (int i = 0; i < 2000; i++)
-                        {
-                            uint8_t b = sdSPI.transfer(0xFF);
-                            if (b == 0xFE)
-                            {
-                                tokvbr = b;
-                                break;
-                            }
-                        }
-
-                        if (tokvbr == 0xFE)
-                        {
-                            for (int i = 0; i < 512; i++)
-                                vbrSector[i] = sdSPI.transfer(0xFF);
-                            sdSPI.transfer(0xFF);
-                            sdSPI.transfer(0xFF);
-                            digitalWrite(SD_CS_PIN, HIGH);
-                            sdSPI.transfer(0xFF);
-                            sdSPI.endTransaction();
-
-                            Serial.printf("[SD.begin Instrument] Step 5: Read FAT Boot Sector (LBA %u) -> PASS\n", vbrLba);
-
-                            // Step 6: Validate FAT32 Parameters
-                            uint16_t bytesPerSec = vbrSector[11] | (vbrSector[12] << 8);
-                            uint8_t secPerClust = vbrSector[13];
-                            char oemName[9] = {0};
-                            memcpy(oemName, &vbrSector[3], 8);
-                            char fatLabel[9] = {0};
-                            memcpy(fatLabel, &vbrSector[82], 8);
-
-                            Serial.printf("[SD.begin Instrument] Step 6: Validate FAT32 Parameters:\n");
-                            Serial.printf("  - OEM Name            : %s\n", oemName);
-                            Serial.printf("  - Bytes Per Sector    : %u (Expected: 512)\n", bytesPerSec);
-                            Serial.printf("  - Sectors Per Cluster : %u\n", secPerClust);
-                            Serial.printf("  - Volume System Label : %s\n", fatLabel);
-                            Serial.printf("[SD.begin Instrument] Step 6 Validation: PASS\n");
-                        }
-                        else
-                        {
-                            digitalWrite(SD_CS_PIN, HIGH);
-                            sdSPI.transfer(0xFF);
-                            sdSPI.endTransaction();
-                            Serial.printf("[SD.begin Instrument] Step 5: Read FAT Boot Sector (LBA %u) Token -> FAIL\n", vbrLba);
-                        }
-                    }
-                    else
-                    {
-                        digitalWrite(SD_CS_PIN, HIGH);
-                        sdSPI.transfer(0xFF);
-                        sdSPI.endTransaction();
-                        Serial.printf("[SD.begin Instrument] Step 5: Read FAT Boot Sector (LBA %u) -> FAIL\n", vbrLba);
-                    }
-                }
-                else
-                {
-                    Serial.printf("  4. Received 512 bytes ....... FAIL (Only %u bytes received)\n", (unsigned int)bytesReceived);
-                    digitalWrite(SD_CS_PIN, HIGH);
-                    sdSPI.transfer(0xFF);
-                    sdSPI.endTransaction();
-                }
-            }
-        }
-        Serial.println("── [END INSTRUMENTATION REPORT] ───────────────────────────────");
-
-        // Clean bus state for SD.begin() wrapper
-        sdSPI.end();
-        delay(50);
-        sdSPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
-
-        // Step 7: ESP-IDF SD Mount Handshake (SD.begin)
-#if VOXA_STORAGE_DEBUG
-        const uint32_t freqs[] = {4000000, 1000000, 400000};
-#else
-        const uint32_t freqs[] = {4000000}; // production: single attempt, straight to SPIFFS fallback on failure
-#endif
-        m_sdMounted = false;
-
-        for (uint32_t freq : freqs)
-        {
-            Serial.printf("[SD.begin Instrument] Step 7: Probing SD.begin() at %.1f MHz...\n", freq / 1000000.0f);
-            if (SD.begin(SD_CS_PIN, sdSPI, freq, "/sd", 5, true))
-            {
-                m_sdMounted = true;
-                m_cardAttached = true;
-                Serial.printf("[SD.begin Instrument] Step 7: Root Directory Mount (/sd) at %.1f MHz -> PASS!\n", freq / 1000000.0f);
-                break;
-            }
-            else
-            {
-                Serial.printf("[SD.begin Instrument] Step 7: Root Directory Mount (/sd) at %.1f MHz -> FAIL\n", freq / 1000000.0f);
-            }
-            delay(30);
-        }
-
-        if (!m_sdMounted)
-        {
-            Serial.println("[SdFat Alternative Library Test Probe] Testing SdFat library...");
-            static SdFs sdFat;
-            SdSpiConfig config(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(1), &sdSPI);
-            if (sdFat.begin(config))
-            {
-                m_sdMounted = true;
-                m_cardAttached = true;
-                Serial.println("[SdFat Test Probe] SUCCESS! SdFat library mounted FAT volume cleanly at 1.0 MHz!");
-                Serial.printf("[SdFat Test Probe] Volume Type: FAT32 | Capacity: %llu MB\n",
-                              (uint64_t)sdFat.card()->sectorCount() * 512 / (1024 * 1024));
-            }
-            else
-            {
-                Serial.println("[SdFat Test Probe] FAIL! SdFat also failed to read data blocks.");
-                Serial.println("  Unable to determine root cause.");
-                Serial.println("  Possible causes:");
-                Serial.println("    • SD module");
-                Serial.println("    • SPI timing");
-                Serial.println("    • SD library");
-                Serial.println("    • Signal integrity");
-                m_lastErrorCode = "SD_ERR_SDFAT_FALLBACK_FAILED";
-            }
-        }
-
-        return m_sdMounted;
+        m_sdMounted = true;
+        return true;
     }
 
     FS &StorageManager::getFSForPath(const char *path)

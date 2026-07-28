@@ -248,9 +248,6 @@ void setup()
   Serial.printf("SRAM Free Heap: %d bytes\n", ESP.getFreeHeap());
   Serial.println("=================================");
 
-  Serial.println("[Startup] Storage Subsystem (MicroSD + SPIFFS Architecture)");
-  storageManager.begin();
-
   Serial.println("[Startup] Display");
   Display::begin();
   touch.begin();
@@ -258,6 +255,9 @@ void setup()
 
   // Show boot screen immediately to give visual feedback
   boot.show();
+
+  Serial.println("[Startup] Storage Subsystem (MicroSD + SPIFFS Architecture)");
+  storageManager.begin();
 
   Serial.println("[Startup] Preferences");
   apiClient.begin();
