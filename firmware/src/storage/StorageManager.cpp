@@ -121,64 +121,156 @@ namespace VOXA
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
         digitalWrite(SD_CS_PIN, HIGH);
         delay(10);
-        for (int i = 0; i < 50; i++) { sdSPI.transfer(0xFF); }
+        for (int i = 0; i < 50; i++)
+        {
+            sdSPI.transfer(0xFF);
+        }
         sdSPI.endTransaction();
         delay(10);
 
         // 2. Send CMD0 (GO_IDLE_STATE)
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-        digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
-        sdSPI.transfer(0x40); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x95);
+        digitalWrite(SD_CS_PIN, LOW);
+        delayMicroseconds(10);
+        sdSPI.transfer(0x40);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x95);
         uint8_t r1cmd0 = 0xFF;
-        for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1cmd0 = b; break; } }
-        digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
-        if (r1cmd0 != 0x01) { Serial.printf("[CMD17 Probe] CMD0 Failed (R1=0x%02X).\n", r1cmd0); return false; }
+        for (int i = 0; i < 32; i++)
+        {
+            uint8_t b = sdSPI.transfer(0xFF);
+            if ((b & 0x80) == 0)
+            {
+                r1cmd0 = b;
+                break;
+            }
+        }
+        digitalWrite(SD_CS_PIN, HIGH);
+        sdSPI.transfer(0xFF);
+        sdSPI.endTransaction();
+        if (r1cmd0 != 0x01)
+        {
+            Serial.printf("[CMD17 Probe] CMD0 Failed (R1=0x%02X).\n", r1cmd0);
+            return false;
+        }
 
         // 3. Send CMD8 (SEND_IF_COND)
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-        digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
-        sdSPI.transfer(0x48); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x01); sdSPI.transfer(0xAA); sdSPI.transfer(0x87);
+        digitalWrite(SD_CS_PIN, LOW);
+        delayMicroseconds(10);
+        sdSPI.transfer(0x48);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x01);
+        sdSPI.transfer(0xAA);
+        sdSPI.transfer(0x87);
         uint8_t r1cmd8 = 0xFF;
-        for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1cmd8 = b; break; } }
-        for (int i = 0; i < 4; i++) sdSPI.transfer(0xFF);
-        digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+        for (int i = 0; i < 32; i++)
+        {
+            uint8_t b = sdSPI.transfer(0xFF);
+            if ((b & 0x80) == 0)
+            {
+                r1cmd8 = b;
+                break;
+            }
+        }
+        for (int i = 0; i < 4; i++)
+            sdSPI.transfer(0xFF);
+        digitalWrite(SD_CS_PIN, HIGH);
+        sdSPI.transfer(0xFF);
+        sdSPI.endTransaction();
 
         // 4. Send ACMD41 Loop
         uint8_t r1acmd = 0xFF;
         for (int retry = 0; retry < 50; retry++)
         {
             sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-            digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
-            sdSPI.transfer(0x77); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x65);
-            for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) break; }
-            digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+            digitalWrite(SD_CS_PIN, LOW);
+            delayMicroseconds(10);
+            sdSPI.transfer(0x77);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x65);
+            for (int i = 0; i < 32; i++)
+            {
+                uint8_t b = sdSPI.transfer(0xFF);
+                if ((b & 0x80) == 0)
+                    break;
+            }
+            digitalWrite(SD_CS_PIN, HIGH);
+            sdSPI.transfer(0xFF);
+            sdSPI.endTransaction();
 
             // ACMD41
             sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-            digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
-            sdSPI.transfer(0x69); sdSPI.transfer(0x40); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x77);
-            for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1acmd = b; break; } }
-            digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+            digitalWrite(SD_CS_PIN, LOW);
+            delayMicroseconds(10);
+            sdSPI.transfer(0x69);
+            sdSPI.transfer(0x40);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x00);
+            sdSPI.transfer(0x77);
+            for (int i = 0; i < 32; i++)
+            {
+                uint8_t b = sdSPI.transfer(0xFF);
+                if ((b & 0x80) == 0)
+                {
+                    r1acmd = b;
+                    break;
+                }
+            }
+            digitalWrite(SD_CS_PIN, HIGH);
+            sdSPI.transfer(0xFF);
+            sdSPI.endTransaction();
 
-            if (r1acmd == 0x00) break;
+            if (r1acmd == 0x00)
+                break;
             delay(10);
         }
-        if (r1acmd != 0x00) { Serial.printf("[StorageManager] ACMD41 Failed (R1=0x%02X).\n", r1acmd); return false; }
+        if (r1acmd != 0x00)
+        {
+            Serial.printf("[StorageManager] ACMD41 Failed (R1=0x%02X).\n", r1acmd);
+            return false;
+        }
 
         // 4b. Send CMD58 (READ_OCR)
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-        digitalWrite(SD_CS_PIN, LOW); delayMicroseconds(10);
-        sdSPI.transfer(0x7A); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0x00); sdSPI.transfer(0xFD);
+        digitalWrite(SD_CS_PIN, LOW);
+        delayMicroseconds(10);
+        sdSPI.transfer(0x7A);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0x00);
+        sdSPI.transfer(0xFD);
         uint8_t r1cmd58 = 0xFF;
-        for (int i = 0; i < 32; i++) { uint8_t b = sdSPI.transfer(0xFF); if ((b & 0x80) == 0) { r1cmd58 = b; break; } }
+        for (int i = 0; i < 32; i++)
+        {
+            uint8_t b = sdSPI.transfer(0xFF);
+            if ((b & 0x80) == 0)
+            {
+                r1cmd58 = b;
+                break;
+            }
+        }
         uint8_t ocr[4] = {0};
-        for (int i = 0; i < 4; i++) ocr[i] = sdSPI.transfer(0xFF);
-        digitalWrite(SD_CS_PIN, HIGH); sdSPI.transfer(0xFF); sdSPI.endTransaction();
+        for (int i = 0; i < 4; i++)
+            ocr[i] = sdSPI.transfer(0xFF);
+        digitalWrite(SD_CS_PIN, HIGH);
+        sdSPI.transfer(0xFF);
+        sdSPI.endTransaction();
 
         // 4c. Mandatory Inter-Command SPI Bus Flush (16 clocks CS HIGH)
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
         digitalWrite(SD_CS_PIN, HIGH);
-        sdSPI.transfer(0xFF); sdSPI.transfer(0xFF);
+        sdSPI.transfer(0xFF);
+        sdSPI.transfer(0xFF);
         sdSPI.endTransaction();
         delayMicroseconds(50);
 
@@ -268,7 +360,8 @@ namespace VOXA
             {
                 nonFFCount++;
                 lastNonFFByte = b;
-                if (firstNonFFCycle == 0) firstNonFFCycle = cycle;
+                if (firstNonFFCycle == 0)
+                    firstNonFFCycle = cycle;
                 if (nonFFCount <= 10)
                 {
                     Serial.printf("   [Byte Log] Cycle #%u: Received non-0xFF byte: 0x%02X\n", cycle, b);
