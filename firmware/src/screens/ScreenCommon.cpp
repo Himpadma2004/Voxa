@@ -3,6 +3,7 @@
 #include "../services/TimeService.h"
 #include "../services/WiFiManager.h"
 #include "../services/MicrophoneService.h"
+#include "../reminders/ReminderManager.h"
 
 #include <chrono>
 #include <cmath>
@@ -22,6 +23,9 @@ namespace VOXA::ScreenCommon
 {
     void renderSurface(LovyanGFX& canvas, uint16_t w, uint16_t h)
     {
+        // Intercept rendering to display active reminder popups
+        ReminderManager::instance().checkAndShowPopup(canvas);
+
         bool isLight = (VoxaTheme::getThemeMode() == VoxaTheme::ThemeMode::Light);
 
         // 1. Draw premium linear vertical gradient background

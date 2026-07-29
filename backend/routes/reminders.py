@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from reminders.reminder_repository import load_all_reminders
 
@@ -35,6 +35,7 @@ def _normalize_reminder(reminder, index):
 
 @router.get("")
 def read_all_reminders(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200)
 ):
@@ -42,6 +43,8 @@ def read_all_reminders(
     Fetch all calendar reminders from MongoDB.
     """
     try:
+        ip = request.client.host
+        set_esp32_ip(ip)
         reminders = load_all_reminders()
         reminders.sort(
             key=lambda r: _serialize_value(r.get("created_at") or r.get("reminder_time") or r.get("_id") or ""),
@@ -68,3 +71,88 @@ def read_all_reminders(
             status_code=500,
             content={"success": False, "error": str(e)}
         )
+
+
+from fastapi import Request
+from pydantic import BaseModel
+import time
+from database.mongodb import db
+from services.reminder_scheduler import set_esp32_ip
+
+reminders_collection = db["reminders"]
+
+class SnoozeRequest(BaseModel):
+    minutes: int
+
+class RescheduleRequest(BaseModel):
+    reminder_time: int  # timestamp
+
+@router.post("/register")
+def register_esp32(request: Request):
+    ip = request.client.host
+    set_esp32_ip(ip)
+    return {"success": True, "registered_ip": ip}
+
+@router.get("/active")
+def get_active_reminders(request: Request):
+    ip = request.client.host
+    set_esp32_ip(ip)
+    
+    try:
+        active = list(reminders_collection.find({"status": "active"}))
+        items = []
+        for index, reminder in enumerate(active):
+            items.append({
+                "id": reminder.get("reminder_id"),
+                "title": reminder.get("title", ""),
+                "description": reminder.get("description", "") or reminder.get("comments", "") or "",
+                "reminderTime": int(reminder.get("reminder_time").timestamp()) if reminder.get("reminder_time") else int(time.time()),
+                "status": "active"
+            })
+        return {"success": True, "items": items}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@router.post("/{reminder_id}/dismiss")
+def dismiss_reminder(reminder_id: str):
+    try:
+        res = reminders_collection.update_one(
+            {"reminder_id": reminder_id},
+            {"$set": {"status": "completed", "completed_at": datetime.utcnow()}}
+        )
+        if res.modified_count > 0:
+            print("[Scheduler] Reminder completed", flush=True)
+            return {"success": True}
+        return {"success": False, "error": "Reminder not found"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@router.post("/{reminder_id}/snooze")
+def snooze_reminder(reminder_id: str, req: SnoozeRequest):
+    try:
+        snooze_until = datetime.utcnow() + timedelta(minutes=req.minutes)
+        res = reminders_collection.update_one(
+            {"reminder_id": reminder_id},
+            {"$set": {"status": "snoozed", "snooze_until": snooze_until}}
+        )
+        if res.modified_count > 0:
+            print(f"[Scheduler] Reminder snoozed for {req.minutes} minutes", flush=True)
+            return {"success": True}
+        return {"success": False, "error": "Reminder not found"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+@router.post("/{reminder_id}/reschedule")
+def reschedule_reminder(reminder_id: str, req: RescheduleRequest):
+    try:
+        new_time = datetime.utcfromtimestamp(req.reminder_time)
+        res = reminders_collection.update_one(
+            {"reminder_id": reminder_id},
+            {"$set": {"status": "pending", "reminder_time": new_time, "snooze_until": None}}
+        )
+        if res.modified_count > 0:
+            print(f"[Scheduler] Reminder rescheduled to {new_time}", flush=True)
+            return {"success": True}
+        return {"success": False, "error": "Reminder not found"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

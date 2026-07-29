@@ -38,6 +38,7 @@
 #include "services/ApiClient.h"
 #include "storage/SpiffsMutex.h"
 #include "storage/StorageManager.h"
+#include "reminders/ReminderManager.h"
 
 using namespace VOXA;
 
@@ -468,6 +469,11 @@ void setup()
   home.begin();
   Serial.println("[Startup] HomeScreen ready");
 
+  Serial.println("[Startup] ReminderManager");
+  ReminderManager::instance().begin();
+  ReminderManager::instance().runTestScenarios();
+  Serial.println("[Startup] ReminderManager ready");
+
   Serial.println("Boot complete. Starting main screen loop...");
   xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);
   xTaskCreatePinnedToCore(backgroundDataSyncTask, "BgDataSync", 8192, nullptr, 1, nullptr, 0);
@@ -548,6 +554,9 @@ void loop()
     g_lastScreenId = activeScreen;
     activeScreen = nextScreen;
   }
+
+  // Tick the Reminder Manager
+  ReminderManager::instance().tick();
 
   delay(10);
 }

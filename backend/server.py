@@ -55,6 +55,12 @@ def read_root():
     return {"status": "online", "service": "VOXA API Backend"}
 
 
+@app.on_event("startup")
+def startup_event():
+    from services.reminder_scheduler import start_scheduler
+    start_scheduler()
+
+
 def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
     try:
         # 1. Upload the audio file to AWS S3

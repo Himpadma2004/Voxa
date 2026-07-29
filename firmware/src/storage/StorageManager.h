@@ -150,6 +150,7 @@ namespace VOXA
 
     private:
         bool m_sdMounted{false};
+        bool m_sdHealthPassed{true};
         bool m_spiffsMounted{false};
         bool m_cardAttached{false};
         uint32_t m_mountTimeMs{0};

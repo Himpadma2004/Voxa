@@ -1,9 +1,31 @@
 #include "ReminderService.h"
-#include "DataService.h"
-#include "StorageService.h"
+#include "../reminders/ReminderManager.h"
+#include <ctime>
 
 namespace VOXA
 {
+    static time_t parseDateTimeStringToTime(const std::string& str)
+    {
+        time_t now = ReminderManager::instance().getCurrentTime();
+        struct tm t;
+        localtime_r(&now, &t);
+        
+        int hour = 18, minute = 0;
+        if (sscanf(str.c_str(), "%d:%d", &hour, &minute) == 2)
+        {
+            t.tm_hour = hour;
+            t.tm_min = minute;
+            t.tm_sec = 0;
+            time_t scheduled = mktime(&t);
+            if (scheduled < now)
+            {
+                scheduled += 24 * 3600;
+            }
+            return scheduled;
+        }
+        return now + 3600;
+    }
+
     ReminderService::ReminderService(StorageService* storage)
         : m_storage(storage)
     {
@@ -11,7 +33,7 @@ namespace VOXA
 
     std::vector<Reminder> ReminderService::getAll()
     {
-        return dataService.getReminders();
+        return ReminderManager::instance().getAllReminders();
     }
 
     std::vector<Reminder> ReminderService::getPending()
@@ -20,7 +42,12 @@ namespace VOXA
         std::vector<Reminder> pending;
         pending.reserve(all.size());
         for (const auto& r : all)
-            if (!r.completed) pending.push_back(r);
+        {
+            if (r.status != ReminderStatus::COMPLETED)
+            {
+                pending.push_back(r);
+            }
+        }
         return pending;
     }
 
@@ -31,35 +58,30 @@ namespace VOXA
 
     Reminder ReminderService::add(const std::string& title, const std::string& dateTime)
     {
+        time_t due = parseDateTimeStringToTime(dateTime);
+        ReminderManager::instance().addReminder(title, "", due);
+        
+        // Return the newly created reminder
+        auto all = getAll();
+        if (!all.empty())
+        {
+            return all.back();
+        }
+        
         Reminder r;
-        r.id       = 0; // StorageService assigns the id
-        r.title    = title;
+        r.title = title;
         r.dateTime = dateTime;
-        r.completed = false;
-        m_storage->saveReminder(r);
-        dataService.addReminderLocal(r);
-
+        r.reminderTime = due;
         return r;
     }
 
     bool ReminderService::markComplete(uint32_t id)
     {
-        auto all = m_storage->loadAllReminders();
-        for (auto& r : all)
-        {
-            if (r.id == id)
-            {
-                r.completed = true;
-                dataService.updateReminderLocal(r);
-                return m_storage->saveReminder(r);
-            }
-        }
-        return false;
+        return ReminderManager::instance().dismissReminder(id);
     }
 
     bool ReminderService::remove(uint32_t id)
     {
-        dataService.removeReminderLocal(id);
-        return m_storage->deleteReminder(id);
+        return ReminderManager::instance().deleteReminder(id);
     }
 }

@@ -63,13 +63,25 @@ namespace VOXA
         initializeDirectories();
 
         // 4. Run Storage Health Diagnostics & Media-Specific Speed Benchmarks
-        runDiagnostics();
+        StorageDiagnostics diag = runDiagnostics();
+        if (m_sdMounted)
+        {
+            m_sdHealthPassed = diag.readTestPassed && diag.writeTestPassed &&
+                               diag.deleteTestPassed && diag.renameTestPassed &&
+                               diag.capacityMB > 0;
+        }
 
         // 5. Run Automatic Cleanup on Startup
         performAutomaticCleanup();
 
         // 6. Print Concise Storage Status Summary
         printStorageSummary();
+
+        // Flip m_sdMounted to false if health checks failed so subsequent operations use fallback
+        if (m_sdMounted && !m_sdHealthPassed)
+        {
+            m_sdMounted = false;
+        }
 
         uint32_t heapAfter = ESP.getFreeHeap();
         uint32_t psramAfter = ESP.getFreePsram();
@@ -657,9 +669,18 @@ namespace VOXA
             Serial.println("Logs            : SPIFFS");
             Serial.println();
             Serial.println("Hardware        : PASS");
-            Serial.println("Filesystem      : PASS");
-            Serial.println("Fallback        : STANDBY");
-            Serial.println("Device          : READY");
+            if (m_sdHealthPassed)
+            {
+                Serial.println("Filesystem      : PASS");
+                Serial.println("Fallback        : STANDBY");
+                Serial.println("Device          : READY");
+            }
+            else
+            {
+                Serial.println("Filesystem      : FAIL (mounted but health checks failed)");
+                Serial.println("Fallback        : ACTIVE");
+                Serial.println("Device          : READY");
+            }
         }
         else if (m_cardAttached)
         {
@@ -708,17 +729,41 @@ namespace VOXA
     bool StorageManager::saveRecording(const char *filename, const uint8_t *data, size_t len)
     {
         std::string fullPath = resolvePath("recordings", filename);
+        bool usingSD = m_sdMounted;
         FS &fs = getFSForPath(fullPath.c_str());
         const char *fsName = getFSNameForPath(fullPath.c_str());
+        
         File f = fs.open(fullPath.c_str(), FILE_WRITE);
-        if (!f)
-            return false;
-        size_t written = f.write(data, len);
-        f.close();
-        if (written == len)
+        size_t written = 0;
+        if (f)
+        {
+            written = f.write(data, len);
+            f.close();
+        }
+
+        if (written == len && f)
         {
             Serial.printf("[StorageManager] Saved %s on %s (%u bytes)\n", fullPath.c_str(), fsName, (unsigned int)len);
             return true;
+        }
+
+        if (usingSD)
+        {
+            Serial.printf("[StorageManager] WARNING: MicroSD write failed mid-session for %s — falling back to SPIFFS for this and future writes.\n", fullPath.c_str());
+            m_sdMounted = false;
+            
+            FS &spiffsFS = static_cast<FS &>(SPIFFS);
+            File fRetry = spiffsFS.open(fullPath.c_str(), FILE_WRITE);
+            if (fRetry)
+            {
+                size_t writtenRetry = fRetry.write(data, len);
+                fRetry.close();
+                if (writtenRetry == len)
+                {
+                    Serial.printf("[StorageManager] Saved %s on SPIFFS via fallback retry (%u bytes)\n", fullPath.c_str(), (unsigned int)len);
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -726,17 +771,42 @@ namespace VOXA
     bool StorageManager::saveTranscript(const char *filename, const char *text)
     {
         std::string fullPath = resolvePath("transcripts", filename);
+        bool usingSD = m_sdMounted;
         FS &fs = getFSForPath(fullPath.c_str());
         const char *fsName = getFSNameForPath(fullPath.c_str());
+        
         File f = fs.open(fullPath.c_str(), FILE_WRITE);
-        if (!f)
-            return false;
-        size_t written = f.print(text);
-        f.close();
-        if (written > 0)
+        size_t written = 0;
+        size_t len = strlen(text);
+        if (f)
+        {
+            written = f.print(text);
+            f.close();
+        }
+
+        if (written == len && f)
         {
             Serial.printf("[StorageManager] Saved %s on %s (%u bytes)\n", fullPath.c_str(), fsName, (unsigned int)written);
             return true;
+        }
+
+        if (usingSD)
+        {
+            Serial.printf("[StorageManager] WARNING: MicroSD write failed mid-session for %s — falling back to SPIFFS for this and future writes.\n", fullPath.c_str());
+            m_sdMounted = false;
+            
+            FS &spiffsFS = static_cast<FS &>(SPIFFS);
+            File fRetry = spiffsFS.open(fullPath.c_str(), FILE_WRITE);
+            if (fRetry)
+            {
+                size_t writtenRetry = fRetry.print(text);
+                fRetry.close();
+                if (writtenRetry == len)
+                {
+                    Serial.printf("[StorageManager] Saved %s on SPIFFS via fallback retry (%u bytes)\n", fullPath.c_str(), (unsigned int)writtenRetry);
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -744,17 +814,42 @@ namespace VOXA
     bool StorageManager::saveSummary(const char *filename, const char *text)
     {
         std::string fullPath = resolvePath("summaries", filename);
+        bool usingSD = m_sdMounted;
         FS &fs = getFSForPath(fullPath.c_str());
         const char *fsName = getFSNameForPath(fullPath.c_str());
+        
         File f = fs.open(fullPath.c_str(), FILE_WRITE);
-        if (!f)
-            return false;
-        size_t written = f.print(text);
-        f.close();
-        if (written > 0)
+        size_t written = 0;
+        size_t len = strlen(text);
+        if (f)
+        {
+            written = f.print(text);
+            f.close();
+        }
+
+        if (written == len && f)
         {
             Serial.printf("[StorageManager] Saved %s on %s (%u bytes)\n", fullPath.c_str(), fsName, (unsigned int)written);
             return true;
+        }
+
+        if (usingSD)
+        {
+            Serial.printf("[StorageManager] WARNING: MicroSD write failed mid-session for %s — falling back to SPIFFS for this and future writes.\n", fullPath.c_str());
+            m_sdMounted = false;
+            
+            FS &spiffsFS = static_cast<FS &>(SPIFFS);
+            File fRetry = spiffsFS.open(fullPath.c_str(), FILE_WRITE);
+            if (fRetry)
+            {
+                size_t writtenRetry = fRetry.print(text);
+                fRetry.close();
+                if (writtenRetry == len)
+                {
+                    Serial.printf("[StorageManager] Saved %s on SPIFFS via fallback retry (%u bytes)\n", fullPath.c_str(), (unsigned int)writtenRetry);
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -762,28 +857,84 @@ namespace VOXA
     bool StorageManager::saveLog(const char *message)
     {
         const char *logPath = "/logs/device.log";
+        bool usingSD = m_sdMounted;
         FS &fs = getFSForPath(logPath);
+        
         File f = fs.open(logPath, FILE_APPEND);
-        if (!f)
-            return false;
-        f.printf("[%lu ms] %s\n", millis(), message);
-        f.close();
-        return true;
+        bool success = false;
+        if (f)
+        {
+            int written = f.printf("[%lu ms] %s\n", millis(), message);
+            f.close();
+            if (written > 0)
+            {
+                success = true;
+            }
+        }
+
+        if (success)
+        {
+            return true;
+        }
+
+        if (usingSD)
+        {
+            Serial.printf("[StorageManager] WARNING: MicroSD write failed mid-session for %s — falling back to SPIFFS for this and future writes.\n", logPath);
+            m_sdMounted = false;
+            
+            FS &spiffsFS = static_cast<FS &>(SPIFFS);
+            File fRetry = spiffsFS.open(logPath, FILE_APPEND);
+            if (fRetry)
+            {
+                int writtenRetry = fRetry.printf("[%lu ms] %s\n", millis(), message);
+                fRetry.close();
+                if (writtenRetry > 0)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     bool StorageManager::saveJson(const char *path, const JsonDocument &doc)
     {
+        bool usingSD = m_sdMounted;
+        bool isConfig = (path != nullptr && (strncmp(path, "/config", 7) == 0 || strncmp(path, "voxa-api", 8) == 0));
         FS &fs = getFSForPath(path);
         const char *fsName = getFSNameForPath(path);
+        
         File f = fs.open(path, FILE_WRITE);
-        if (!f)
-            return false;
-        size_t written = serializeJson(doc, f);
-        f.close();
-        if (written > 0)
+        size_t written = 0;
+        if (f)
+        {
+            written = serializeJson(doc, f);
+            f.close();
+        }
+
+        if (written > 0 && f)
         {
             Serial.printf("[StorageManager] Saved JSON %s on %s (%u bytes)\n", path, fsName, (unsigned int)written);
             return true;
+        }
+
+        if (usingSD && !isConfig)
+        {
+            Serial.printf("[StorageManager] WARNING: MicroSD write failed mid-session for %s — falling back to SPIFFS for this and future writes.\n", path);
+            m_sdMounted = false;
+            
+            FS &spiffsFS = static_cast<FS &>(SPIFFS);
+            File fRetry = spiffsFS.open(path, FILE_WRITE);
+            if (fRetry)
+            {
+                size_t writtenRetry = serializeJson(doc, fRetry);
+                fRetry.close();
+                if (writtenRetry > 0)
+                {
+                    Serial.printf("[StorageManager] Saved JSON %s on SPIFFS via fallback retry (%u bytes)\n", path, (unsigned int)writtenRetry);
+                    return true;
+                }
+            }
         }
         return false;
     }
