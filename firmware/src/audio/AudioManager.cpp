@@ -31,12 +31,26 @@ namespace VOXA
             return true;
         }
 
+        Serial.println("\n=======================================");
+        Serial.println("[Audio] MAX98357A I2S Initialization");
+        Serial.printf("  - I2S Port : I2S_NUM_1\n");
+        Serial.printf("  - BCLK GPIO: %d\n", AUDIO_I2S_BCLK_PIN);
+        Serial.printf("  - LRCK GPIO: %d\n", AUDIO_I2S_LRC_PIN);
+        Serial.printf("  - DATA GPIO: %d\n", AUDIO_I2S_DOUT_PIN);
+        Serial.printf("  - Sample Rate: %d Hz\n", AUDIO_SAMPLE_RATE);
+        Serial.printf("  - Bits: 16-bit\n");
+        Serial.printf("  - Channels: Stereo\n");
+        Serial.printf("  - DMA Buffer Count : 8\n");
+        Serial.printf("  - DMA Buffer Length: 512\n");
+        Serial.println("=======================================\n");
+
+        // Communication Format: Using I2S_COMM_FORMAT_I2S for Arduino ESP32-S3 hardware driver compatibility
         i2s_config_t i2s_config = {
             .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
             .sample_rate = AUDIO_SAMPLE_RATE,
             .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-            .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, // Duplicate audio to both Left & Right channels for MAX98357A
-            .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+            .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+            .communication_format = I2S_COMM_FORMAT_I2S,
             .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
             .dma_buf_count = 8,
             .dma_buf_len = 512,
@@ -52,23 +66,41 @@ namespace VOXA
             .data_in_num = I2S_PIN_NO_CHANGE
         };
 
-        esp_err_t err = i2s_driver_install(AUDIO_I2S_PORT, &i2s_config, 0, NULL);
-        if (err != ESP_OK)
+        esp_err_t installErr = i2s_driver_install(AUDIO_I2S_PORT, &i2s_config, 0, NULL);
+        Serial.printf("Driver Install : %s\n", esp_err_to_name(installErr));
+        if (installErr != ESP_OK)
         {
-            Serial.printf("[Audio] ERROR:\nI2S initialization failed (install error %d)\n", err);
+            Serial.println("[Audio] AUDIO OUTPUT FAILED: Driver install error");
             return false;
         }
 
-        err = i2s_set_pin(AUDIO_I2S_PORT, &pin_config);
-        if (err != ESP_OK)
+        esp_err_t pinErr = i2s_set_pin(AUDIO_I2S_PORT, &pin_config);
+        Serial.printf("Pin Config     : %s\n", esp_err_to_name(pinErr));
+        if (pinErr != ESP_OK)
         {
-            Serial.printf("[Audio] ERROR:\nI2S initialization failed (pin config error %d)\n", err);
+            Serial.println("[Audio] AUDIO OUTPUT FAILED: Pin config error");
+            i2s_driver_uninstall(AUDIO_I2S_PORT);
+            return false;
+        }
+
+        // Explicit Clock Configuration immediately after i2s_set_pin()
+        esp_err_t clkErr = i2s_set_clk(
+            AUDIO_I2S_PORT,
+            AUDIO_SAMPLE_RATE,
+            I2S_BITS_PER_SAMPLE_16BIT,
+            I2S_CHANNEL_STEREO
+        );
+        Serial.printf("Clock Config   : %s\n", esp_err_to_name(clkErr));
+        if (clkErr != ESP_OK)
+        {
+            Serial.println("[Audio] AUDIO OUTPUT FAILED: Clock config error");
             i2s_driver_uninstall(AUDIO_I2S_PORT);
             return false;
         }
 
         i2s_zero_dma_buffer(AUDIO_I2S_PORT);
         m_initialized = true;
+        Serial.println("DMA Ready");
         return true;
     }
 
@@ -78,22 +110,23 @@ namespace VOXA
 
         if (!initI2S())
         {
+            Serial.println("[Audio] AUDIO OUTPUT FAILED");
             return false;
         }
 
-        Serial.println("[Audio] I2S Ready");
-        Serial.println("[Audio] MAX98357A Ready");
+        // Speaker Self Test: 1000 Hz for 1000 ms -> Pause 500 ms -> 1000 Hz for 1000 ms
+        Serial.println("Tone Playback Started");
+        bool playOk = playTone(1000, 1000);
+        delay(500);
+        playOk &= playTone(1000, 1000);
 
-        // Play Voxa signature startup boot melody: C5 (523Hz) -> E5 (659Hz) -> G5 (784Hz) -> C6 (1046Hz)
-        playTone(523, 90);
-        delay(20);
-        playTone(659, 90);
-        delay(20);
-        playTone(784, 90);
-        delay(20);
-        playTone(1046, 220);
+        if (!playOk)
+        {
+            Serial.println("[Audio] AUDIO OUTPUT FAILED");
+            return false;
+        }
 
-        Serial.println("[Audio] Startup boot melody played");
+        Serial.println("Tone Playback Completed");
         return true;
     }
 
@@ -120,6 +153,7 @@ namespace VOXA
     {
         if (!m_initialized || !samples || sampleCount == 0)
         {
+            Serial.println("[Audio] AUDIO OUTPUT FAILED");
             return false;
         }
 
@@ -147,9 +181,12 @@ namespace VOXA
             portMAX_DELAY
         );
 
-        if (err != ESP_OK)
+        Serial.printf("Requested : %u\n", (unsigned int)bytesToWrite);
+        Serial.printf("Written   : %u\n", (unsigned int)bytesWritten);
+
+        if (err != ESP_OK || bytesWritten == 0 || err == ESP_FAIL || err == ESP_ERR_INVALID_STATE)
         {
-            Serial.printf("[Audio] ERROR:\nPlayback failed (i2s_write error %d)\n", err);
+            Serial.println("[Audio] AUDIO OUTPUT FAILED");
             return false;
         }
         return true;

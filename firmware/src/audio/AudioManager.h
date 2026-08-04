@@ -6,24 +6,17 @@
 #include <string>
 
 // ── Configurable GPIO Definitions for MAX98357A I2S Mono Amplifier ────────────
+// Dedicated Speaker Wiring: BCLK -> GPIO40, LRC(WS) -> GPIO38, DIN -> GPIO39
 #ifndef AUDIO_I2S_BCLK_PIN
-// NOTE: GPIO37 was previously used here but is RESERVED by this board's
-// Octal PSRAM controller (platformio.ini: board_build.psram_type = opi,
-// memory_type = qio_opi). ESP32-S3 Octal PSRAM permanently claims GPIOs in
-// the ~33-37 range for its own internal data bus — using GPIO37 for
-// anything else causes the pin to be fought over by two peripherals at
-// once, corrupting the signal (this was very likely the cause of the
-// speaker producing no usable sound). GPIO40 is free and outside both the
-// PSRAM-reserved range and every other pin already claimed on this board.
-#define AUDIO_I2S_BCLK_PIN 40 // Bit Clock (BCLK) -> GPIO40 (genuinely free)
+#define AUDIO_I2S_BCLK_PIN 40  // Bit Clock (BCLK) -> GPIO40 (dedicated)
 #endif
 
 #ifndef AUDIO_I2S_LRC_PIN
-#define AUDIO_I2S_LRC_PIN 38 // Left/Right Clock (LRC / WS) -> GPIO38 (free)
+#define AUDIO_I2S_LRC_PIN 41   // Left/Right Clock (LRC / WS) -> GPIO38 (dedicated)
 #endif
 
 #ifndef AUDIO_I2S_DOUT_PIN
-#define AUDIO_I2S_DOUT_PIN 39 // Data In (DIN / DOUT from ESP32) -> GPIO39 (free)
+#define AUDIO_I2S_DOUT_PIN 39  // Data In (DIN) -> GPIO39 (dedicated)
 #endif
 
 #ifndef AUDIO_I2S_PORT
