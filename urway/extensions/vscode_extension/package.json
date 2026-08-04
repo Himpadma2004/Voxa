@@ -1,0 +1,25 @@
+{
+  "name": "urway-vscode-tracker",
+  "displayName": "U'rWay Coding Analytics",
+  "description": "Privacy-preserving active coding duration tracker for U'rWay Personal Adaptive Roadmap Platform.",
+  "version": "1.0.0",
+  "publisher": "urway",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "urway.syncCodingStats",
+        "title": "U'rWay: Sync Coding Telemetry"
+      }
+    ]
+  }
+}

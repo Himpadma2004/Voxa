@@ -23,6 +23,10 @@ public:
     static uint8_t getRotation();
 
     static void setRotation(uint8_t rotation);
+
+    static void setBrightness(uint8_t brightness);
+
+    static uint8_t getBrightness();
 };
 
 #endif

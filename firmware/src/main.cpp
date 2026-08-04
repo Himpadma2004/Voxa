@@ -39,6 +39,8 @@
 #include "storage/SpiffsMutex.h"
 #include "storage/StorageManager.h"
 #include "reminders/ReminderManager.h"
+#include "services/BatteryManager.h"
+#include "audio/AudioManager.h"
 
 using namespace VOXA;
 
@@ -258,6 +260,7 @@ void setup()
   boot.show();
 
   Serial.println("[Startup] Storage Subsystem (MicroSD + SPIFFS Architecture)");
+  delay(150); // let the power rail settle before the SD subsystem's heavy current draw (many SPI transactions/retries) begins — helps avoid brownout on weaker battery/regulator combos
   storageManager.begin();
 
   Serial.println("[Startup] Preferences");
@@ -473,6 +476,11 @@ void setup()
   ReminderManager::instance().begin();
   ReminderManager::instance().runTestScenarios();
   Serial.println("[Startup] ReminderManager ready");
+
+  Serial.println("[Startup] AudioManager (MAX98357A I2S Mono Speaker System)");
+  AudioManager::instance().begin();
+  AudioManager::instance().runDiagnostics();
+  Serial.println("[Startup] AudioManager ready");
 
   Serial.println("Boot complete. Starting main screen loop...");
   xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);

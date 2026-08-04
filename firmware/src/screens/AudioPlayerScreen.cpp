@@ -2,6 +2,7 @@
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../services/RecordingService.h"
+#include "../audio/AudioManager.h"
 #include "Transition.h"
 #include <cmath>
 #include <algorithm>
@@ -233,7 +234,15 @@ namespace VOXA
                     else if (m_isPlayPressed)
                     {
                         isPlaying = !isPlaying;
-                        Serial.printf("[AudioPlayer] Toggle play: %s\n", isPlaying ? "PLAYING" : "PAUSED");
+                        Serial.printf("[AudioPlayer] Toggle play: %s (%s)\n", isPlaying ? "PLAYING" : "PAUSED", rec.filePath.c_str());
+                        if (isPlaying)
+                        {
+                            AudioManager::instance().playWavAsync(rec.filePath);
+                        }
+                        else
+                        {
+                            AudioManager::instance().stop();
+                        }
                     }
                     else if (m_isDeletePressed)
                     {
@@ -358,6 +367,7 @@ namespace VOXA
             }
         }
 
+        AudioManager::instance().stop();
         canvas.deleteSprite();
         return targetScreen;
     }

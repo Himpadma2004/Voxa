@@ -5,12 +5,19 @@ bool Touch::begin()
     Serial.println("[Touch] Initializing...");
 
     Wire.begin(8, 18);
+    Wire.setClock(400000);
+    Wire.setTimeOut(100);
 
     if (!touch.begin())
     {
         Serial.println("[Touch] FAILED");
         return false;
     }
+
+    // Re-assert SDA (8) & SCL (18) and clock in case library default Wire.begin() changed pins
+    Wire.begin(8, 18);
+    Wire.setClock(400000);
+    Wire.setTimeOut(100);
 
     touch.setRotation(1);
 
@@ -23,9 +30,9 @@ bool Touch::isTouched()
 {
     uint32_t now = millis();
 
-    // If screen was not touched recently, rate-limit I2C polling to once per 50ms.
+    // Rate-limit idle polling to once per 10ms (100 Hz) for responsive touch response.
     // When screen is touched (drag/swipe in progress), poll at full speed.
-    if (!m_wasTouched && (now - m_lastPollMs < 50))
+    if (!m_wasTouched && (now - m_lastPollMs < 10))
     {
         return false;
     }

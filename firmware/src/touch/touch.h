@@ -24,8 +24,8 @@ private:
             240,
             320,
             &Wire,
-            17, // TP_RST
-            16  // TP_INT
+            17, // TP_RST (CST328 hardware reset pin)
+            16  // TP_INT (CST328 hardware interrupt pin)
         );
 };
 

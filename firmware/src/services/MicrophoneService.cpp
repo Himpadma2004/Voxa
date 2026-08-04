@@ -30,16 +30,14 @@ namespace VOXA
 
         Serial.println("[MicrophoneService] Initializing I2S...");
 
-        // ===== TEMPORARY: Power microphone from GPIO15 =====
-        constexpr gpio_num_t MIC_POWER_PIN = GPIO_NUM_15;
+        // Microphone VCC Power Pin (GPIO42)
+        constexpr gpio_num_t MIC_POWER_PIN = GPIO_NUM_42;
 
         pinMode(MIC_POWER_PIN, OUTPUT);
         digitalWrite(MIC_POWER_PIN, HIGH);
 
-        // Give microphone time to stabilize after GPIO15 is HIGH
-        delay(100);
-
-        Serial.println("[MicrophoneService] Microphone powered from GPIO15 (HIGH)");
+        delay(50);
+        Serial.println("[MicrophoneService] Microphone powered from GPIO42 (HIGH)");
 
         // Setup I2S configuration for I2S microphone (INMP441)
         i2s_config_t i2s_config = {
