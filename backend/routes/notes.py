@@ -1,6 +1,14 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
-from database.mongodb import get_audio_by_id, get_all_notes
+from database.mongodb import (
+    collection,
+    ideas_collection,
+    questions_collection,
+    tasks_collection,
+    others_collection,
+    get_audio_by_id,
+    get_all_notes
+)
 
 router = APIRouter(prefix="/api/notes", tags=["Notes"])
 
@@ -19,7 +27,7 @@ def serialize_mongo_doc(data):
 
 
 def _sort_key(record):
-    return _safe_str(record.get("processed_at") or record.get("created_at") or record.get("timestamp") or "")
+    return _safe_str(record.get("created_at") or record.get("processed_at") or record.get("timestamp") or "")
 
 
 def _safe_str(value):
@@ -31,34 +39,24 @@ def _safe_str(value):
         return str(value)
 
 
-def _flatten_items(notes, field_name, fallback_field=None):
+def _build_category_items(docs, default_category):
     items = []
-    for note in notes:
-        created_at = _safe_str(note.get("processed_at") or note.get("created_at") or note.get("timestamp"))
-        source_id = _safe_str(note.get("audio_id") or note.get("_id"))
-        values = note.get(field_name) or []
+    for doc in docs:
+        created_at = _safe_str(doc.get("created_at") or doc.get("processed_at") or doc.get("timestamp"))
+        source_id = _safe_str(doc.get("audio_id") or doc.get("_id"))
+        title = doc.get("title") or doc.get("summary") or doc.get("content") or ""
+        content = doc.get("content") or doc.get("title") or ""
 
-        if not values and fallback_field and note.get(fallback_field):
-            values = [note.get(fallback_field)]
-
-        for raw_item in values:
-            if isinstance(raw_item, dict):
-                title = raw_item.get("text") or raw_item.get("title") or raw_item.get("content") or raw_item.get("note") or ""
-                content = raw_item.get("content") or raw_item.get("answer") or raw_item.get("text") or ""
-            else:
-                title = str(raw_item)
-                content = str(raw_item)
-
-            items.append({
-                "id": len(items) + 1,
-                "title": title,
-                "content": content,
-                "timestamp": created_at,
-                "source_id": source_id,
-                "category": note.get("category", ""),
-                "comments": ""
-            })
-
+        items.append({
+            "id": len(items) + 1,
+            "title": title,
+            "content": content,
+            "timestamp": created_at,
+            "source_id": source_id,
+            "category": doc.get("category", default_category),
+            "status": doc.get("status", ""),
+            "comments": ""
+        })
     return items
 
 
@@ -99,24 +97,35 @@ def read_all_notes(
     limit: int = Query(20, ge=1, le=200)
 ):
     """
-    Fetch all audio note records from MongoDB.
+    Fetch all note records from their dedicated MongoDB category collections.
     """
     try:
-        notes = get_all_notes()
-        notes.sort(key=_sort_key, reverse=True)
-        serialized_notes = serialize_mongo_doc(notes)
-
         category_key = (category or "recordings").strip().lower()
+
         if category_key == "ideas":
-            items = _flatten_items(serialized_notes, "ideas")
+            raw_docs = list(ideas_collection.find())
+            raw_docs.sort(key=_sort_key, reverse=True)
+            items = _build_category_items(serialize_mongo_doc(raw_docs), "Idea")
+
         elif category_key == "questions":
-            items = _flatten_items(serialized_notes, "questions")
+            raw_docs = list(questions_collection.find())
+            raw_docs.sort(key=_sort_key, reverse=True)
+            items = _build_category_items(serialize_mongo_doc(raw_docs), "Question")
+
         elif category_key in ("tasks", "task"):
-            items = _flatten_items(serialized_notes, "tasks")
+            raw_docs = list(tasks_collection.find())
+            raw_docs.sort(key=_sort_key, reverse=True)
+            items = _build_category_items(serialize_mongo_doc(raw_docs), "Task")
+
         elif category_key in ("others", "other", "notes"):
-            items = _flatten_items(serialized_notes, "notes", fallback_field="summary")
+            raw_docs = list(others_collection.find())
+            raw_docs.sort(key=_sort_key, reverse=True)
+            items = _build_category_items(serialize_mongo_doc(raw_docs), "Other")
+
         else:
-            items = _build_recording_items(serialized_notes)
+            raw_docs = list(collection.find())
+            raw_docs.sort(key=_sort_key, reverse=True)
+            items = _build_recording_items(serialize_mongo_doc(raw_docs))
 
         page_items, total = _page(items, skip, limit)
 

@@ -48,16 +48,32 @@ def scheduler_loop():
                 }
             }))
             
-            # Combine the triggered lists
+            # Query MongoDB for overdue reminders whose date/time has passed
+            overdue_reminders = list(reminders_collection.find({
+                "status": {"$in": ["pending", "snoozed"]},
+                "reminder_time": {"$lt": now - timedelta(minutes=1)}
+            }))
+            for r in overdue_reminders:
+                reminders_collection.update_one(
+                    {"_id": r["_id"]},
+                    {"$set": {"status": "missed", "notice": "This reminder was missed by you."}}
+                )
+
+            # Combine triggered lists
             triggered = pending_reminders + snoozed_reminders
             
             for reminder in triggered:
                 print(f"[Scheduler] Reminder found", flush=True)
                 
-                # Mark as ACTIVE in MongoDB
+                # Check if missed or active
+                r_time = reminder.get("reminder_time")
+                is_missed = isinstance(r_time, datetime) and r_time < now
+                new_status = "missed" if is_missed else "active"
+
+                # Mark status in MongoDB
                 reminders_collection.update_one(
                     {"_id": reminder["_id"]},
-                    {"$set": {"status": "active"}}
+                    {"$set": {"status": new_status, "notice": "This reminder was missed by you." if is_missed else ""}}
                 )
                 
                 # Send immediate notification to the ESP32 (if registered)

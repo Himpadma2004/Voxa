@@ -144,6 +144,7 @@ namespace VOXA
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
         digitalWrite(SD_CS_PIN, LOW);
         delayMicroseconds(10);
+        sdSPI.transfer(0xFF); // 8 dummy clocks while CS LOW before command byte
         sdSPI.transfer(0x40);
         sdSPI.transfer(0x00);
         sdSPI.transfer(0x00);
@@ -173,6 +174,7 @@ namespace VOXA
         sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
         digitalWrite(SD_CS_PIN, LOW);
         delayMicroseconds(10);
+        sdSPI.transfer(0xFF); // 8 dummy clocks while CS LOW before command byte
         sdSPI.transfer(0x48);
         sdSPI.transfer(0x00);
         sdSPI.transfer(0x00);
@@ -446,9 +448,12 @@ namespace VOXA
         uint8_t crc1 = sdSPI.transfer(0xFF);
         uint8_t crc2 = sdSPI.transfer(0xFF);
 
-        // 7. Release CS after transaction completes
+        // 7. Release CS after transaction completes & send 80 dummy clock pulses (CS HIGH)
         digitalWrite(SD_CS_PIN, HIGH);
-        sdSPI.transfer(0xFF);
+        for (int i = 0; i < 10; i++)
+        {
+            sdSPI.transfer(0xFF);
+        }
         sdSPI.endTransaction();
 
         int csStatePostSuccess = digitalRead(SD_CS_PIN);
@@ -459,6 +464,27 @@ namespace VOXA
         Serial.printf("SUCCESS: CMD17 FULLY SUCCEEDED! (Read 512 bytes + CRC 0x%02X%02X)\n", crc1, crc2);
         Serial.println("========================================================================");
 
+        // 8. Mount FAT Filesystem via ESP32 Arduino SD Library
+        sdSPI.end();
+        delay(20);
+        sdSPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+
+        if (!SD.begin(SD_CS_PIN, sdSPI, 4000000, "/sd", 5, false))
+        {
+            Serial.println("[StorageManager] SD.begin @ 4MHz failed, retrying at 1MHz...");
+            sdSPI.end();
+            delay(20);
+            sdSPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+            if (!SD.begin(SD_CS_PIN, sdSPI, 1000000, "/sd", 5, false))
+            {
+                Serial.println("[StorageManager] ERROR: MicroSD FAT filesystem mount (SD.begin) failed.");
+                m_sdMounted = false;
+                m_lastErrorCode = "ERR_FAT_MOUNT_FAILED";
+                return false;
+            }
+        }
+
+        Serial.println("[StorageManager] MicroSD FAT filesystem mounted successfully.");
         m_sdMounted = true;
         return true;
     }

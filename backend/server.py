@@ -58,7 +58,9 @@ def read_root():
 @app.on_event("startup")
 def startup_event():
     from services.reminder_scheduler import start_scheduler
+    from database.mongodb import migrate_all_existing_data
     start_scheduler()
+    migrate_all_existing_data()
 
 
 def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):

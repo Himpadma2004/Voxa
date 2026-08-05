@@ -213,6 +213,14 @@ namespace VOXA
             item.source = row.count("source") ? row.at("source") : "AI";
             item.comments = row.count("comments") ? row.at("comments") : "";
             item.pinned = row.count("pinned") && row.at("pinned") == "true";
+
+            std::string catLower = item.category;
+            std::transform(catLower.begin(), catLower.end(), catLower.begin(), ::tolower);
+            if (catLower == "idea" || catLower == "question" || catLower == "task" || catLower == "reminder")
+            {
+                continue;
+            }
+
             if (item.isValid()) m_others.push_back(std::move(item));
         }
 
@@ -242,14 +250,13 @@ namespace VOXA
             return false;
         }
 
-        bool ok = true;
-        ok = syncReminders() && ok;
-        ok = syncIdeas() && ok;
-        ok = syncQuestions() && ok;
-        ok = syncTasks() && ok;
-        ok = syncOthers() && ok;
-        ok = syncRecordings() && ok;
-        return ok;
+        bool r1 = syncReminders();
+        bool r2 = syncIdeas();
+        bool r3 = syncQuestions();
+        bool r4 = syncTasks();
+        bool r5 = syncOthers();
+        bool r6 = syncRecordings();
+        return (r1 || r2 || r3 || r4 || r5 || r6);
     }
 
     bool DataService::syncReminders()
@@ -343,7 +350,18 @@ namespace VOXA
         });
         if (ok)
         {
-            m_others = std::move(fetched);
+            std::vector<Memory> filtered;
+            for (auto& m : fetched)
+            {
+                std::string catLower = m.category;
+                std::transform(catLower.begin(), catLower.end(), catLower.begin(), ::tolower);
+                if (catLower == "idea" || catLower == "question" || catLower == "task" || catLower == "reminder")
+                {
+                    continue;
+                }
+                filtered.push_back(std::move(m));
+            }
+            m_others = std::move(filtered);
             saveOthersCache();
         }
         return ok;
