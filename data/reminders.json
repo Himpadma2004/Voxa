@@ -15,48 +15,48 @@
     "id": "3",
     "title": "Call Jennifer Dawson",
     "dateTime": "2026-07-21T16:26:23.382000",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "4",
     "title": "Call Britney",
     "dateTime": "2026-07-23T17:00:00",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "5",
     "title": "Have lunch",
     "dateTime": "2026-07-29T13:20:00",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "6",
     "title": "Have lunch",
     "dateTime": "2026-07-29T13:23:00",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "7",
     "title": "Have a brunch",
     "dateTime": "2026-07-29T13:36:00",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "8",
     "title": "Have lunch",
     "dateTime": "2026-07-29T13:57:00",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "9",
     "title": "Call Shriya",
     "dateTime": "2026-07-30T17:00:00",
-    "completed": "false"
+    "completed": "true"
   },
   {
     "id": "10",
     "title": "Call Jennifer",
     "dateTime": "Tomorrow at 9 AM",
-    "completed": "false"
+    "completed": "true"
   }
 ]

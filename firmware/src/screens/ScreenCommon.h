@@ -41,6 +41,7 @@ namespace VOXA
         Plus,
         Filter,
         Wifi,
+        WiFiOff,
         Battery,
         Calendar,
         Cloud,

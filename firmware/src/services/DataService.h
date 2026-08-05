@@ -20,6 +20,8 @@ namespace VOXA
     public:
         DataService();
 
+        static std::string formatReadableTimestamp(const std::string& value);
+
         void begin();
 
         bool syncAll();

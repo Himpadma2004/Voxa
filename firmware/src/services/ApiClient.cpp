@@ -147,8 +147,8 @@ namespace VOXA
 
     bool ApiClient::isHealthy()
     {
-        // Cache health result for 10 seconds to avoid spamming the backend
-        const uint32_t CACHE_MS = 10000;
+        // Cache health result for 5 seconds to avoid spamming the backend
+        const uint32_t CACHE_MS = 5000;
         if (millis() - m_lastHealthCheckMs < CACHE_MS && m_lastHealthCheckMs > 0)
         {
             return m_lastHealthResult;
@@ -162,7 +162,7 @@ namespace VOXA
         }
 
         HTTPClient http;
-        http.setTimeout(3000);
+        http.setTimeout(600); // Ultra-fast 600ms timeout for non-blocking health probe
         String url = String(m_baseUrl.c_str()) + "/";
 
         bool ok = false;
@@ -176,24 +176,9 @@ namespace VOXA
             http.end();
         }
 
-        if (!ok)
-        {
-            Serial.println("[Health] Health check GET / failed. Attempting auto-discovery...");
-            std::string discoveredUrl = discoverBackendIP();
-            m_lastHealthCheckMs = millis();
-            if (!discoveredUrl.empty())
-            {
-                saveBaseUrl(discoveredUrl);
-                m_lastHealthResult = true;
-                return true;
-            }
-            m_lastHealthResult = false;
-            return false;
-        }
-
         m_lastHealthCheckMs = millis();
-        m_lastHealthResult = true;
-        return true;
+        m_lastHealthResult = ok;
+        return ok;
     }
 
     // ── JSON Helpers ──────────────────────────────────────────────────────────

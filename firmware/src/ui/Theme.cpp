@@ -19,51 +19,61 @@ namespace VoxaTheme
 
     uint16_t getBackground()
     {
-        return (currentMode == ThemeMode::Dark) ? 0x1082 : 0xF7BE;
+        // Minimal Obsidian Pitch Black (#000000 / OLED deep black)
+        return (currentMode == ThemeMode::Dark) ? 0x0000 : 0xF7BE;
     }
 
     uint16_t getSurface()
     {
-        return (currentMode == ThemeMode::Dark) ? 0x18E3 : 0xFFFF;
+        // Deep Charcoal Card Surface (#141418)
+        return (currentMode == ThemeMode::Dark) ? 0x10A3 : 0xFFFF;
     }
 
     uint16_t getPrimary()
     {
-        return 0x79CF; // Match primary branding accent in both modes
+        // Electric Vibrant Orange (#FF6600)
+        return 0xFD40;
     }
 
     uint16_t getPrimaryLight()
     {
-        return 0xA27A;
+        // Warm Soft Amber Orange (#FF9933)
+        return 0xFDCD;
     }
 
     uint16_t getAccent()
     {
-        return 0x067F;
+        // Vivid Neon Orange (#FF5500)
+        return 0xFA00;
     }
 
     uint16_t getSuccess()
     {
-        return 0x266C;
+        // Smooth Emerald Green (#10B981)
+        return 0x13E0;
     }
 
     uint16_t getWarning()
     {
-        return 0xFD20;
+        // Coral Crimson Red (#EF4444)
+        return 0xEA28;
     }
 
     uint16_t getTextPrimary()
     {
-        return (currentMode == ThemeMode::Dark) ? 0xFFFF : 0x1082;
+        // Crisp Pure White (#FFFFFF)
+        return (currentMode == ThemeMode::Dark) ? 0xFFFF : 0x0000;
     }
 
     uint16_t getTextSecondary()
     {
-        return (currentMode == ThemeMode::Dark) ? 0xFCC6 : 0xD260;
+        // Soft Muted Warm Grey (#A0A0A8)
+        return (currentMode == ThemeMode::Dark) ? 0x9E15 : 0x630C;
     }
 
     uint16_t getDivider()
     {
-        return (currentMode == ThemeMode::Dark) ? 0x2945 : 0xE73C;
+        // Subtle Dark Charcoal Border (#222228)
+        return (currentMode == ThemeMode::Dark) ? 0x2125 : 0xE73C;
     }
 }

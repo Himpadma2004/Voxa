@@ -43,7 +43,31 @@ namespace
 
     std::string normalizeTimestamp(const std::string& value)
     {
-        return value.empty() ? std::string{} : value;
+        if (value.empty()) return "";
+
+        int year = 0, month = 0, day = 0, hour = 0, minute = 0;
+        if (sscanf(value.c_str(), "%d-%d-%dT%d:%d", &year, &month, &day, &hour, &minute) >= 3 ||
+            sscanf(value.c_str(), "%d-%d-%d %d:%d", &year, &month, &day, &hour, &minute) >= 3)
+        {
+            static const char* months[] = {"", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+            const char* monStr = (month >= 1 && month <= 12) ? months[month] : "";
+
+            std::string ampm = (hour >= 12) ? "PM" : "AM";
+            int h12 = hour % 12;
+            if (h12 == 0) h12 = 12;
+
+            char buf[64];
+            if (monStr[0] != '\0')
+            {
+                snprintf(buf, sizeof(buf), "%s %d, %d:%02d %s", monStr, day, h12, minute, ampm.c_str());
+            }
+            else
+            {
+                snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d", year, month, day, hour, minute);
+            }
+            return std::string(buf);
+        }
+        return value;
     }
 
     template <typename T, typename Fn>
@@ -140,6 +164,11 @@ namespace VOXA
     DataService::DataService()
         : m_cache(new JsonStorage("/voxa-cache"))
     {
+    }
+
+    std::string DataService::formatReadableTimestamp(const std::string& value)
+    {
+        return normalizeTimestamp(value);
     }
 
     void DataService::begin()

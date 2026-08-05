@@ -53,15 +53,16 @@ namespace VOXA
     void HomeScreen::renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX)
     {
         float cx = w * 0.5f + offsetX;
+        uint16_t bgCol = VoxaTheme::getBackground();
         
         // Brand Title (FreeSansBold12pt7b)
         canvas.setFont(&fonts::FreeSansBold12pt7b);
         canvas.setTextSize(1);
         canvas.setTextDatum(textdatum_t::middle_center);
-        canvas.setTextColor(VoxaTheme::getPrimaryLight());
+        canvas.setTextColor(VoxaTheme::getPrimaryLight(), bgCol);
         canvas.drawString("VOXA", cx, h * 0.20f);
         
-        // Greeting based on RTC time (FreeSans9pt7b)
+        // Greeting based on RTC time (Smooth FreeSansBold12pt7b vector font)
         std::string greeting = "Good Morning";
         std::time_t tNow = std::time(nullptr);
         std::tm local_tm;
@@ -75,13 +76,14 @@ namespace VOXA
         else if (hour >= 17 && hour < 21) greeting = "Good Evening";
         else if (hour >= 21 || hour < 5) greeting = "Good Night";
 
-        canvas.setFont(&fonts::FreeSans9pt7b);
-        canvas.setTextColor(VoxaTheme::getTextPrimary());
-        canvas.setTextSize(2);
+        canvas.setFont(&fonts::FreeSansBold12pt7b);
+        canvas.setTextColor(VoxaTheme::getTextPrimary(), bgCol);
+        canvas.setTextSize(1);
         canvas.drawString(greeting.c_str(), cx, h * 0.33f);
         
         // Subtitle (FreeSans9pt7b)
-        canvas.setTextColor(VoxaTheme::getTextSecondary());
+        canvas.setFont(&fonts::FreeSans9pt7b);
+        canvas.setTextColor(VoxaTheme::getTextSecondary(), bgCol);
         canvas.setTextSize(1);
         canvas.drawString("How can I help today?", cx, h * 0.44f);
 
@@ -177,8 +179,8 @@ namespace VOXA
             { Icon::Note,       "Tasks",      0xFA20, taskCount },
             { Icon::Search,     "Search",     0x266C, 0 },
             { Icon::Mic,        "Recordings", 0xFAC0, memCount },
-            { Icon::Folder,     "Others",     0xAD55, 0 },
-            { Icon::Settings,   "Settings",   0x52AA, 0 }
+            { Icon::Folder,     "Others",     0x601B, 0 },
+            { Icon::Settings,   "Settings",   0xFDA0, 0 }
         };
 
         float leftX = w * 0.04f + offsetX;
@@ -204,42 +206,47 @@ namespace VOXA
             uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
             uint16_t chevColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
 
-            // Card background rounded rectangle
-            canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
-            canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
+            // Card background rounded rectangle (taller card for larger icons)
+            canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 46, 10, cardBg);
+            canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 46, 10, cardBorder);
 
-            // Icon circle container
-            float cy = itemY + 22.0f;
-            float iconCx = leftX + 22.0f;
-            canvas.fillCircle((int)iconCx, (int)cy, 12, menuItems[i].color);
-            ScreenCommon::drawIcon(canvas, menuItems[i].icon, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+            // Icon circle container — radius 18 (36px diameter) for crisp icon visibility
+            float cy = itemY + 23.0f;
+            float iconCx = leftX + 26.0f;
+            canvas.fillCircle((int)iconCx, (int)cy, 18, menuItems[i].color);
+            // Draw icon at size 22 centered inside the circle
+            ScreenCommon::drawIcon(canvas, menuItems[i].icon, iconCx - 11.0f, cy - 11.0f, 22.0f, VoxaTheme::getBackground());
 
-            // Label text (FreeSans9pt7b)
+            // Label text
             canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setTextColor(labelColor);
+            canvas.setTextColor(labelColor, cardBg);
             canvas.setTextSize(1);
-            canvas.drawString(menuItems[i].label, leftX + 42.0f, cy);
+            canvas.drawString(menuItems[i].label, leftX + 52.0f, cy);
 
-            // Badge Count (if active)
+            // Badge Count (if active) — positioned so it doesn't clash with chevron
             if (menuItems[i].badgeCount > 0)
             {
-                float badgeCx = leftX + cardW - 32.0f;
+                // Badge sits at right-edge minus 42px (20px chevron + 12px gap + 10px badge radius)
+                float badgeCx = leftX + cardW - 42.0f;
                 uint16_t badgeBg = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimaryLight();
                 uint16_t badgeText = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary();
                 
-                canvas.fillCircle((int)badgeCx, (int)cy, 8, badgeBg);
+                canvas.fillCircle((int)badgeCx, (int)cy, 9, badgeBg);
                 canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.setTextColor(badgeText);
+                canvas.setTextColor(badgeText, badgeBg);
                 canvas.setTextSize(1);
                 char badgeStr[8];
                 itoa(menuItems[i].badgeCount, badgeStr, 10);
                 canvas.drawString(badgeStr, badgeCx, cy);
             }
 
-            // Navigation chevron
-            float chevX = leftX + cardW - 16.0f;
-            ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, chevColor);
+            // Navigation chevron — bitmap is always 20x20, position so it ends 4px from card right edge
+            // chevX = card_right - 4 - 20 = leftX + cardW - 24
+            float chevBmpX = leftX + cardW - 24.0f;
+            float chevBmpY = cy - 10.0f;
+            ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevBmpX, chevBmpY, 20.0f, chevColor);
+
         }
 
         canvas.clearClipRect();
@@ -495,6 +502,7 @@ namespace VOXA
         canvas.setPsram(true); // Allocate from 8MB PSRAM
         canvas.setColorDepth(16);
         bool useSprite = canvas.createSprite(w, h);
+        if (useSprite) { canvas.fillScreen(0); }
         if (!useSprite)
         {
             Serial.println("[HomeScreen] WARN: sprite allocation failed, drawing directly to LCD.");

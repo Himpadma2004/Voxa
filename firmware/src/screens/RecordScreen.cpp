@@ -27,20 +27,29 @@ namespace
     void recScreenUploadTask(void * /*param*/)
     {
         VOXA::g_currentlyUploadingPath = s_recUploadPath;
-        VOXA::ApiResult res = VOXA::apiClient.uploadVoice(s_recUploadPath);
-        VOXA::g_currentlyUploadingPath = "";
 
-        s_recUploadOk = res.success;
-        strncpy(s_recUploadText, res.text.c_str(), 255);
-        strncpy(s_recUploadError, res.error.c_str(), 127);
-
-        if (res.success)
+        if (VOXA::apiClient.isHealthy())
         {
-            vTaskDelay(pdMS_TO_TICKS(1200)); // Wait for LLM classification
-            VOXA::dataService.syncAll();
-            Serial.println("[RecordScreen] Triggered immediate DataSync after voice upload!");
+            VOXA::ApiResult res = VOXA::apiClient.uploadVoice(s_recUploadPath);
+            s_recUploadOk = res.success;
+            strncpy(s_recUploadText, res.text.c_str(), 255);
+            strncpy(s_recUploadError, res.error.c_str(), 127);
+
+            if (res.success)
+            {
+                vTaskDelay(pdMS_TO_TICKS(1200)); // Wait for LLM classification
+                VOXA::dataService.syncAll();
+                Serial.println("[RecordScreen] Triggered immediate DataSync after voice upload!");
+            }
+        }
+        else
+        {
+            s_recUploadOk = false;
+            strncpy(s_recUploadError, "Server Offline", 127);
+            Serial.println("[RecordScreen] Server offline: background task queued note locally.");
         }
 
+        VOXA::g_currentlyUploadingPath = "";
         s_recUploadDone = true;
         vTaskDelete(nullptr);
     }
@@ -74,6 +83,7 @@ namespace VOXA
         canvas.setColorDepth(16);
         if (!canvas.createSprite(w, h))
         {
+            Serial.println("[RecordScreen] Failed to create PSRAM canvas sprite!");
             return ScreenId::Home;
         }
 
@@ -127,13 +137,12 @@ namespace VOXA
                 }
                 else
                 {
-                    errorText = (strlen(s_recUploadError) > 0) ? s_recUploadError : "Upload failed";
-                    uiState = UIState::Error;
-                    stateChangeMs = millis();
-                    Serial.printf("[RecordScreen] Upload failed: %s. Queueing locally.\n", errorText.c_str());
-
-                    // Queue locally on failed immediate upload
+                    // Server error / offline -> Save offline seamlessly
                     recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
+                    resultText = "Saved offline (queued)";
+                    uiState = UIState::Result;
+                    stateChangeMs = millis();
+                    Serial.printf("[RecordScreen] Upload failed/Server off: queued note locally %s\n", s_recUploadPath.c_str());
                 }
             }
 

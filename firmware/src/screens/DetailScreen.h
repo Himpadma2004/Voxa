@@ -18,6 +18,7 @@ namespace VOXA
         static ScreenId    s_backRoute;
 
         bool m_isBackPressed { false };
+        bool m_isCompletePressed { false };
         bool m_isDeletePressed { false };
         bool m_wasTouched { false };
         float m_lastDragX { 0.0f };
