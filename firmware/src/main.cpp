@@ -2,6 +2,10 @@
 #include <SPIFFS.h>
 #include <WiFi.h>
 #include <qrcode.h>
+#include <esp_system.h>          // esp_reset_reason()
+#include <esp_task_wdt.h>        // task watchdog control
+#include "soc/soc.h"             // WRITE_PERI_REG macro
+#include "soc/rtc_cntl_reg.h"   // RTC_CNTL_BROWN_OUT_REG — brownout disable register
 #include "display/Display.h"
 #include "touch/Touch.h"
 #include "screens/BootScreen.h"
@@ -96,9 +100,18 @@ namespace
     }
 
     Serial.printf("[%s] Waiting for Wi-Fi connection...\n", tag);
+    uint32_t waitStart = millis();
     while (WiFi.status() != WL_CONNECTED)
     {
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      esp_task_wdt_reset(); // feed the watchdog so WDT doesn't trigger during long wifi wait
+      vTaskDelay(pdMS_TO_TICKS(500));
+
+      // Give up waiting after 30 seconds — don't block forever on battery
+      if (millis() - waitStart > 30000)
+      {
+        Serial.printf("[%s] Wi-Fi wait timeout (30s). Continuing offline.\n", tag);
+        return;
+      }
     }
     Serial.printf("[%s] Wi-Fi connected.\n", tag);
   }
@@ -249,6 +262,20 @@ void setup()
 
   Serial.println("=================================");
   Serial.println("VOXA Firmware Starting...");
+
+  // ── Battery Power Stability: Disable Brownout Detector ─────────────────
+  // On battery, voltage sags during WiFi radio bursts + display refresh.
+  // The default brownout threshold (~2.5V) triggers false resets.
+  // LiPo/18650 batteries are safe above 3.0V; we handle real low-battery
+  // via BatteryManager ADC readings instead of the hardware brownout reset.
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // disable brownout detector via register write
+  Serial.println("[Power] Brownout detector disabled (battery mode safe).");
+
+  // Print reset reason — useful for diagnosing WDT vs brownout vs panic
+  esp_reset_reason_t reason = esp_reset_reason();
+  const char* resetNames[] = {"UNKNOWN","POWERON","EXT","SW","PANIC","INT_WDT","TASK_WDT","WDT","DEEPSLEEP","BROWNOUT","SDIO"};
+  if (reason < 11) Serial.printf("[Power] Last reset reason: %s\n", resetNames[reason]);
+
   Serial.printf("PSRAM Found: %s\n", psramFound() ? "YES" : "NO");
   Serial.printf("PSRAM Total Size: %d bytes\n", ESP.getPsramSize());
   Serial.printf("PSRAM Free Size: %d bytes\n", ESP.getFreePsram());
@@ -264,7 +291,8 @@ void setup()
   boot.show();
 
   Serial.println("[Startup] Storage Subsystem (MicroSD + SPIFFS Architecture)");
-  delay(150); // let the power rail settle before the SD subsystem's heavy current draw (many SPI transactions/retries) begins — helps avoid brownout on weaker battery/regulator combos
+  delay(300); // let the power rail fully settle before SD subsystem's heavy current draw starts
+              // 150ms was enough on USB; battery regulators need ~300ms to stabilize
   storageManager.begin();
 
   Serial.println("[Startup] Preferences");
