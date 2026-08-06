@@ -175,15 +175,16 @@ namespace VOXA
         };
 
         MenuItem menuItems[8] = {
-            { Icon::Bell,       "Reminders",  0x79CF, remCount },
-            { Icon::Lightbulb,  "Ideas",      0xFD20, ideaCount },
-            { Icon::Question,   "Questions",  0x067F, qCount },
-            { Icon::Note,       "Tasks",      0xFA20, taskCount },
+            { Icon::Bell,       "Reminders",  0x79CF, m_visitedReminders ? 0 : remCount },
+            { Icon::Lightbulb,  "Ideas",      0xFD20, m_visitedIdeas ? 0 : ideaCount },
+            { Icon::Question,   "Questions",  0x067F, m_visitedQuestions ? 0 : qCount },
+            { Icon::Note,       "Tasks",      0xFA20, m_visitedTasks ? 0 : taskCount },
             { Icon::Search,     "Search",     0x266C, 0 },
             { Icon::Mic,        "Recordings", 0xFAC0, memCount },
-            { Icon::Folder,     "Others",     0x601B, 0 },
+            { Icon::Folder,     "Others",     0x601B, m_visitedOthers ? 0 : 0 },
             { Icon::Settings,   "Settings",   0xFDA0, 0 }
         };
+
 
         float leftX = w * 0.04f + offsetX;
         float cardW = w * 0.92f;
@@ -226,22 +227,26 @@ namespace VOXA
             canvas.setTextSize(1);
             canvas.drawString(menuItems[i].label, leftX + 52.0f, cy);
 
-            // Badge Count (if active) — positioned so it doesn't clash with chevron
+            // Badge Count (if active and unread) — sleek smartphone notification pill
             if (menuItems[i].badgeCount > 0)
             {
-                // Badge sits at right-edge minus 42px (20px chevron + 12px gap + 10px badge radius)
-                float badgeCx = leftX + cardW - 42.0f;
-                uint16_t badgeBg = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimaryLight();
-                uint16_t badgeText = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary();
+                float badgeRight = leftX + cardW - 32.0f;
+                uint16_t badgeBg = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimary();
+                uint16_t badgeText = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getBackground();
                 
-                canvas.fillCircle((int)badgeCx, (int)cy, 9, badgeBg);
-                canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.setTextColor(badgeText, badgeBg);
-                canvas.setTextSize(1);
+                canvas.setFont(&fonts::Font0);
                 char badgeStr[8];
                 itoa(menuItems[i].badgeCount, badgeStr, 10);
-                canvas.drawString(badgeStr, badgeCx, cy);
+                int textW = canvas.textWidth(badgeStr);
+                int pillW = std::max(16, textW + 8);
+
+                
+                canvas.fillRoundRect((int)(badgeRight - pillW), (int)(cy - 9.0f), pillW, 18, 9, badgeBg);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(badgeText);
+                canvas.drawString(badgeStr, badgeRight - pillW * 0.5f, cy);
             }
+
 
             // Navigation chevron — bitmap is always 20x20, position so it ends 4px from card right edge
             // chevX = card_right - 4 - 20 = leftX + cardW - 24
@@ -471,16 +476,17 @@ namespace VOXA
                         {
                             switch (m_pressedItemIndex)
                             {
-                                case 0: targetScreen = ScreenId::Reminders; break;
-                                case 1: targetScreen = ScreenId::Ideas;     break;
-                                case 2: targetScreen = ScreenId::Questions; break;
-                                case 3: targetScreen = ScreenId::Tasks;     break;
+                                case 0: m_visitedReminders = true; targetScreen = ScreenId::Reminders; break;
+                                case 1: m_visitedIdeas     = true; targetScreen = ScreenId::Ideas;     break;
+                                case 2: m_visitedQuestions = true; targetScreen = ScreenId::Questions; break;
+                                case 3: m_visitedTasks     = true; targetScreen = ScreenId::Tasks;     break;
                                 case 4: targetScreen = ScreenId::Search;    break;
                                 case 5: targetScreen = ScreenId::RecordingsLibrary; break;
-                                case 6: targetScreen = ScreenId::Others;    break;
+                                case 6: m_visitedOthers    = true; targetScreen = ScreenId::Others;    break;
                                 case 7: targetScreen = ScreenId::Settings;  break;
                             }
                         }
+
                     }
                 }
 
@@ -559,8 +565,30 @@ namespace VOXA
 
 
             // Re-query dimensions inside the loop since rotation changes width and height on-the-fly!
-            w = Display::width();
-            h = Display::height();
+            uint16_t currentW = Display::width();
+            uint16_t currentH = Display::height();
+
+            if (currentW != w || currentH != h)
+            {
+                w = currentW;
+                h = currentH;
+                float width_f = static_cast<float>(w);
+                m_scrollOffset = std::max(0.0f, std::min(width_f, m_scrollOffset));
+
+                // Re-create PSRAM sprite buffer to match new rotated resolution (240x320 vs 320x240)
+                if (useSprite)
+                {
+                    canvas.deleteSprite();
+                    useSprite = canvas.createSprite(w, h);
+                    if (useSprite)
+                    {
+                        canvas.fillScreen(0);
+                    }
+                }
+                Display::lcd.fillScreen(TFT_BLACK);
+            }
+
+
 
             // 2. Perform vertical scroll inertia calculations
             float contentHeight = 8.0f * 50.0f + 10.0f;

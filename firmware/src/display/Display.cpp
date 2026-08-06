@@ -48,6 +48,7 @@ void Display::setRotation(uint8_t rotation)
 }
 
 void Display::setBrightness(uint8_t brightness)
+
 {
     s_brightness = brightness;
     lcd.setBrightness(brightness);

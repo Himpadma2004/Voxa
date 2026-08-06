@@ -6,7 +6,11 @@
 #include "../services/QuestionService.h"
 #include "../services/MemoryService.h"
 #include "../services/DataService.h"
+#include "../services/ApiClient.h"
+#include "../services/WiFiManager.h"
 #include "Transition.h"
+
+
 #include <cmath>
 #include <algorithm>
 
@@ -299,14 +303,44 @@ namespace VOXA
                             if (s_category == "tasks")
                             {
                                 dataService.toggleTaskDone(s_itemId);
+                                std::string sourceId = "";
+                                std::string mongoId  = "";
                                 for (const auto& t : dataService.getTasks())
                                 {
                                     if (t.id == s_itemId)
                                     {
                                         isDone = t.isDone;
                                         statusStr = t.isDone ? "Status: Completed" : "Status: Pending";
+                                        sourceId = t.sourceId;
+                                        mongoId  = t.mongoId;
                                         break;
                                     }
+                                }
+
+                                // Instant reflection to MongoDB database
+                                if (wifiManager.isConnected())
+                                {
+                                    // ID priority: audio_id UUID > mongoId ObjectId > sequential ID
+                                    std::string idStr;
+                                    if (!sourceId.empty())       idStr = sourceId;  // audio UUID (best)
+                                    else if (!mongoId.empty())   idStr = mongoId;   // ObjectId hex (reliable fallback)
+                                    else                         idStr = std::to_string(s_itemId); // last resort
+
+                                    std::string ep = "/api/notes/" + idStr + "/toggle?category=tasks";
+                                    Serial.printf("[MongoDB] Task toggle -> %s\n", ep.c_str());
+                                    ApiResult res = apiClient.post(ep, "{}");
+                                    if (res.success)
+                                    {
+                                        Serial.printf("[MongoDB] Toggle OK: %s\n", res.body.c_str());
+                                    }
+                                    else
+                                    {
+                                        Serial.printf("[MongoDB] Toggle FAILED: HTTP %d | %s\n", res.httpCode, res.error.c_str());
+                                    }
+                                }
+                                else
+                                {
+                                    Serial.println("[MongoDB] Toggle skipped: Wi-Fi not connected");
                                 }
                             }
                             else if (s_category == "reminders")
@@ -314,8 +348,21 @@ namespace VOXA
                                 reminderService.markComplete(s_itemId);
                                 isDone = true;
                                 statusStr = "Status: Completed";
+
+                                // Instant reflection to MongoDB database for reminders
+                                if (wifiManager.isConnected())
+                                {
+                                    std::string ep = "/api/notes/" + std::to_string(s_itemId) + "/toggle?category=reminders";
+                                    Serial.printf("[MongoDB] Reminder toggle -> %s\n", ep.c_str());
+                                    ApiResult res = apiClient.post(ep, "{}");
+                                    if (!res.success)
+                                    {
+                                        Serial.printf("[MongoDB] Reminder toggle FAILED: HTTP %d | %s\n", res.httpCode, res.error.c_str());
+                                    }
+                                }
                             }
                         }
+
                         else if (m_isDeletePressed)
                         {
                             if (s_category == "reminders")

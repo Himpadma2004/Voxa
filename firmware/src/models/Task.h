@@ -11,7 +11,8 @@ namespace VOXA
         std::string content;
         std::string timestamp;
         std::string comments;
-        std::string sourceId;
+        std::string sourceId;   // audio_id UUID from MongoDB (primary toggle key)
+        std::string mongoId;    // raw _id ObjectId hex string (reliable fallback toggle key)
         bool isDone { false };
         bool isPinned { false };
     };

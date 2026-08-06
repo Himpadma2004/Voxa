@@ -182,14 +182,17 @@ namespace VOXA
         auto reminderRows  = JsonStorage::parseObjectArray(m_cache->loadJson(kRemindersCache));
         auto ideaRows      = JsonStorage::parseObjectArray(m_cache->loadJson(kIdeasCache));
         auto questionRows  = JsonStorage::parseObjectArray(m_cache->loadJson(kQuestionsCache));
+        auto taskRows      = JsonStorage::parseObjectArray(m_cache->loadJson(kTasksCache));
         auto otherRows     = JsonStorage::parseObjectArray(m_cache->loadJson(kOthersCache));
         auto recordingRows = JsonStorage::parseObjectArray(m_cache->loadJson(kRecordingsCache));
 
         m_reminders.clear();
         m_ideas.clear();
         m_questions.clear();
+        m_tasks.clear();
         m_others.clear();
         m_recordings.clear();
+
 
         for (const auto& row : reminderRows)
         {
@@ -227,6 +230,23 @@ namespace VOXA
             item.pinned = row.count("pinned") && row.at("pinned") == "true";
             if (item.isValid()) m_questions.push_back(std::move(item));
         }
+
+        for (const auto& row : taskRows)
+        {
+            TaskItem item;
+            try { item.id = static_cast<uint32_t>(std::stoul(row.at("id"))); } catch (...) { continue; }
+            item.title = row.count("title") ? row.at("title") : "";
+            item.content = row.count("content") ? row.at("content") : "";
+            item.timestamp = row.count("timestamp") ? row.at("timestamp") : "";
+            item.comments = row.count("comments") ? row.at("comments") : "";
+            item.sourceId = row.count("sourceId") ? row.at("sourceId") : "";
+            item.mongoId = row.count("mongoId") ? row.at("mongoId") : "";
+            item.isDone = row.count("isDone") && row.at("isDone") == "true";
+            item.isPinned = row.count("pinned") && row.at("pinned") == "true";
+            m_tasks.push_back(std::move(item));
+        }
+
+
 
         for (const auto& row : otherRows)
         {
@@ -352,7 +372,8 @@ namespace VOXA
             out.content = getJsonString(item["content"]);
             out.timestamp = normalizeTimestamp(getJsonString(item["timestamp"]));
             out.comments = getJsonString(item["comments"]);
-            out.sourceId = getJsonString(item["source_id"]);
+            out.sourceId = getJsonString(item["source_id"]);  // audio_id UUID
+            out.mongoId  = getJsonString(item["mongo_id"]);   // raw ObjectId hex string
             out.isDone = item["completed"] | false;
         });
         if (ok)
@@ -531,6 +552,7 @@ namespace VOXA
                 {"timestamp", item.timestamp},
                 {"comments", item.comments},
                 {"sourceId", item.sourceId},
+                {"mongoId", item.mongoId},
                 {"isDone", item.isDone ? "true" : "false"},
                 {"pinned", item.isPinned ? "true" : "false"}
             });

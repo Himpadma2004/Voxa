@@ -52,6 +52,13 @@ namespace VOXA
         float    m_lastDragY           { 0.0f };
         uint32_t m_lastTouchSampleMs   { 0 };
 
+        // ── Notification Read State Tracking ────────────────────────────
+        bool m_visitedReminders { false };
+        bool m_visitedIdeas     { false };
+        bool m_visitedQuestions { false };
+        bool m_visitedTasks     { false };
+        bool m_visitedOthers    { false };
+
         // ── Touch feedback ───────────────────────────────────────────────
         int  m_pressedItemIndex  { -1 };
         bool m_isMicPressed      { false };
@@ -61,5 +68,6 @@ namespace VOXA
         bool m_wasTouched        { false };
     };
 }
+
 
 #endif // VOXA_HOMESCREEN_H

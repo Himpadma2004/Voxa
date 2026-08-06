@@ -336,22 +336,29 @@ namespace VOXA
                 canvas.setTextColor(labelColor);
                 canvas.drawString(rows[i].title, leftX + 42.0f, cy - 8.0f);
 
+                canvas.setFont(&fonts::Font0);
                 canvas.setTextColor(subColor);
+
                 
-                // Truncate URL if too long for card display
+                // Auto-truncate any long subtitle string so it never clips off the card bounds
                 std::string dispSubtitle = rows[i].subtitle;
-                if (i == 2 && dispSubtitle.length() > 24)
+                float maxSubWidth = cardW - 55.0f;
+                if (canvas.textWidth(dispSubtitle.c_str()) > maxSubWidth)
                 {
-                    dispSubtitle = dispSubtitle.substr(0, 21) + "...";
+                    while (dispSubtitle.length() > 3 && canvas.textWidth((dispSubtitle + "...").c_str()) > maxSubWidth)
+                    {
+                        dispSubtitle.pop_back();
+                    }
+                    dispSubtitle += "...";
                 }
                 canvas.drawString(dispSubtitle.c_str(), leftX + 42.0f, cy + 8.0f);
-
 
                 if (i == 1) // Sync & Backup has a navigation chevron
                 {
                     float chevX = leftX + cardW - 16.0f;
                     ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
                 }
+
             }
 
             canvas.clearClipRect();

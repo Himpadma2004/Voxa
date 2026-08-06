@@ -43,6 +43,11 @@ bool Touch::isTouched()
 
 
 
+void Touch::setRotation(uint8_t rotation)
+{
+    touch.setRotation(rotation);
+}
+
 bool Touch::getPoint(uint16_t &x, uint16_t &y)
 {
     bool touched = isTouched();
@@ -68,8 +73,4 @@ bool Touch::getPoint(uint16_t &x, uint16_t &y)
 
     return true;
 }
-
-void Touch::setRotation(uint8_t rotation)
-{
-    touch.setRotation(rotation);
-}
+
