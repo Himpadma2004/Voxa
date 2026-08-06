@@ -300,6 +300,33 @@ def draw_cloud():
     d.rectangle([cloud_cx-9, cloud_cy-2, cloud_cx+11, cloud_cy+7], fill=0)
     return img
 
+def draw_power():
+    """Universal Power symbol: circle arc + top vertical line"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx, cy = S // 2, S // 2
+    
+    # Outer arc (270 degrees open at top)
+    d.arc([cx - 14, cy - 12, cx + 14, cy + 16], start=300, end=240, fill=0, width=5)
+    # Vertical power bar in center top
+    d.rounded_rectangle([cx - 2, 2, cx + 2, 18], radius=1, fill=0)
+    return img
+
+def draw_reset():
+    """Factory Reset symbol: Warning Triangle with Exclamation mark"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx = S // 2
+    
+    # Triangle boundary
+    d.polygon([(cx, 2), (S - 3, S - 4), (3, S - 4)], fill=0)
+    # Inner exclamation mark cutout (white cutout inside black triangle)
+    d.rectangle([cx - 2, 12, cx + 2, 24], fill=255)
+    d.ellipse([cx - 2, 28, cx + 2, 32], fill=255)
+    return img
+
 def draw_rotate():
     img = make_canvas()
     d = ImageDraw.Draw(img)
@@ -314,6 +341,7 @@ def draw_rotate():
     # Arrow tip triangle
     d.polygon([(ax, ay), (ax+8, ay-4), (ax+5, ay+6)], fill=0)
     return img
+
 
 def draw_play():
     img = make_canvas()
@@ -473,7 +501,10 @@ ICONS = {
     "ICON_BMP_CALENDAR":      draw_calendar,
     "ICON_BMP_CHAT":          draw_chat,
     "ICON_BMP_SPARK":         draw_spark,
+    "ICON_BMP_POWER":         draw_power,
+    "ICON_BMP_RESET":         draw_reset,
 }
+
 
 # ── Main ─────────────────────────────────────────────────────────────────
 def main():

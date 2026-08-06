@@ -54,8 +54,11 @@ namespace VOXA
         Upload,
         Rotate,
         Play,
-        Pause
+        Pause,
+        Power,
+        Reset
     };
+
 
     namespace ScreenCommon
     {

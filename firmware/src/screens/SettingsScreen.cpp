@@ -45,7 +45,8 @@ namespace VOXA
         ScreenId targetScreen = ScreenId::Settings;
         uint32_t lastMs = millis();
 
-        float contentHeight = 10.0f * 50.0f + 10.0f; // 10 settings items
+        float contentHeight = 9.0f * 50.0f + 10.0f;
+ // 10 settings items
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
@@ -187,12 +188,6 @@ namespace VOXA
                             }
                             else if (m_pressedItemIndex == 8)
                             {
-                                Serial.println("[Settings] Shutting Down...");
-                                delay(200);
-                                esp_deep_sleep_start();
-                            }
-                            else if (m_pressedItemIndex == 9)
-                            {
                                 Serial.println("[Settings] Factory Resetting...");
                                 wifiManager.clearCredentials();
                                 wifiManager.clearForcePortal();
@@ -209,6 +204,7 @@ namespace VOXA
                                 delay(500);
                                 ESP.restart();
                             }
+
 
                         }
                     }
@@ -295,25 +291,26 @@ namespace VOXA
             std::string deviceInfo = settings.deviceName + " (v" + settings.firmwareVersion + ")";
             std::string backendUrl = VOXA::apiClient.getBaseUrl();
 
-            SettingRow rows[10] = {
+            SettingRow rows[9] = {
                 { Icon::Wifi,       "Wi-Fi",          wifiStatus,  0x266C },
-                { Icon::Wifi,       "Sync & Backup",  syncStatus,  0x067F },
+                { Icon::Cloud,      "Sync & Backup",  syncStatus,  0x067F },
                 { Icon::Folder,     "Backend URL",    backendUrl,  0x1BE0 },
                 { Icon::Folder,     "Storage",        storageInfo, 0x52AA },
                 { Icon::Question,   "Device Info",    deviceInfo,  0xAD55 },
                 { Icon::Settings,   "About VOXA",     "AI Companion", 0x79CF },
                 { Icon::Rotate,     "Restart",        "Reboot Device", 0xFD20 },
-                { Icon::Star,       "Power Off",      "Deep Sleep Mode", 0xF800 },
-                { Icon::Star,       "Shut Down",      "Turn off device", 0xF800 },
-                { Icon::Folder,     "Factory Reset",  "Clear all data", 0xD000 }
+                { Icon::Power,      "Power Off",      "Deep Sleep Mode", 0xF800 },
+                { Icon::Reset,      "Factory Reset",  "Clear all data", 0xD000 }
             };
+
 
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;
 
             canvas.setClipRect(0, 70, w, h - 70 - 18);
 
-            for (int i = 0; i < 10; ++i)
+            for (int i = 0; i < 9; ++i)
+
             {
                 float itemY = 72.0f + i * 50.0f - m_scrollY;
                 if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
