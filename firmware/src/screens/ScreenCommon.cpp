@@ -161,7 +161,12 @@ namespace VOXA::ScreenCommon
                 case Icon::Rotate:        bmp = ICON_BMP_ROTATE;        break;
                 case Icon::Power:         bmp = ICON_BMP_POWER;         break;
                 case Icon::Reset:         bmp = ICON_BMP_RESET;         break;
+                case Icon::Bluetooth:     bmp = ICON_BMP_BLUETOOTH;     break;
+                case Icon::Volume:        bmp = ICON_BMP_VOLUME;        break;
+                case Icon::Sun:           bmp = ICON_BMP_SUN;           break;
+                case Icon::Moon:          bmp = ICON_BMP_MOON;          break;
                 case Icon::Play:          bmp = ICON_BMP_PLAY;          break;
+
 
                 case Icon::Pause:         bmp = ICON_BMP_PAUSE;         break;
                 case Icon::Star:          bmp = ICON_BMP_STAR;          break;

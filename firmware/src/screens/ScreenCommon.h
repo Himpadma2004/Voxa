@@ -23,9 +23,11 @@ namespace VOXA
         RecordingsLibrary,
         AudioPlayer,
         WiFiSettings,
+        BluetoothSettings,
         TextInput,
         Tasks
     };
+
 
     enum class Icon
     {
@@ -56,8 +58,13 @@ namespace VOXA
         Play,
         Pause,
         Power,
-        Reset
+        Reset,
+        Bluetooth,
+        Volume,
+        Sun,
+        Moon
     };
+
 
 
     namespace ScreenCommon

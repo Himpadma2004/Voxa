@@ -224,22 +224,37 @@ def draw_chevron_left():
     return img
 
 def draw_wifi():
-    """Modern crisp WiFi signal icon: 3 smooth concentric arc bands + base dot"""
+    """Ultra-clean premium Wi-Fi signal icon: 3 smooth solid arcs"""
     img = make_canvas()
     d = ImageDraw.Draw(img)
     S = DRAW_SIZE
     cx = S // 2
-    cy_dot = S - 6
+    cy_base = S - 3
     
     # Outer arc
-    d.arc([cx - 16, cy_dot - 28, cx + 16, cy_dot + 4], start=210, end=330, fill=0, width=4)
+    d.arc([cx - 17, cy_base - 31, cx + 17, cy_base + 3], start=215, end=325, fill=0, width=5)
     # Middle arc
-    d.arc([cx - 11, cy_dot - 20, cx + 11, cy_dot + 2], start=210, end=330, fill=0, width=4)
+    d.arc([cx - 11, cy_base - 21, cx + 11, cy_base + 1], start=215, end=325, fill=0, width=5)
     # Inner arc
-    d.arc([cx - 6, cy_dot - 12, cx + 6, cy_dot], start=210, end=330, fill=0, width=4)
-    # Center dot
-    d.ellipse([cx - 3, cy_dot - 3, cx + 3, cy_dot + 3], fill=0)
+    d.arc([cx - 5, cy_base - 11, cx + 5, cy_base - 1], start=215, end=325, fill=0, width=4)
     return img
+
+def draw_bluetooth():
+    """Ultra-crisp Nordic Bluetooth rune symbol with symmetric wings and top/bottom tails"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx = S // 2
+    
+    # Spine line
+    d.line([cx, 2, cx, S - 2], fill=0, width=4)
+    # Upper & Lower diagonal wings forming the signature B rune
+    # Top-left to mid-right, mid-right to mid-left (crossing center), mid-left to bot-right, bot-right to bottom-center
+    d.line([(cx - 8, 10), (cx + 9, 18), (cx - 8, 28), (cx + 9, 36), (cx, 40)], fill=0, width=4)
+    d.line([(cx, 0), (cx + 9, 8), (cx - 8, 18)], fill=0, width=4)
+    return img
+
+
 
 
 def draw_wifi_off():
@@ -327,6 +342,65 @@ def draw_reset():
     d.ellipse([cx - 2, 28, cx + 2, 32], fill=255)
     return img
 
+def draw_bluetooth():
+    """Crisp Bluetooth rune symbol"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx, cy = S // 2, S // 2
+    
+    # Spine vertical line
+    d.line([cx, 4, cx, S - 4], fill=0, width=5)
+    # Upper B wing
+    d.line([cx, 4, cx + 10, 12, cx - 8, 22, cx + 10, 30, cx, S - 4], fill=0, width=4)
+    return img
+
+def draw_volume():
+    """Speaker icon with sound wave lines"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx, cy = S // 2, S // 2
+    
+    # Speaker cone
+    d.polygon([(4, cy - 6), (12, cy - 6), (22, 6), (22, S - 6), (12, cy + 6), (4, cy + 6)], fill=0)
+    # Sound arcs
+    d.arc([cx + 2, cy - 10, cx + 14, cy + 10], start=300, end=60, fill=0, width=4)
+    d.arc([cx + 6, cy - 16, cx + 20, cy + 16], start=300, end=60, fill=0, width=4)
+    return img
+
+def draw_sun():
+    """Sun brightness symbol: central circle + 8 rays"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx, cy = S // 2, S // 2
+    
+    r_sun = 9
+    d.ellipse([cx - r_sun, cy - r_sun, cx + r_sun, cy + r_sun], fill=0)
+    # 8 radiating rays
+    for i in range(8):
+        angle = math.radians(i * 45)
+        x1 = int(cx + 12 * math.cos(angle))
+        y1 = int(cy + 12 * math.sin(angle))
+        x2 = int(cx + 17 * math.cos(angle))
+        y2 = int(cy + 17 * math.sin(angle))
+        d.line([x1, y1, x2, y2], fill=0, width=3)
+    return img
+
+def draw_moon():
+    """Crescent moon night mode symbol"""
+    img = make_canvas()
+    d = ImageDraw.Draw(img)
+    S = DRAW_SIZE
+    cx, cy = S // 2, S // 2
+    
+    # Outer circle
+    d.ellipse([cx - 15, cy - 15, cx + 15, cy + 15], fill=0)
+    # Inner cutout to form crescent
+    d.ellipse([cx - 8, cy - 18, cx + 22, cy + 12], fill=255)
+    return img
+
 def draw_rotate():
     img = make_canvas()
     d = ImageDraw.Draw(img)
@@ -341,6 +415,7 @@ def draw_rotate():
     # Arrow tip triangle
     d.polygon([(ax, ay), (ax+8, ay-4), (ax+5, ay+6)], fill=0)
     return img
+
 
 
 def draw_play():
@@ -503,7 +578,12 @@ ICONS = {
     "ICON_BMP_SPARK":         draw_spark,
     "ICON_BMP_POWER":         draw_power,
     "ICON_BMP_RESET":         draw_reset,
+    "ICON_BMP_BLUETOOTH":     draw_bluetooth,
+    "ICON_BMP_VOLUME":        draw_volume,
+    "ICON_BMP_SUN":           draw_sun,
+    "ICON_BMP_MOON":          draw_moon,
 }
+
 
 
 # ── Main ─────────────────────────────────────────────────────────────────

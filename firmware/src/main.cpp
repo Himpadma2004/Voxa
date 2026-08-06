@@ -18,7 +18,9 @@
 #include "screens/RecordingsLibraryScreen.h"
 #include "screens/AudioPlayerScreen.h"
 #include "screens/WiFiSettingsScreen.h"
+#include "screens/BluetoothSettingsScreen.h"
 #include "screens/TextInputScreen.h"
+
 #include "screens/TasksScreen.h"
 #include "screens/Transition.h"
 #include "services/TimeService.h"
@@ -77,7 +79,9 @@ DetailScreen detailScreen;
 RecordingsLibraryScreen recordingsLibraryScreen;
 AudioPlayerScreen audioPlayerScreen;
 WiFiSettingsScreen wifiSettingsScreen;
+BluetoothSettingsScreen bluetoothSettingsScreen;
 TextInputScreen textInputScreen;
+
 TasksScreen tasksScreen;
 
 ScreenId activeScreen = ScreenId::Home;
@@ -544,7 +548,12 @@ void loop()
     Serial.println("Opening Wi-Fi Settings Screen...");
     nextScreen = wifiSettingsScreen.show(touch);
     break;
+  case ScreenId::BluetoothSettings:
+    Serial.println("Opening Bluetooth Settings Screen...");
+    nextScreen = bluetoothSettingsScreen.show(touch);
+    break;
   case ScreenId::TextInput:
+
     Serial.println("Opening Text Input Screen...");
     nextScreen = textInputScreen.show(touch);
     break;

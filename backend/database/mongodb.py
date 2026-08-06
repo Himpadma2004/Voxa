@@ -18,6 +18,8 @@ try:
 except Exception as dns_err:
     print(f"Warning: Could not set custom DNS resolver: {dns_err}")
 
+import certifi
+
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB = os.getenv("MONGO_DB")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION")
@@ -25,6 +27,7 @@ MONGO_COLLECTION = os.getenv("MONGO_COLLECTION")
 try:
     client = MongoClient(
         MONGO_URI,
+        tlsCAFile=certifi.where(),
         serverSelectionTimeoutMS=10000,
         connectTimeoutMS=10000,
         socketTimeoutMS=10000
@@ -36,7 +39,23 @@ try:
         "MongoDB Connected"
     )
 
-except Exception as e:
+except Exception as ssl_err:
+    print(f"Standard TLS connection failed ({ssl_err}). Retrying with SSL fallback options...")
+    try:
+        client = MongoClient(
+            MONGO_URI,
+            tls=True,
+            tlsAllowInvalidCertificates=True,
+            serverSelectionTimeoutMS=10000,
+            connectTimeoutMS=10000,
+            socketTimeoutMS=10000
+        )
+        client.admin.command("ping")
+        print("MongoDB Connected (with SSL fallback)")
+    except Exception as e:
+        print("MongoDB Connection Error:", e)
+        raise e
+
     print(
         f"MongoDB Connection Error: {e}"
     )

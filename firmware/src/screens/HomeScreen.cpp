@@ -7,6 +7,8 @@
 #include "../services/QuestionService.h"
 #include "../services/RecordingService.h"
 #include "../services/DataService.h"
+#include "../ui/QuickPanel.h"
+
 #include <array>
 #include <cmath>
 #include <algorithm>
@@ -549,11 +551,12 @@ namespace VOXA
 
             m_elapsed += deltaSecs;
 
-            // 1. Process touch gestures and pressed feedback updates
-            if (entryFrame >= 10)
+            // 1. Process touch gestures and pressed feedback updates (bypassed if QuickPanel is active)
+            if (entryFrame >= 10 && !QuickPanel::instance().isOpen())
             {
                 processTouch(touch, w, h, remCount, ideaCount, qCount, taskCount, memCount, targetScreen);
             }
+
 
             // Re-query dimensions inside the loop since rotation changes width and height on-the-fly!
             w = Display::width();
@@ -624,7 +627,16 @@ namespace VOXA
             dotActive = std::max(0, std::min(1, dotActive));
             ScreenCommon::renderPageDots(target, dotActive, 2, w, h);
 
+            // 6b. Process & Render Quick Panel Overlay (Pull-Down Control Center)
+            ScreenId qpNav = QuickPanel::instance().process(touch, target, w, h);
+            if (qpNav != ScreenId::Home)
+            {
+                targetScreen = qpNav;
+            }
+
+
             // 7. Push render buffer sprite to screen
+
             if (useSprite)
             {
                 if (entryFrame < 10)
