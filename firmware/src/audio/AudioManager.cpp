@@ -1,7 +1,12 @@
 #include "AudioManager.h"
 #include "../storage/StorageManager.h"
+#include "../services/ApiClient.h"
 #include <cmath>
 #include <algorithm>
+#include <HTTPClient.h>
+#include <WiFi.h>
+
+
 
 namespace VOXA
 {
@@ -243,9 +248,136 @@ namespace VOXA
         return true;
     }
 
+    void AudioManager::playBootChimeAsync()
+    {
+        stop();
+        xTaskCreatePinnedToCore(
+            [](void* param)
+            {
+                // Futuristic VOXA Boot Chime sequence: C5 (523Hz) -> E5 (659Hz) -> G5 (784Hz) -> C6 (1046Hz)
+                AudioManager::instance().playTone(523, 90);
+                delay(20);
+                AudioManager::instance().playTone(659, 90);
+                delay(20);
+                AudioManager::instance().playTone(784, 90);
+                delay(20);
+                AudioManager::instance().playTone(1046, 220);
+                AudioManager::instance().m_audioTaskHandle = nullptr;
+                vTaskDelete(NULL);
+            },
+            "BootChime",
+            4096,
+            nullptr,
+            1,
+            &m_audioTaskHandle,
+            0
+        );
+    }
+
+    bool AudioManager::playUrl(const std::string& url)
+    {
+        if (!m_initialized || url.empty())
+        {
+            Serial.println("[Audio] Playback failed: Invalid URL or audio engine uninitialized");
+            return false;
+        }
+
+        Serial.printf("[Audio] Streaming audio from AWS S3/HTTP URL: %s\n", url.c_str());
+
+        HTTPClient http;
+        if (!http.begin(url.c_str()))
+        {
+            Serial.println("[Audio] HTTP begin failed for streaming URL");
+            return false;
+        }
+
+        int httpCode = http.GET();
+        if (httpCode != HTTP_CODE_OK && httpCode != 206)
+        {
+            Serial.printf("[Audio] HTTP GET audio failed with status code: %d\n", httpCode);
+            http.end();
+            return false;
+        }
+
+        WiFiClient* stream = http.getStreamPtr();
+        if (!stream)
+        {
+            Serial.println("[Audio] HTTP stream pointer NULL");
+            http.end();
+            return false;
+        }
+
+        // Check for 44-byte WAV header if present
+        uint8_t header[44];
+        size_t headerRead = stream->readBytes(header, 44);
+        if (headerRead == 44 && header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F')
+        {
+            Serial.println("[Audio] Stream WAV header verified (RIFF/WAVE)");
+        }
+
+        m_isPlaying = true;
+        constexpr size_t BUFFER_SAMPLES = 512;
+        int16_t pcmBuffer[BUFFER_SAMPLES];
+
+        while (http.connected() && (stream->available() > 0 || m_isPlaying))
+        {
+            if (!m_isPlaying) break;
+
+            size_t bytesRead = stream->readBytes((uint8_t*)pcmBuffer, BUFFER_SAMPLES * sizeof(int16_t));
+            size_t samplesRead = bytesRead / sizeof(int16_t);
+            if (samplesRead > 0)
+            {
+                writePCMChunk(pcmBuffer, samplesRead);
+            }
+            else
+            {
+                delay(2);
+            }
+        }
+
+        http.end();
+        m_isPlaying = false;
+        Serial.println("[Audio] Finished streaming audio URL!");
+        return true;
+    }
+
+    bool AudioManager::playUrlAsync(const std::string& url)
+    {
+        stop();
+        static std::string s_asyncUrl;
+        s_asyncUrl = url;
+
+        xTaskCreatePinnedToCore(
+            [](void* param)
+            {
+                const char* streamUrl = static_cast<const char*>(param);
+                AudioManager::instance().playUrl(std::string(streamUrl));
+                AudioManager::instance().m_audioTaskHandle = nullptr;
+                vTaskDelete(NULL);
+            },
+            "AudioUrlAsync",
+            8192,
+            (void*)s_asyncUrl.c_str(),
+            1,
+            &m_audioTaskHandle,
+            0
+        );
+        return true;
+    }
+
     bool AudioManager::playWavAsync(const std::string& path)
     {
         stop(); // Stop active playback and delete any existing task
+
+        if (path.find("http://") == 0 || path.find("https://") == 0)
+        {
+            return playUrlAsync(path);
+        }
+        if (path.find("/api/") == 0)
+        {
+            return playUrlAsync(VOXA::apiClient.getBaseUrl() + path);
+        }
+
 
         static std::string s_asyncPath;
         s_asyncPath = path;
@@ -268,6 +400,7 @@ namespace VOXA
 
         return true;
     }
+
 
     bool AudioManager::playWav(const std::string& path)
     {

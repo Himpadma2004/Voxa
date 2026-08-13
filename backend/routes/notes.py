@@ -132,6 +132,11 @@ def read_all_notes(
             raw_docs.sort(key=_sort_key, reverse=True)
             items = _build_category_items(serialize_mongo_doc(raw_docs), "Task")
 
+        elif category_key in ("reminders", "reminder"):
+            raw_docs = list(reminders_collection.find())
+            raw_docs.sort(key=_sort_key, reverse=True)
+            items = _build_category_items(serialize_mongo_doc(raw_docs), "Reminder")
+
         elif category_key in ("others", "other", "notes"):
             raw_docs = list(others_collection.find())
             raw_docs.sort(key=_sort_key, reverse=True)

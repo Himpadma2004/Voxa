@@ -143,8 +143,8 @@ namespace
           continue;
         }
 
-        // Sync on reconnection OR if 60 seconds have elapsed since the last sync
-        if (!lastConnected || (now - lastSyncMs >= 60000) || lastSyncMs == 0)
+        // Sync on reconnection OR if 10 seconds have elapsed since the last sync
+        if (!lastConnected || (now - lastSyncMs >= 10000) || lastSyncMs == 0)
         {
           Serial.println("[DataSync] Syncing backend data in background...");
           VOXA::dataService.syncAll();
@@ -153,7 +153,7 @@ namespace
       }
 
       lastConnected = connected;
-      vTaskDelay(pdMS_TO_TICKS(5000)); // Check connectivity state every 5 seconds
+      vTaskDelay(pdMS_TO_TICKS(3000)); // Check connectivity state every 3 seconds
     }
   }
 
@@ -228,10 +228,47 @@ namespace
             rec.timestamp = "Uploaded";
             recordingService.update(rec);
 
-            // Live Update: Wait 1.2 seconds for backend Whisper + LLM processing, then SYNC ALL IMMEDIATELY!
-            vTaskDelay(pdMS_TO_TICKS(1200));
+            // Extract audio_id from upload response for status polling
+            std::string audioId = "";
+            JsonDocument uploadDoc;
+            if (!deserializeJson(uploadDoc, res.body.c_str()))
+            {
+              audioId = uploadDoc["audio_id"] | "";
+            }
+
+            // Live Update: Poll /api/notes/{audio_id} until processed by Whisper + LLM
+            bool processed = false;
+            if (!audioId.empty())
+            {
+              std::string checkEp = "/api/notes/" + audioId;
+              for (int poll = 0; poll < 12; poll++)
+              {
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                ApiResult noteRes = apiClient.get(checkEp);
+                if (noteRes.httpCode == 200)
+                {
+                  JsonDocument noteDoc;
+                  if (!deserializeJson(noteDoc, noteRes.body.c_str()))
+                  {
+                    std::string st = noteDoc["note"]["status"] | "";
+                    if (st == "processed")
+                    {
+                      Serial.printf("[BackgroundUpload] Note %s finished LLM processing!\n", audioId.c_str());
+                      processed = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (!processed)
+            {
+              vTaskDelay(pdMS_TO_TICKS(1500));
+            }
+
             VOXA::dataService.syncAll();
-            Serial.println("[BackgroundUpload] Live DataSync complete — reflected in UI within seconds!");
+            Serial.println("[BackgroundUpload] Live DataSync complete — reflected in UI instantly!");
           }
           else
           {

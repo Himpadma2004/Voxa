@@ -83,6 +83,23 @@ namespace VOXA
         bool playWav(const String &path) { return playWav(std::string(path.c_str())); }
 
         /**
+         * @brief Plays audio from an AWS S3 or HTTP URL endpoint.
+         * @param url Full HTTP/HTTPS or S3 pre-signed URL
+         * @return true if streaming playback succeeded.
+         */
+        bool playUrl(const std::string &url);
+        bool playUrl(const String &url) { return playUrl(std::string(url.c_str())); }
+
+        bool playUrlAsync(const std::string &url);
+        bool playUrlAsync(const String &url) { return playUrlAsync(std::string(url.c_str())); }
+
+        /**
+         * @brief Plays futuristic VOXA boot chime sequence in background.
+         */
+        void playBootChimeAsync();
+
+
+        /**
          * @brief Plays a buffer of 16-bit signed PCM mono audio samples.
          * @param samples Pointer to sample array
          * @param sampleCount Number of 16-bit samples

@@ -1,11 +1,13 @@
 #include "BootScreen.h"
 #include "../ui/Theme.h"
+#include "../audio/AudioManager.h"
 #include <cmath>
 #include <algorithm>
 
 BootScreen::BootScreen()
 {
 }
+
 
 void BootScreen::drawBackground(LGFX_Sprite& canvas, uint16_t w, uint16_t h)
 {
@@ -129,7 +131,11 @@ void BootScreen::show()
     }
     canvas.fillScreen(TFT_BLACK);
 
+    // Trigger boot screen chime audio
+    VOXA::AudioManager::instance().playBootChimeAsync();
+
     uint32_t startMs = millis();
+
     constexpr float durationSecs = 1.8f; // Fast, responsive boot animation
 
     while (true)

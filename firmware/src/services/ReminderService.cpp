@@ -1,4 +1,5 @@
 #include "ReminderService.h"
+#include "DataService.h"
 #include "../reminders/ReminderManager.h"
 #include <ctime>
 
@@ -33,7 +34,27 @@ namespace VOXA
 
     std::vector<Reminder> ReminderService::getAll()
     {
-        return ReminderManager::instance().getAllReminders();
+        auto synced = dataService.getReminders();
+        auto local = ReminderManager::instance().getAllReminders();
+
+        for (const auto& loc : local)
+        {
+            bool found = false;
+            for (const auto& syn : synced)
+            {
+                if (syn.id == loc.id || (!loc.title.empty() && syn.title == loc.title))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                synced.push_back(loc);
+            }
+        }
+
+        return synced;
     }
 
     std::vector<Reminder> ReminderService::getPending()
@@ -43,7 +64,7 @@ namespace VOXA
         pending.reserve(all.size());
         for (const auto& r : all)
         {
-            if (r.status != ReminderStatus::COMPLETED)
+            if (!r.completed && r.status != ReminderStatus::COMPLETED)
             {
                 pending.push_back(r);
             }
@@ -61,27 +82,23 @@ namespace VOXA
         time_t due = parseDateTimeStringToTime(dateTime);
         ReminderManager::instance().addReminder(title, "", due);
         
-        // Return the newly created reminder
-        auto all = getAll();
-        if (!all.empty())
-        {
-            return all.back();
-        }
-        
         Reminder r;
         r.title = title;
         r.dateTime = dateTime;
         r.reminderTime = due;
+        dataService.addReminderLocal(r);
         return r;
     }
 
     bool ReminderService::markComplete(uint32_t id)
     {
-        return ReminderManager::instance().dismissReminder(id);
+        ReminderManager::instance().dismissReminder(id);
+        return dataService.removeReminderLocal(id);
     }
 
     bool ReminderService::remove(uint32_t id)
     {
-        return ReminderManager::instance().deleteReminder(id);
+        ReminderManager::instance().deleteReminder(id);
+        return dataService.removeReminderLocal(id);
     }
 }

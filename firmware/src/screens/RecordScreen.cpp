@@ -8,7 +8,9 @@
 #include "../services/DataService.h"
 #include "../services/SDCardService.h"
 #include "../storage/SpiffsMutex.h"
+#include "../audio/AudioManager.h"
 #include "Transition.h"
+
 #include <cmath>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -223,6 +225,7 @@ namespace VOXA
 
                             if (microphoneService.startRecording(s_recUploadPath, "RecordScreen::micButtonPressed"))
                             {
+                                AudioManager::instance().playTone(1200, 80);
                                 uiState = UIState::Recording;
                             }
                         }
@@ -232,7 +235,9 @@ namespace VOXA
                             if (microphoneService.getDurationMs() >= MIN_RECORDING_MS)
                             {
                                 Serial.println("[RecordScreen] Stop button pressed -> Executing stopRecording()");
+                                AudioManager::instance().playTone(800, 80);
                                 bool stopOk = microphoneService.stopRecording("RecordScreen::micButtonToggle", "user_button_tap");
+
                                 if (stopOk)
                                 {
                                     s_recUploadDone = false;

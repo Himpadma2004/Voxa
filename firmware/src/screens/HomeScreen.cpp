@@ -8,6 +8,8 @@
 #include "../services/RecordingService.h"
 #include "../services/DataService.h"
 #include "../ui/QuickPanel.h"
+#include "../audio/AudioManager.h"
+
 
 #include <array>
 #include <cmath>
@@ -444,8 +446,10 @@ namespace VOXA
                         // Microphone button tap — navigate to Record Screen
                         if (m_isMicPressed)
                         {
+                            AudioManager::instance().playTone(1200, 80);
                             targetScreen = ScreenId::Record;
                         }
+
 
                         // Chevron navigation button tap
                         if (m_isChevronPressed)

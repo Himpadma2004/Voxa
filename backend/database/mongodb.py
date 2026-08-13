@@ -80,8 +80,10 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
     if not timestamp:
         timestamp = datetime.utcnow()
 
-    cat = str(llm_data.get("category", "Other")).strip().capitalize()
-    summary = llm_data.get("summary", "")
+    cat_raw = str(llm_data.get("category", "Other")).strip()
+    cat_clean = cat_raw.lower().rstrip('s')
+    summary = (llm_data.get("summary") or "").strip()
+
     ideas = llm_data.get("ideas") or []
     questions = llm_data.get("questions") or []
     tasks = llm_data.get("tasks") or []
@@ -89,13 +91,13 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
     notes = llm_data.get("notes") or []
     thoughts = llm_data.get("thoughts") or []
 
-    has_specific_category = False
+    items_stored = False
 
     # 1. Store in Ideas Collection
     for idea in ideas:
-        text = idea.get("text") or idea.get("title") or str(idea) if isinstance(idea, dict) else str(idea)
+        text = idea.get("text") or idea.get("title") or idea.get("content") or str(idea) if isinstance(idea, dict) else str(idea)
         if text and text.strip():
-            has_specific_category = True
+            items_stored = True
             if not ideas_collection.find_one({"audio_id": audio_id, "title": text.strip()}):
                 ideas_collection.insert_one({
                     "item_id": str(uuid.uuid4()),
@@ -107,11 +109,24 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
                     "updated_at": timestamp
                 })
 
+    if not items_stored and cat_clean == "idea" and summary:
+        items_stored = True
+        if not ideas_collection.find_one({"audio_id": audio_id, "title": summary}):
+            ideas_collection.insert_one({
+                "item_id": str(uuid.uuid4()),
+                "audio_id": audio_id,
+                "title": summary,
+                "content": summary,
+                "category": "Idea",
+                "created_at": timestamp,
+                "updated_at": timestamp
+            })
+
     # 2. Store in Questions Collection
     for q in questions:
         text = q.get("text") or q.get("title") or q.get("question") or str(q) if isinstance(q, dict) else str(q)
         if text and text.strip():
-            has_specific_category = True
+            items_stored = True
             if not questions_collection.find_one({"audio_id": audio_id, "title": text.strip()}):
                 questions_collection.insert_one({
                     "item_id": str(uuid.uuid4()),
@@ -123,11 +138,24 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
                     "updated_at": timestamp
                 })
 
+    if not items_stored and cat_clean == "question" and summary:
+        items_stored = True
+        if not questions_collection.find_one({"audio_id": audio_id, "title": summary}):
+            questions_collection.insert_one({
+                "item_id": str(uuid.uuid4()),
+                "audio_id": audio_id,
+                "title": summary,
+                "content": summary,
+                "category": "Question",
+                "created_at": timestamp,
+                "updated_at": timestamp
+            })
+
     # 3. Store in Tasks Collection
     for t in tasks:
-        text = t.get("text") or t.get("title") or str(t) if isinstance(t, dict) else str(t)
+        text = t.get("text") or t.get("title") or t.get("task") or str(t) if isinstance(t, dict) else str(t)
         if text and text.strip():
-            has_specific_category = True
+            items_stored = True
             if not tasks_collection.find_one({"audio_id": audio_id, "title": text.strip()}):
                 tasks_collection.insert_one({
                     "item_id": str(uuid.uuid4()),
@@ -140,27 +168,69 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
                     "updated_at": timestamp
                 })
 
+    if not items_stored and cat_clean == "task" and summary:
+        items_stored = True
+        if not tasks_collection.find_one({"audio_id": audio_id, "title": summary}):
+            tasks_collection.insert_one({
+                "item_id": str(uuid.uuid4()),
+                "audio_id": audio_id,
+                "title": summary,
+                "content": summary,
+                "category": "Task",
+                "status": "pending",
+                "created_at": timestamp,
+                "updated_at": timestamp
+            })
+
     # 4. Store in Reminders Collection
+    from reminders.reminder_parser import extract_datetime
+
     for r in reminders:
-        title = r.get("text") or r.get("title") or str(r) if isinstance(r, dict) else str(r)
-        r_time = r.get("time") if isinstance(r, dict) else None
+        title = r.get("text") or r.get("title") or r.get("reminder") or r.get("action") or str(r) if isinstance(r, dict) else str(r)
+        r_time_raw = r.get("time") or r.get("due") or r.get("due_date") or r.get("date") if isinstance(r, dict) else None
+        
+        parsed_dt = extract_datetime(r_time_raw) if r_time_raw else None
+        if not parsed_dt and title:
+            parsed_dt = extract_datetime(title)
+        if not parsed_dt and summary:
+            parsed_dt = extract_datetime(summary)
+
+        reminder_time_val = parsed_dt if parsed_dt else (r_time_raw or summary)
+
         if title and title.strip():
-            has_specific_category = True
-            if not reminders_collection.find_one({"audio_id": audio_id, "title": title.strip()}):
+            items_stored = True
+            existing = reminders_collection.find_one({"audio_id": audio_id, "title": title.strip()})
+            if not existing:
                 reminders_collection.insert_one({
                     "reminder_id": str(uuid.uuid4()),
                     "audio_id": audio_id,
                     "title": title.strip(),
-                    "reminder_time": r_time,
+                    "reminder_time": reminder_time_val,
                     "status": "pending",
                     "created_at": timestamp
                 })
+            elif parsed_dt and not isinstance(existing.get("reminder_time"), datetime):
+                reminders_collection.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {"reminder_time": parsed_dt}}
+                )
 
-    if cat in ("Idea", "Question", "Task", "Reminder"):
-        has_specific_category = True
+    if not items_stored and cat_clean == "reminder" and summary:
+        items_stored = True
+        parsed_dt = extract_datetime(summary)
+        reminder_time_val = parsed_dt if parsed_dt else summary
+        if not reminders_collection.find_one({"audio_id": audio_id, "title": summary}):
+            reminders_collection.insert_one({
+                "reminder_id": str(uuid.uuid4()),
+                "audio_id": audio_id,
+                "title": summary,
+                "reminder_time": reminder_time_val,
+                "status": "pending",
+                "created_at": timestamp
+            })
 
     # 5. Store in Others Collection ONLY IF it was NOT categorized as Idea/Question/Task/Reminder!
-    if not has_specific_category:
+    if not items_stored:
         other_values = []
         if notes:
             other_values.extend([n.get("text") or n.get("content") or str(n) if isinstance(n, dict) else str(n) for n in notes])
@@ -177,7 +247,7 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
                         "audio_id": audio_id,
                         "title": text.strip(),
                         "content": text.strip(),
-                        "category": cat if cat in ("Note", "Thought") else "Other",
+                        "category": cat_raw if cat_clean in ("note", "thought") else "Other",
                         "created_at": timestamp,
                         "updated_at": timestamp
                     })
