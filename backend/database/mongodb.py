@@ -1,7 +1,7 @@
 import uuid
 from pymongo import MongoClient
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import dns.resolver
 
@@ -501,3 +501,17 @@ def get_all_notes():
     return list(
         collection.find()
     )
+
+
+def cleanup_old_reminders():
+    """
+    Cleans up legacy/old cleared or dismissed reminders older than 30 days.
+    """
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=30)
+        reminders_collection.delete_many({
+            "status": {"$in": ["cleared", "dismissed", "completed"]},
+            "created_at": {"$lt": cutoff}
+        })
+    except Exception as e:
+        print(f"[Cleanup] Error in cleanup_old_reminders: {e}")

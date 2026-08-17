@@ -40,13 +40,15 @@
 #include "services/MemoryService.h"
 #include "services/SearchService.h"
 #include "services/DataService.h"
-#include "services/SDCardService.h"
 #include "services/ApiClient.h"
 #include "storage/SpiffsMutex.h"
-#include "storage/StorageManager.h"
+#include "storage/StorageManager.h"  // SPIFFS-only mode
 #include "reminders/ReminderManager.h"
 #include "services/BatteryManager.h"
 #include "audio/AudioManager.h"
+#include "services/ButtonService.h"
+#include "services/PowerManager.h"
+// NOTE: SDCardService.h removed — SD card adapter physically unplugged.
 
 using namespace VOXA;
 
@@ -157,17 +159,18 @@ namespace
     }
   }
 
-  void backgroundUploadTask(void * /*param*/)
+  void backgroundUploadTask(void* /*param*/)
   {
+    // This task is now a lightweight retry monitor.
+    // Primary recording upload happens synchronously in MicrophoneService::stopRecording()
+    // (PSRAM buffer → HTTP POST). This task only handles recordings marked "Pending"
+    // that were left over if a previous upload failed.
     while (true)
     {
-      // Check for pending voice uploads every 1.5 seconds for fast live updates
-      vTaskDelay(pdMS_TO_TICKS(1500));
+      vTaskDelay(pdMS_TO_TICKS(5000)); // check every 5 seconds
 
       if (microphoneService.isBusy())
-      {
         continue;
-      }
 
       waitForWiFiConnection("BackgroundUpload");
 
@@ -177,128 +180,72 @@ namespace
         continue;
       }
 
+      // Sync from cloud to keep in-RAM data fresh
+      VOXA::dataService.syncAll();
+
+      // Check for any recordings still marked Pending (upload failed last time)
       auto recordings = recordingService.getAll();
-      for (auto &rec : recordings)
+      bool anySynced = false;
+      for (auto& rec : recordings)
       {
-        if (microphoneService.isBusy())
-        {
-          Serial.println("[BackgroundUpload] MicrophoneService started recording/saving. Pausing upload.");
-          break;
-        }
+        if (microphoneService.isBusy()) break;
 
         if (rec.timestamp == "Pending")
         {
-          // Prevent duplicate concurrent uploads
-          if (rec.filePath == g_currentlyUploadingPath)
-          {
-            Serial.printf("[BackgroundUpload] File %s is already being uploaded. Skipping.\n", rec.filePath.c_str());
-            continue;
-          }
-
-          Serial.printf("[BackgroundUpload] Found pending voice note: %s\n", rec.filePath.c_str());
-
-          // Check server availability before attempting upload
-          if (!apiClient.isHealthy())
-          {
-            Serial.println("[BackgroundUpload] Server unreachable. Will retry later.");
-            break; // Stop iterating if server is unreachable
-          }
-
-          g_currentlyUploadingPath = rec.filePath;
-          ApiResult res = apiClient.uploadVoice(rec.filePath);
-          g_currentlyUploadingPath = "";
-          if (res.success)
-          {
-            Serial.printf("[BackgroundUpload] Successfully uploaded pending note: %s\n", res.text.c_str());
-
-            // Delete WAV from SPIFFS — it's been uploaded
-            {
-              SpiffsLock lock("BackgroundUpload::deleteAfterUpload");
-              if (SPIFFS.remove(rec.filePath.c_str()))
-              {
-                Serial.printf("[BackgroundUpload] Deleted uploaded WAV from SPIFFS: %s\n", rec.filePath.c_str());
-              }
-              else
-              {
-                Serial.printf("[BackgroundUpload] WARNING: Failed to delete WAV: %s\n", rec.filePath.c_str());
-              }
-            }
-
-            rec.title = res.text;
-            rec.timestamp = "Uploaded";
-            recordingService.update(rec);
-
-            // Extract audio_id from upload response for status polling
-            std::string audioId = "";
-            JsonDocument uploadDoc;
-            if (!deserializeJson(uploadDoc, res.body.c_str()))
-            {
-              audioId = uploadDoc["audio_id"] | "";
-            }
-
-            // Live Update: Poll /api/notes/{audio_id} until processed by Whisper + LLM
-            bool processed = false;
-            if (!audioId.empty())
-            {
-              std::string checkEp = "/api/notes/" + audioId;
-              for (int poll = 0; poll < 12; poll++)
-              {
-                vTaskDelay(pdMS_TO_TICKS(1500));
-                ApiResult noteRes = apiClient.get(checkEp);
-                if (noteRes.httpCode == 200)
-                {
-                  JsonDocument noteDoc;
-                  if (!deserializeJson(noteDoc, noteRes.body.c_str()))
-                  {
-                    std::string st = noteDoc["note"]["status"] | "";
-                    if (st == "processed")
-                    {
-                      Serial.printf("[BackgroundUpload] Note %s finished LLM processing!\n", audioId.c_str());
-                      processed = true;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-
-            if (!processed)
-            {
-              vTaskDelay(pdMS_TO_TICKS(1500));
-            }
-
-            VOXA::dataService.syncAll();
-            Serial.println("[BackgroundUpload] Live DataSync complete — reflected in UI instantly!");
-          }
-          else
-          {
-            Serial.printf("[BackgroundUpload] Upload failed: %s\n", res.error.c_str());
-            // Don't retry forever: a 0-byte/empty file can never succeed.
-            // Mark it Failed so it stops clogging the retry queue.
-            if (res.error.find("empty") != std::string::npos ||
-                res.error.find("not found") != std::string::npos)
-            {
-              rec.timestamp = "Failed";
-              recordingService.update(rec);
-              Serial.printf("[BackgroundUpload] Giving up on unrecoverable file: %s\n", rec.filePath.c_str());
-            }
-          }
-
-          // Delay 2 seconds between consecutive uploads
-          vTaskDelay(pdMS_TO_TICKS(2000));
+          Serial.printf("[BackgroundUpload] Found Pending record: ID=%u title=%s\n",
+                        rec.id, rec.title.c_str());
+          // Mark as Failed so it doesn't retry forever if there's no local file
+          rec.timestamp = "Failed";
+          recordingService.update(rec);
+          Serial.println("[BackgroundUpload] Marked stale Pending record as Failed.");
+          anySynced = true;
         }
+      }
+
+      if (anySynced)
+      {
+        VOXA::dataService.syncAll();
+        Serial.println("[BackgroundUpload] Sync complete after cleanup.");
       }
     }
   }
 }
+
 
 void setup()
 {
   Serial.begin(115200);
   delay(500);
 
-  Serial.println("=================================");
-  Serial.println("VOXA Firmware Starting...");
+  // ── Deep Sleep Wakeup Check (Hold Power Button to Power ON) ───────────
+  esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
+  if (wakeupCause == ESP_SLEEP_WAKEUP_EXT0 || wakeupCause == ESP_SLEEP_WAKEUP_GPIO)
+  {
+    Serial.println("[Power] Woken from Deep Sleep via Power Button (GPIO 1)");
+    pinMode(GPIO_NUM_1, INPUT_PULLUP);
+
+    // Require holding button for at least ~350ms to turn on (prevents pocket/bump turn-ons)
+    uint32_t pressStart = millis();
+    bool holdConfirmed = true;
+    while (millis() - pressStart < 350)
+    {
+      if (digitalRead(GPIO_NUM_1) == HIGH)
+      {
+        holdConfirmed = false;
+        break;
+      }
+      delay(15);
+    }
+
+    if (!holdConfirmed)
+    {
+      Serial.println("[Power] Power button released too quickly (<350ms). Returning to Deep Sleep.");
+      esp_sleep_enable_ext0_wakeup(GPIO_NUM_1, 0);
+      esp_deep_sleep_start();
+    }
+
+    Serial.println("[Power] Power button hold confirmed (>350ms). Powering ON VOXA!");
+  }
 
   // ── Battery Power Stability: Disable Brownout Detector ─────────────────
   // On battery, voltage sags during WiFi radio bursts + display refresh.
@@ -327,10 +274,10 @@ void setup()
   // Show boot screen immediately to give visual feedback
   boot.show();
 
-  Serial.println("[Startup] Storage Subsystem (MicroSD + SPIFFS Architecture)");
-  delay(300); // let the power rail fully settle before SD subsystem's heavy current draw starts
-              // 150ms was enough on USB; battery regulators need ~300ms to stabilize
-  storageManager.begin();
+  Serial.println("[Startup] Storage Subsystem (SPIFFS — cloud-primary mode)");
+  delay(100);
+  storageManager.begin(); // mounts SPIFFS only; SD card adapter removed
+
 
   Serial.println("[Startup] Preferences");
   apiClient.begin();
@@ -548,8 +495,16 @@ void setup()
 
   Serial.println("[Startup] AudioManager (MAX98357A I2S Mono Speaker System)");
   AudioManager::instance().begin();
-  AudioManager::instance().runDiagnostics();
-  Serial.println("[Startup] AudioManager ready");
+  AudioManager::instance().startBackgroundMusicLoop();
+  Serial.println("[Startup] AudioManager ready - Background Music Loop Running");
+
+  Serial.println("[Startup] ButtonService (Physical Long-Press Record Button on GPIO 1)");
+  buttonService.begin(PHYSICAL_BUTTON_PIN);
+  Serial.println("[Startup] ButtonService ready");
+
+  Serial.println("[Startup] PowerManager (Smartphone-style Sleep/Wake, Auto-Sleep Timeout: 30s)");
+  PowerManager::instance().begin(30000);
+  Serial.println("[Startup] PowerManager ready");
 
   Serial.println("Boot complete. Starting main screen loop...");
   xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);
@@ -558,6 +513,13 @@ void setup()
 
 void loop()
 {
+  PowerManager::instance().tick();
+
+  if (ButtonService::isDirectRecordRequested())
+  {
+    activeScreen = ScreenId::Record;
+  }
+
   ScreenId nextScreen = activeScreen;
 
   switch (activeScreen)

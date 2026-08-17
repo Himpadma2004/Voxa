@@ -55,6 +55,9 @@ def _normalize_reminder(reminder, index):
     }
 
 
+from database.mongodb import cleanup_old_reminders
+
+
 @router.get("")
 def read_all_reminders(
     request: Request,
@@ -65,6 +68,7 @@ def read_all_reminders(
     Fetch all calendar reminders from MongoDB.
     """
     try:
+        cleanup_old_reminders()
         ip = request.client.host
         set_esp32_ip(ip)
         reminders = load_all_reminders()

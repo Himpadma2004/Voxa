@@ -35,7 +35,7 @@ namespace VOXA
         uint32_t lastMs = millis();
 
         auto reminders = reminderService.getAll();
-        float contentHeight = reminders.size() * 50.0f + 10.0f;
+        float contentHeight = reminders.size() * 54.0f + 10.0f;
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
@@ -60,7 +60,7 @@ namespace VOXA
 
             // Handle background sync update
             reminders = reminderService.getAll();
-            contentHeight = reminders.size() * 50.0f + 10.0f;
+            contentHeight = reminders.size() * 54.0f + 10.0f;
 
             // Process Touch
             uint16_t tx = 0, ty = 0;
@@ -372,8 +372,8 @@ namespace VOXA
 
             for (std::size_t i = 0; i < reminders.size(); ++i)
             {
-                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                if (itemY + 44.0f < 70.0f || itemY > (70.0f + visibleHeight))
+                float itemY = 72.0f + i * 54.0f - m_scrollY;
+                if (itemY + 48.0f < 70.0f || itemY > (70.0f + visibleHeight))
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
@@ -382,12 +382,12 @@ namespace VOXA
                 uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
                 uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : (isItemChecked ? VoxaTheme::getPrimary() : VoxaTheme::getDivider());
                 uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
+                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimaryLight();
 
-                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
-                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
+                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 48, 8, cardBg);
+                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 48, 8, cardBorder);
 
-                float cy = itemY + 22.0f;
+                float cy = itemY + 24.0f;
                 float iconCx = leftX + 22.0f;
                 float textOffset = 42.0f;
 
@@ -414,10 +414,12 @@ namespace VOXA
                 std::string drawTitle = reminders[i].title;
                 if (drawTitle.length() > 15) drawTitle = drawTitle.substr(0, 13) + "...";
 
-                canvas.drawString(drawTitle.c_str(), leftX + textOffset, cy - 8.0f);
+                canvas.drawString(drawTitle.c_str(), leftX + textOffset, cy - 10.0f);
+
+                std::string timerStr = DataService::formatCountdownTimer(reminders[i].dateTime);
 
                 canvas.setTextColor(subColor);
-                canvas.drawString(reminders[i].dateTime.c_str(), leftX + textOffset, cy + 8.0f);
+                canvas.drawString(timerStr.c_str(), leftX + textOffset, cy + 9.0f);
 
                 // Draw Pin indicator if pinned
                 if (reminders[i].pinned)

@@ -1,15 +1,17 @@
 #include "ApiClient.h"
-#include "SDCardService.h"
 #include "../storage/SpiffsMutex.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
 #include <SPIFFS.h>
-#include <SD.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <Arduino.h>
 #include <algorithm>
+
+// NOTE: SDCardService / SD.h removed — SD card adapter physically unplugged.
+// uploadVoiceFromBuffer() is the primary upload path (PSRAM → HTTP).
+// uploadVoice(filePath) is kept as a SPIFFS-based retry path only.
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 #define API_BOUNDARY "VoxaBoundary9C4F2A1D"
@@ -215,11 +217,82 @@ namespace VOXA
         return json.compare(val, 4, "true") == 0;
     }
 
-    // ── Voice Upload ──────────────────────────────────────────────────────────
-    // Uses ESP32's HTTPClient library instead of raw WiFiClient.
-    // HTTPClient handles connection lifecycle, TCP options, and response reading
-    // internally — avoiding all the raw-socket issues (RST at 32KB, EBADF on
-    // setNoDelay, concurrent socket starvation) that plagued the custom approach.
+    // ── Voice Upload: Buffer → Cloud (Primary Path) ──────────────────────────
+    // Posts raw WAV bytes directly from PSRAM/DRAM to the backend.
+    // No SPIFFS write needed — the audio lives in the PSRAM buffer until upload.
+    ApiResult ApiClient::uploadVoiceFromBuffer(const uint8_t* buf, size_t size)
+    {
+        ApiResult result;
+
+        if (WiFi.status() != WL_CONNECTED)
+        {
+            result.error = "No Wi-Fi connection";
+            Serial.println("[UploadBuffer] Aborted — no Wi-Fi");
+            return result;
+        }
+        if (!buf || size == 0)
+        {
+            result.error = "Empty audio buffer";
+            Serial.println("[UploadBuffer] Aborted — buffer is null or empty");
+            return result;
+        }
+
+        const String url = String(m_baseUrl.c_str()) + "/api/voice/upload-raw";
+        Serial.printf("[UploadBuffer] Posting %u bytes -> %s\n", (unsigned)size, url.c_str());
+
+        const int    MAX_ATTEMPTS       = 3;
+        const uint32_t RETRY_DELAY_MS[] = {500, 1500, 3000};
+        int httpCode = 0;
+
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt)
+        {
+            HTTPClient http;
+            http.begin(url);
+            http.setTimeout(60000);
+            http.addHeader("Content-Type", "audio/wav");
+
+            httpCode = http.POST(const_cast<uint8_t*>(buf), size);
+            Serial.printf("[UploadBuffer] Attempt %d/%d — HTTP %d\n", attempt, MAX_ATTEMPTS, httpCode);
+            result.httpCode = httpCode;
+
+            if (httpCode == HTTP_CODE_OK || httpCode == 201)
+            {
+                const String body = http.getString();
+                result.body    = body.c_str();
+                result.success = true;
+                result.text    = parseTextField(result.body);
+                Serial.printf("[UploadBuffer] SUCCESS — audio_id: %s\n", result.text.c_str());
+                http.end();
+                break;
+            }
+            else if (httpCode < 0)
+            {
+                result.error = "Network error: " + std::string(http.errorToString(httpCode).c_str());
+                Serial.printf("[UploadBuffer] Network error: %s (%d)\n",
+                              http.errorToString(httpCode).c_str(), httpCode);
+                http.end();
+                if (attempt < MAX_ATTEMPTS)
+                {
+                    Serial.printf("[UploadBuffer] Retrying in %u ms...\n", RETRY_DELAY_MS[attempt - 1]);
+                    delay(RETRY_DELAY_MS[attempt - 1]);
+                    continue;
+                }
+            }
+            else
+            {
+                result.error = "HTTP " + std::to_string(httpCode);
+                result.body  = http.getString().c_str();
+                Serial.printf("[UploadBuffer] Server error %d: %s\n", httpCode, result.body.c_str());
+                http.end();
+                break;
+            }
+        }
+        return result;
+    }
+
+    // ── Voice Upload: SPIFFS → Cloud (Legacy / Retry Path) ───────────────────
+    // Used only for recordings that were staged to SPIFFS in a previous session.
+    // New recordings go through uploadVoiceFromBuffer() above.
     ApiResult ApiClient::uploadVoice(const std::string &filePath)
     {
         ApiResult result;

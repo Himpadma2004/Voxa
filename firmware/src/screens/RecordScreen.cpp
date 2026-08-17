@@ -6,55 +6,27 @@
 #include "../services/ApiClient.h"
 #include "../services/WiFiManager.h"
 #include "../services/DataService.h"
-#include "../services/SDCardService.h"
-#include "../storage/SpiffsMutex.h"
 #include "../audio/AudioManager.h"
+#include "../services/ButtonService.h"
+#include "../services/PowerManager.h"
 #include "Transition.h"
 
+// NOTE: SDCardService, SPIFFS, SD.h removed — SD card adapter unplugged.
+// Upload now happens inside MicrophoneService::stopRecording() (PSRAM → HTTP POST).
+// No SPIFFS file staging. No background upload task needed for the primary path.
+
 #include <cmath>
-#include <SPIFFS.h>
-#include <SD.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
 namespace
 {
-    // Upload background task shared state for RecordScreen
-    volatile bool s_recUploadDone = false;
-    volatile bool s_recUploadOk = false;
-    char s_recUploadText[256] = {};
+    // Shared state for the upload result (populated by stopRecording which now uploads inline)
+    volatile bool s_recUploadDone  = false;
+    volatile bool s_recUploadOk    = false;
+    char s_recUploadText[256]  = {};
     char s_recUploadError[128] = {};
-    std::string s_recUploadPath;
-
-    void recScreenUploadTask(void * /*param*/)
-    {
-        VOXA::g_currentlyUploadingPath = s_recUploadPath;
-
-        if (VOXA::apiClient.isHealthy())
-        {
-            VOXA::ApiResult res = VOXA::apiClient.uploadVoice(s_recUploadPath);
-            s_recUploadOk = res.success;
-            strncpy(s_recUploadText, res.text.c_str(), 255);
-            strncpy(s_recUploadError, res.error.c_str(), 127);
-
-            if (res.success)
-            {
-                vTaskDelay(pdMS_TO_TICKS(1200)); // Wait for LLM classification
-                VOXA::dataService.syncAll();
-                Serial.println("[RecordScreen] Triggered immediate DataSync after voice upload!");
-            }
-        }
-        else
-        {
-            s_recUploadOk = false;
-            strncpy(s_recUploadError, "Server Offline", 127);
-            Serial.println("[RecordScreen] Server offline: background task queued note locally.");
-        }
-
-        VOXA::g_currentlyUploadingPath = "";
-        s_recUploadDone = true;
-        vTaskDelete(nullptr);
-    }
+    std::string s_recUploadPath;  // repurposed as recording title/label
 }
 
 namespace VOXA
@@ -107,44 +79,93 @@ namespace VOXA
 
             elapsed += deltaSecs;
 
-            // ── Background Upload Status Check ────────────────────────────────
+            // ── Hardware Physical Button Handling ───────────────────────────
+            // Auto-start recording if entered via physical button or pending trigger
+            if (uiState == UIState::Idle && (ButtonService::isDirectRecordRequested() || buttonService.hasPendingRecordTrigger()))
+            {
+                ButtonService::clearDirectRecordRequest();
+                buttonService.clearPendingRecordTrigger();
+                static uint32_t s_recSeq = 0;
+                s_recSeq++;
+                char titleBuf[48];
+                snprintf(titleBuf, sizeof(titleBuf), "Voice Note #%u", (unsigned)s_recSeq);
+                s_recUploadPath = titleBuf;
+
+                if (microphoneService.startRecording(s_recUploadPath, "RecordScreen::hardwareButtonStart"))
+                {
+                    AudioManager::instance().playTone(1200, 80);
+                    uiState = UIState::Recording;
+                    Serial.println("[RecordScreen] Direct Hardware Button Recording Started!");
+                }
+            }
+            // Stop recording when hardware button is released or pressed
+            else if (uiState == UIState::Recording && buttonService.hasPendingStopTrigger())
+            {
+                buttonService.clearPendingStopTrigger();
+                buttonService.clearPendingRecordTrigger();
+                Serial.println("[RecordScreen] Hardware Button Release/Stop -> Stopping recording and uploading...");
+                if (microphoneService.getDurationMs() < 300)
+                {
+                    vTaskDelay(pdMS_TO_TICKS(150));
+                }
+                AudioManager::instance().playTone(800, 80);
+                bool stopOk = microphoneService.stopRecording("RecordScreen::hwButtonStop", "hw_button_release");
+
+                if (stopOk)
+                {
+                    s_recUploadDone  = false;
+                    s_recUploadOk    = stopOk;
+                    strncpy(s_recUploadText, microphoneService.getLastAudioId().c_str(), 255);
+                    memset(s_recUploadError, 0, sizeof(s_recUploadError));
+                    s_recUploadDone  = true;
+                    uiState = UIState::Uploading;
+                }
+                else
+                {
+                    resultText = "Empty recording — please hold button to record.";
+                    uiState = UIState::Result;
+                    stateChangeMs = millis();
+                }
+            }
+            else if (uiState == UIState::Uploading || uiState == UIState::Result)
+            {
+                // Clear any stray button triggers while uploading or viewing result
+                buttonService.clearPendingRecordTrigger();
+                buttonService.clearPendingStopTrigger();
+            }
+
+            // ── Upload Result Handling ───────────────────────────────────────
+            // stopRecording() already completed the upload synchronously.
+            // s_recUploadDone is set immediately after the call returns.
             if (uiState == UIState::Uploading && s_recUploadDone)
             {
                 s_recUploadDone = false;
                 uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
-                if (durS == 0)
-                    durS = 1;
+                if (durS == 0) durS = 1;
+
                 if (s_recUploadOk)
                 {
                     resultText = s_recUploadText;
                     uiState = UIState::Result;
                     stateChangeMs = millis();
 
-                    // Save to the library using the transcription text as the title
-                    recordingService.add(resultText, s_recUploadPath, durS, "Uploaded");
-                    Serial.printf("[RecordScreen] Upload success: %s\n", resultText.c_str());
+                    // audio_id from backend becomes the filePath / title in the cloud record
+                    recordingService.add(resultText, resultText, durS, "Uploaded");
+                    Serial.printf("[RecordScreen] Cloud upload success: audio_id=%s\n", resultText.c_str());
 
-                    // Delete the WAV file from SPIFFS — it's been uploaded to the server
-                    {
-                        SpiffsLock lock("RecordScreen::deleteAfterUpload");
-                        if (SPIFFS.remove(s_recUploadPath.c_str()))
-                        {
-                            Serial.printf("[RecordScreen] Deleted uploaded WAV from SPIFFS: %s\n", s_recUploadPath.c_str());
-                        }
-                        else
-                        {
-                            Serial.printf("[RecordScreen] WARNING: Failed to delete WAV from SPIFFS: %s\n", s_recUploadPath.c_str());
-                        }
-                    }
+                    // Trigger cloud sync so the new note appears in all screens
+                    vTaskDelay(pdMS_TO_TICKS(1200));
+                    dataService.syncAll();
+                    Serial.println("[RecordScreen] DataSync triggered after upload.");
                 }
                 else
                 {
-                    // Server error / offline -> Save offline seamlessly
-                    recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
-                    resultText = "Saved offline (queued)";
+                    // Upload failed — mark as Pending for retry monitor
+                    recordingService.add("Pending Note", s_recUploadText, durS, "Pending");
+                    resultText = "Upload failed — will retry";
                     uiState = UIState::Result;
                     stateChangeMs = millis();
-                    Serial.printf("[RecordScreen] Upload failed/Server off: queued note locally %s\n", s_recUploadPath.c_str());
+                    Serial.printf("[RecordScreen] Upload failed: %s\n", s_recUploadError);
                 }
             }
 
@@ -158,28 +179,18 @@ namespace VOXA
             // Auto-stop recording after 30 seconds
             if (uiState == UIState::Recording && microphoneService.getDurationMs() >= 30000)
             {
-                microphoneService.stopRecording("RecordScreen::autoStop", "30s_timeout");
-                s_recUploadDone = false;
-                s_recUploadOk = false;
-                memset(s_recUploadText, 0, sizeof(s_recUploadText));
+                Serial.println("[RecordScreen] Auto-stop: 30s limit reached.");
+                uiState = UIState::Uploading;
+                s_recUploadDone  = false;
+                s_recUploadOk    = false;
+                memset(s_recUploadText,  0, sizeof(s_recUploadText));
                 memset(s_recUploadError, 0, sizeof(s_recUploadError));
 
-                if (wifiManager.isConnected())
-                {
-                    uiState = UIState::Uploading;
-                    xTaskCreate(recScreenUploadTask, "RecScreenUpload", 8192, nullptr, 1, nullptr);
-                }
-                else
-                {
-                    uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
-                    if (durS == 0)
-                        durS = 1;
-                    recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
-                    resultText = "Saved offline (queued)";
-                    uiState = UIState::Result;
-                    stateChangeMs = millis();
-                    Serial.printf("[RecordScreen] Offline: auto-queued note %s\n", s_recUploadPath.c_str());
-                }
+                // stopRecording() blocks briefly then posts WAV to cloud
+                bool stopOk = microphoneService.stopRecording("RecordScreen::autoStop", "30s_timeout");
+                s_recUploadOk = stopOk;
+                strncpy(s_recUploadText, microphoneService.getLastAudioId().c_str(), 255);
+                s_recUploadDone = true;
             }
 
             // 1. Process Touch
@@ -217,11 +228,12 @@ namespace VOXA
                         // Action depends on current state
                         if (uiState == UIState::Idle)
                         {
+                            // Use a timestamped title — no SPIFFS path needed
                             static uint32_t s_recSeq = 0;
                             s_recSeq++;
-                            char filePathBuf[64];
-                            snprintf(filePathBuf, sizeof(filePathBuf), "/rec_%u_%u.wav", (unsigned int)millis(), (unsigned int)s_recSeq);
-                            s_recUploadPath = filePathBuf;
+                            char titleBuf[48];
+                            snprintf(titleBuf, sizeof(titleBuf), "Voice Note #%u", (unsigned)s_recSeq);
+                            s_recUploadPath = titleBuf;
 
                             if (microphoneService.startRecording(s_recUploadPath, "RecordScreen::micButtonPressed"))
                             {
@@ -240,27 +252,15 @@ namespace VOXA
 
                                 if (stopOk)
                                 {
-                                    s_recUploadDone = false;
-                                    s_recUploadOk = false;
-                                    memset(s_recUploadText, 0, sizeof(s_recUploadText));
+                                    // Upload happens synchronously inside stopRecording()
+                                    s_recUploadDone  = false;
+                                    s_recUploadOk    = stopOk;
+                                    strncpy(s_recUploadText,
+                                            microphoneService.getLastAudioId().c_str(), 255);
                                     memset(s_recUploadError, 0, sizeof(s_recUploadError));
+                                    s_recUploadDone  = true;
 
-                                    if (wifiManager.isConnected())
-                                    {
-                                        uiState = UIState::Uploading;
-                                        xTaskCreate(recScreenUploadTask, "RecScreenUpload", 8192, nullptr, 1, nullptr);
-                                    }
-                                    else
-                                    {
-                                        uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
-                                        if (durS == 0)
-                                            durS = 1;
-                                        recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
-                                        resultText = "Saved offline (queued)";
-                                        uiState = UIState::Result;
-                                        stateChangeMs = millis();
-                                        Serial.printf("[RecordScreen] Offline: queued note %s\n", s_recUploadPath.c_str());
-                                    }
+                                    uiState = UIState::Uploading; // triggers result block next frame
                                 }
                                 else
                                 {
@@ -272,27 +272,8 @@ namespace VOXA
                         }
                         else if (uiState == UIState::Error)
                         {
-                            // Retry upload if online, otherwise keep queued
-                            s_recUploadDone = false;
-                            s_recUploadOk = false;
-                            memset(s_recUploadText, 0, sizeof(s_recUploadText));
-                            memset(s_recUploadError, 0, sizeof(s_recUploadError));
-
-                            if (wifiManager.isConnected())
-                            {
-                                uiState = UIState::Uploading;
-                                xTaskCreate(recScreenUploadTask, "RecScreenUpload", 8192, nullptr, 1, nullptr);
-                            }
-                            else
-                            {
-                                uint32_t durS = (microphoneService.getDurationMs() + 500) / 1000;
-                                if (durS == 0)
-                                    durS = 1;
-                                recordingService.add("Pending Note", s_recUploadPath, durS, "Pending");
-                                resultText = "Saved offline (queued)";
-                                uiState = UIState::Result;
-                                stateChangeMs = millis();
-                            }
+                            // Error state: just go back to Idle (upload is inline, no retry queue)
+                            uiState = UIState::Idle;
                         }
                         else if (uiState == UIState::Result)
                         {

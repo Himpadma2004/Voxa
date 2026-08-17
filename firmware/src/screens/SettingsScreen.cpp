@@ -6,7 +6,7 @@
 #include "../storage/SpiffsMutex.h"
 #include "Transition.h"
 #include "../services/ApiClient.h"
-#include "../services/SDCardService.h"
+#include "../services/PowerManager.h"
 #include <SPIFFS.h>
 
 #include <cmath>
@@ -176,33 +176,18 @@ namespace VOXA
                             }
                             else if (m_pressedItemIndex == 6)
                             {
-                                Serial.println("[Settings] Restarting...");
-                                delay(200);
-                                ESP.restart();
+                                // Clean smartphone-style Restart
+                                PowerManager::instance().restartDevice();
                             }
                             else if (m_pressedItemIndex == 7)
                             {
-                                Serial.println("[Settings] Powering Off...");
-                                delay(200);
-                                esp_deep_sleep_start();
+                                // Clean smartphone-style Power Off (Deep Sleep with GPIO1 button wake)
+                                PowerManager::instance().shutdownDevice();
                             }
                             else if (m_pressedItemIndex == 8)
                             {
-                                Serial.println("[Settings] Factory Resetting...");
-                                wifiManager.clearCredentials();
-                                wifiManager.clearForcePortal();
-                                {
-                                    SpiffsLock lock("SettingsScreen::factoryReset");
-                                    SPIFFS.remove("/reminders.json");
-                                    SPIFFS.remove("/memory.json");
-                                    SPIFFS.remove("/ideas.json");
-                                    SPIFFS.remove("/questions.json");
-                                    SPIFFS.remove("/settings.json");
-                                    SPIFFS.remove("/history.json");
-                                    SPIFFS.remove("/recordings.json");
-                                }
-                                delay(500);
-                                ESP.restart();
+                                // Complete Factory Reset
+                                PowerManager::instance().factoryReset();
                             }
 
 
@@ -259,33 +244,13 @@ namespace VOXA
             }
             std::string syncStatus = settings.autoSync ? "Auto Sync: On" : "Auto Sync: Off";
             std::string storageInfo;
-            if (sdCardService.isMounted())
-            {
-                uint64_t freeMB  = sdCardService.getFreeSpaceMB();
-                uint64_t totalMB = sdCardService.getTotalSpaceMB();
-                char buf[64];
-                if (totalMB >= 1024)
-                {
-                    snprintf(buf, sizeof(buf), "SD: %.1f GB Free / %.1f GB", freeMB / 1024.0f, totalMB / 1024.0f);
-                }
-                else
-                {
-                    snprintf(buf, sizeof(buf), "SD: %llu MB Free / %llu MB", freeMB, totalMB);
-                }
-                storageInfo = buf;
-            }
-            else if (sdCardService.isCardAttached())
-            {
-                storageInfo = "SD Card: Attached (Unmounted)";
-            }
-            else
             {
                 size_t spiffsTotal = SPIFFS.totalBytes();
                 size_t spiffsUsed  = SPIFFS.usedBytes();
                 size_t spiffsFree  = spiffsTotal > spiffsUsed ? spiffsTotal - spiffsUsed : 0;
                 char buf[64];
-                snprintf(buf, sizeof(buf), "Internal: %.1f MB Free / %.1f MB",
-                         spiffsFree / (1024.0f * 1024.0f), spiffsTotal / (1024.0f * 1024.0f));
+                snprintf(buf, sizeof(buf), "Cloud-Primary (%.1f MB Free)",
+                         spiffsFree / (1024.0f * 1024.0f));
                 storageInfo = buf;
             }
             std::string deviceInfo = settings.deviceName + " (v" + settings.firmwareVersion + ")";

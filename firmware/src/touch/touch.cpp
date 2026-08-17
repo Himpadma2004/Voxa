@@ -1,4 +1,6 @@
 #include "Touch.h"
+#include "../services/PowerManager.h"
+#include "../audio/AudioManager.h"
 
 bool Touch::begin()
 {
@@ -68,7 +70,13 @@ bool Touch::getPoint(uint16_t &x, uint16_t &y)
     if (!m_wasTouched)
     {
         m_wasTouched = true;
+        VOXA::PowerManager::instance().reportActivity();
+        VOXA::AudioManager::instance().playTapSoundAsync();
         Serial.printf("[Touch] Press: x=%d, y=%d\n", x, y);
+    }
+    else
+    {
+        VOXA::PowerManager::instance().reportActivity();
     }
 
     return true;

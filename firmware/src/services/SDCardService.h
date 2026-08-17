@@ -1,39 +1,35 @@
 #pragma once
 
-#include <Arduino.h>
-#include <SPI.h>
-#include <SD.h>
+#include <cstddef>
 #include <cstdint>
 
-#include "../storage/StorageManager.h"
+// ============================================================
+// SDCardService — STUB (SD card adapter removed from hardware)
+// All physical SD card storage has been migrated to cloud
+// (MongoDB + AWS S3). This stub keeps the build green for any
+// remaining call-sites while doing nothing at runtime.
+// ============================================================
 
 namespace VOXA
 {
-    /**
-     * @brief Modular MicroSD Card Service for VOXA firmware (integrated with StorageManager).
-     */
     class SDCardService
     {
     public:
-        static constexpr gpio_num_t SD_CS_PIN   = StorageManager::SD_CS_PIN;
-        static constexpr gpio_num_t SD_MOSI_PIN = StorageManager::SD_MOSI_PIN;
-        static constexpr gpio_num_t SD_MISO_PIN = StorageManager::SD_MISO_PIN;
-        static constexpr gpio_num_t SD_SCK_PIN  = StorageManager::SD_SCK_PIN;
-
-        SDCardService() = default;
+        SDCardService()  = default;
         ~SDCardService() = default;
 
-        bool begin() { return storageManager.begin(); }
+        bool begin()              { return false; }
         void refreshStorageInfo() {}
-        void logPush(const char* action, const char* path, size_t sizeBytes, const char* itemType);
-        bool checkPresence() { return storageManager.isCardAttached(); }
+        void logPush(const char* /*action*/, const char* /*path*/,
+                     size_t /*sizeBytes*/, const char* /*itemType*/) {}
+        bool checkPresence()      { return false; }
 
-        [[nodiscard]] bool isCardAttached() const { return storageManager.isCardAttached(); }
-        [[nodiscard]] bool isMounted() const { return storageManager.isSdMounted(); }
-        [[nodiscard]] uint64_t getCardSizeMB() const { return storageManager.getTotalSpaceMB(); }
-        [[nodiscard]] uint64_t getTotalSpaceMB() const { return storageManager.getTotalSpaceMB(); }
-        [[nodiscard]] uint64_t getUsedSpaceMB() const { return storageManager.getUsedSpaceMB(); }
-        [[nodiscard]] uint64_t getFreeSpaceMB() const { return storageManager.getFreeSpaceMB(); }
+        [[nodiscard]] bool     isCardAttached()  const { return false; }
+        [[nodiscard]] bool     isMounted()       const { return false; }
+        [[nodiscard]] uint64_t getCardSizeMB()   const { return 0; }
+        [[nodiscard]] uint64_t getTotalSpaceMB() const { return 0; }
+        [[nodiscard]] uint64_t getUsedSpaceMB()  const { return 0; }
+        [[nodiscard]] uint64_t getFreeSpaceMB()  const { return 0; }
     };
 
     extern SDCardService sdCardService;

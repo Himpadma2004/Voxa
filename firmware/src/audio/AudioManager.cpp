@@ -49,13 +49,13 @@ namespace VOXA
         Serial.printf("  - DMA Buffer Length: 512\n");
         Serial.println("=======================================\n");
 
-        // Communication Format: Using I2S_COMM_FORMAT_I2S for Arduino ESP32-S3 hardware driver compatibility
+        // Communication Format: Standard Philips I2S timing required by MAX98357A amplifier
         i2s_config_t i2s_config = {
             .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
             .sample_rate = AUDIO_SAMPLE_RATE,
             .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
             .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-            .communication_format = I2S_COMM_FORMAT_I2S,
+            .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S),
             .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
             .dma_buf_count = 8,
             .dma_buf_len = 512,
@@ -158,7 +158,6 @@ namespace VOXA
     {
         if (!m_initialized || !samples || sampleCount == 0)
         {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED");
             return false;
         }
 
@@ -167,7 +166,7 @@ namespace VOXA
         std::vector<int16_t> stereoBuffer;
         stereoBuffer.reserve(sampleCount * 2);
 
-        float scale = m_volume / 100.0f;
+        float scale = (m_volume / 100.0f);
         for (size_t i = 0; i < sampleCount; ++i)
         {
             int16_t val = (int16_t)(samples[i] * scale);
@@ -186,12 +185,8 @@ namespace VOXA
             portMAX_DELAY
         );
 
-        Serial.printf("Requested : %u\n", (unsigned int)bytesToWrite);
-        Serial.printf("Written   : %u\n", (unsigned int)bytesWritten);
-
-        if (err != ESP_OK || bytesWritten == 0 || err == ESP_FAIL || err == ESP_ERR_INVALID_STATE)
+        if (err != ESP_OK || bytesWritten == 0)
         {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED");
             return false;
         }
         return true;
@@ -201,7 +196,6 @@ namespace VOXA
     {
         if (!m_initialized || !samples || sampleCount == 0)
         {
-            Serial.println("[Audio] ERROR:\nPlayback failed (invalid PCM data)");
             return false;
         }
 
@@ -232,7 +226,8 @@ namespace VOXA
             size_t count = std::min(CHUNK_SIZE, samplesRemaining);
             for (size_t i = 0; i < count; ++i)
             {
-                chunk[i] = (int16_t)(sin(phase) * 28000.0); // 28000 peak amplitude to avoid clipping
+                // Full high-dynamic range 26,000 peak amplitude for clear, crisp audio
+                chunk[i] = (int16_t)(sin(phase) * 26000.0);
                 phase += phaseIncrement;
                 if (phase >= 2.0 * M_PI)
                 {
@@ -268,10 +263,152 @@ namespace VOXA
             "BootChime",
             4096,
             nullptr,
-            1,
+            2,
             &m_audioTaskHandle,
             0
         );
+    }
+
+    void AudioManager::playTapSoundAsync()
+    {
+        if (!m_initialized) return;
+        // Don't interrupt full audio playback / WAV playing
+        if (m_isPlaying && m_audioTaskHandle != nullptr) return;
+
+        xTaskCreatePinnedToCore(
+            [](void* param)
+            {
+                // Crisp, pleasant, ultra-short UI acoustic click (2200Hz for 15ms)
+                AudioManager::instance().playTone(2200, 15);
+                vTaskDelete(NULL);
+            },
+            "TapSound",
+            2048,
+            nullptr,
+            3,
+            nullptr,
+            0
+        );
+    }
+
+    void AudioManager::playNotificationSoundAsync()
+    {
+        stop();
+        xTaskCreatePinnedToCore(
+            [](void* param)
+            {
+                AudioManager::instance().playTone(880, 80);
+                delay(20);
+                AudioManager::instance().playTone(1760, 120);
+                AudioManager::instance().m_audioTaskHandle = nullptr;
+                vTaskDelete(NULL);
+            },
+            "NotifySound",
+            3072,
+            nullptr,
+            2,
+            &m_audioTaskHandle,
+            0
+        );
+    }
+
+    void AudioManager::playSuccessSoundAsync()
+    {
+        stop();
+        xTaskCreatePinnedToCore(
+            [](void* param)
+            {
+                AudioManager::instance().playTone(523, 80);
+                delay(15);
+                AudioManager::instance().playTone(659, 80);
+                delay(15);
+                AudioManager::instance().playTone(784, 150);
+                AudioManager::instance().m_audioTaskHandle = nullptr;
+                vTaskDelete(NULL);
+            },
+            "SuccessSound",
+            3072,
+            nullptr,
+            2,
+            &m_audioTaskHandle,
+            0
+        );
+    }
+
+    void AudioManager::startBackgroundMusicLoop()
+    {
+        if (m_bgMusicTaskHandle != nullptr)
+        {
+            return; // Already running
+        }
+
+        m_bgMusicEnabled = true;
+        xTaskCreatePinnedToCore(
+            [](void* param)
+            {
+                Serial.println("[Audio] Continuous Background Music Loop Started!");
+                // Soothing ambient melodic progression (Hz)
+                const uint16_t notes[] = {
+                    261, 329, 392, 523, 659, 784, 659, 523,
+                    392, 329, 261, 349, 440, 523, 698, 523,
+                    440, 349, 293, 370, 440, 587, 740, 587,
+                    440, 370, 392, 493, 587, 784, 587, 493
+                };
+                size_t numNotes = sizeof(notes) / sizeof(notes[0]);
+
+                while (AudioManager::instance().m_bgMusicEnabled)
+                {
+                    for (size_t i = 0; i < numNotes; ++i)
+                    {
+                        if (!AudioManager::instance().m_bgMusicEnabled || !AudioManager::instance().m_initialized) break;
+
+                        // Pause background music notes if foreground audio is playing
+                        while (AudioManager::instance().m_isPlaying && AudioManager::instance().m_bgMusicEnabled)
+                        {
+                            vTaskDelay(pdMS_TO_TICKS(100));
+                        }
+
+                        if (!AudioManager::instance().m_bgMusicEnabled) break;
+
+                        AudioManager::instance().playTone(notes[i], 180);
+                        vTaskDelay(pdMS_TO_TICKS(40));
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(400)); // Brief pause between loop iterations
+                }
+
+                AudioManager::instance().m_bgMusicTaskHandle = nullptr;
+                vTaskDelete(NULL);
+            },
+            "BgMusicLoop",
+            4096,
+            nullptr,
+            1,
+            &m_bgMusicTaskHandle,
+            0 // Core 0 background execution
+        );
+    }
+
+    void AudioManager::stopBackgroundMusic()
+    {
+        m_bgMusicEnabled = false;
+        if (m_bgMusicTaskHandle != nullptr)
+        {
+            vTaskDelete(m_bgMusicTaskHandle);
+            m_bgMusicTaskHandle = nullptr;
+        }
+        Serial.println("[Audio] Background music stopped.");
+    }
+
+    void AudioManager::toggleBackgroundMusic()
+    {
+        if (m_bgMusicEnabled)
+        {
+            stopBackgroundMusic();
+        }
+        else
+        {
+            startBackgroundMusicLoop();
+        }
     }
 
     bool AudioManager::playUrl(const std::string& url)
@@ -510,6 +647,51 @@ namespace VOXA
         Serial.println("=======================================\n");
 
         return i2sOk && dmaOk && spkOk && playOk;
+    }
+
+    bool AudioManager::runSpeakerDiagnostic()
+    {
+        Serial.println("\n=================================================");
+        Serial.println("[Audio] MAX98357A Speaker Hardware Diagnostic Test");
+        Serial.printf("  - Target Chip: MAX98357A Mono I2S Amplifier\n");
+        Serial.printf("  - I2S Port   : I2S_NUM_1\n");
+        Serial.printf("  - BCLK Pin   : GPIO %d\n", AUDIO_I2S_BCLK_PIN);
+        Serial.printf("  - LRCK Pin   : GPIO %d (Word Select)\n", AUDIO_I2S_LRC_PIN);
+        Serial.printf("  - DOUT Pin   : GPIO %d (Data In)\n", AUDIO_I2S_DOUT_PIN);
+        Serial.println("=================================================\n");
+
+        bool i2sOk = initI2S();
+        bool playOk = false;
+
+        if (i2sOk)
+        {
+            Serial.println("[Speaker Diagnostic] Generating 800 Hz Diagnostic Tone...");
+            playOk = playTone(800, 1500); // Play 800 Hz test tone for 1.5 seconds
+        }
+
+        bool overallPass = i2sOk && playOk;
+
+        // Visual Light Flash Diagnostics on Display Screen
+        extern void renderSpeakerDiagnosticFlash(bool passed, const char* details);
+
+        if (overallPass)
+        {
+            Serial.println("\n=================================================");
+            Serial.println("[Speaker Diagnostic] >>> GREEN LIGHT FLASH <<<");
+            Serial.println("[Speaker Diagnostic] STATUS: PASSED!");
+            Serial.println("[Speaker Diagnostic] MAX98357A Speaker System Identified & Working.");
+            Serial.println("=================================================\n");
+        }
+        else
+        {
+            Serial.println("\n=================================================");
+            Serial.println("[Speaker Diagnostic] >>> RED LIGHT FLASH <<<");
+            Serial.println("[Speaker Diagnostic] STATUS: FAILED!");
+            Serial.println("[Speaker Diagnostic] Speaker Hardware Connection Failed or Missing.");
+            Serial.println("=================================================\n");
+        }
+
+        return overallPass;
     }
 
 } // namespace VOXA

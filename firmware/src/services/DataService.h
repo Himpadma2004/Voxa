@@ -11,19 +11,25 @@
 #include "../models/Reminder.h"
 #include "../models/Task.h"
 
+// NOTE: JsonStorage / SPIFFS cache completely removed.
+// DataService is now cloud-only — all data lives in MongoDB (via the Python
+// backend API). In-RAM vectors are populated by syncAll() and updated
+// optimistically by the add/remove/update local helpers.
+
 namespace VOXA
 {
-    class JsonStorage;
-
     class DataService
     {
     public:
-        DataService();
+        DataService() = default;
 
         static std::string formatReadableTimestamp(const std::string& value);
+        static std::string formatCountdownTimer(const std::string& value);
 
+        /// Called once at startup — triggers first cloud sync.
         void begin();
 
+        // --- Cloud sync ---
         bool syncAll();
         bool syncReminders();
         bool syncIdeas();
@@ -32,11 +38,12 @@ namespace VOXA
         bool syncOthers();
         bool syncRecordings();
 
-        [[nodiscard]] std::vector<Reminder> getReminders();
-        [[nodiscard]] std::vector<Idea> getIdeas();
-        [[nodiscard]] std::vector<Question> getQuestions();
-        [[nodiscard]] std::vector<TaskItem> getTasks();
-        [[nodiscard]] std::vector<Memory> getOthers();
+        // --- In-RAM accessors (sorted for display) ---
+        [[nodiscard]] std::vector<Reminder>  getReminders();
+        [[nodiscard]] std::vector<Idea>      getIdeas();
+        [[nodiscard]] std::vector<Question>  getQuestions();
+        [[nodiscard]] std::vector<TaskItem>  getTasks();
+        [[nodiscard]] std::vector<Memory>    getOthers();
         [[nodiscard]] std::vector<Recording> getRecordings();
 
         [[nodiscard]] std::size_t getReminderCount();
@@ -46,6 +53,7 @@ namespace VOXA
         [[nodiscard]] std::size_t getOtherCount();
         [[nodiscard]] std::size_t getRecordingCount();
 
+        // --- Optimistic in-RAM mutations (no disk write) ---
         bool addReminderLocal(const Reminder& reminder);
         bool updateReminderLocal(const Reminder& reminder);
         bool removeReminderLocal(uint32_t id);
@@ -72,7 +80,6 @@ namespace VOXA
         bool togglePin(const std::string& category, uint32_t id);
 
     private:
-        JsonStorage* m_cache { nullptr };
         bool m_loaded { false };
 
         std::vector<Reminder>  m_reminders;
@@ -81,21 +88,6 @@ namespace VOXA
         std::vector<TaskItem>  m_tasks;
         std::vector<Memory>    m_others;
         std::vector<Recording> m_recordings;
-
-        bool fetchRemindersFromBackend();
-        bool fetchIdeasFromBackend();
-        bool fetchQuestionsFromBackend();
-        bool fetchTasksFromBackend();
-        bool fetchOthersFromBackend();
-        bool fetchRecordingsFromBackend();
-
-        void loadCache();
-        void saveRemindersCache();
-        void saveIdeasCache();
-        void saveQuestionsCache();
-        void saveTasksCache();
-        void saveOthersCache();
-        void saveRecordingsCache();
 
         static uint32_t nextId(const std::vector<uint32_t>& ids);
     };

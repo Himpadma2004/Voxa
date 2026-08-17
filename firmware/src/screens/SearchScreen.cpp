@@ -324,10 +324,10 @@ namespace VOXA
                             {
                                 static uint32_t s_querySeq = 0;
                                 s_querySeq++;
-                                char queryPath[64];
-                                snprintf(queryPath, sizeof(queryPath), "/search_q_%u_%u.wav", (unsigned int)millis(), (unsigned int)s_querySeq);
+                                char queryTitle[48];
+                                snprintf(queryTitle, sizeof(queryTitle), "Search Query #%u", (unsigned int)s_querySeq);
 
-                                bool startOk = microphoneService.startRecording(queryPath, "SearchScreen::voiceSearch");
+                                bool startOk = microphoneService.startRecording(queryTitle, "SearchScreen::voiceSearch");
                                 if (startOk)
                                 {
                                     m_state = AiSearchState::RecordingVoice;

@@ -12,7 +12,7 @@
 #endif
 
 #ifndef AUDIO_I2S_LRC_PIN
-#define AUDIO_I2S_LRC_PIN 41   // Left/Right Clock (LRC / WS) -> GPIO38 (dedicated)
+#define AUDIO_I2S_LRC_PIN 38   // Left/Right Clock (LRC / WS) -> GPIO38 (dedicated)
 #endif
 
 #ifndef AUDIO_I2S_DOUT_PIN
@@ -98,6 +98,40 @@ namespace VOXA
          */
         void playBootChimeAsync();
 
+        /**
+         * @brief Plays instant UI touch/tap feedback sound.
+         */
+        void playTapSoundAsync();
+
+        /**
+         * @brief Plays a pleasant notification sound.
+         */
+        void playNotificationSoundAsync();
+
+        /**
+         * @brief Plays an upbeat success tone sequence.
+         */
+        void playSuccessSoundAsync();
+
+        /**
+         * @brief Starts a continuous background melody/music loop in a dedicated FreeRTOS task.
+         */
+        void startBackgroundMusicLoop();
+
+        /**
+         * @brief Stops background music.
+         */
+        void stopBackgroundMusic();
+
+        /**
+         * @brief Toggles background music on/off.
+         */
+        void toggleBackgroundMusic();
+
+        /**
+         * @brief Checks if background music is active.
+         */
+        [[nodiscard]] bool isBackgroundMusicEnabled() const { return m_bgMusicEnabled; }
 
         /**
          * @brief Plays a buffer of 16-bit signed PCM mono audio samples.
@@ -140,6 +174,7 @@ namespace VOXA
          * @return true if all diagnostic checks pass.
          */
         bool runDiagnostics();
+        bool runSpeakerDiagnostic();
 
     private:
         AudioManager();
@@ -150,8 +185,10 @@ namespace VOXA
 
         bool m_initialized{false};
         bool m_isPlaying{false};
-        uint8_t m_volume{75}; // Default 75% volume
+        bool m_bgMusicEnabled{false};
+        uint8_t m_volume{90}; // Default 90% volume for clear output
 
         TaskHandle_t m_audioTaskHandle{nullptr};
+        TaskHandle_t m_bgMusicTaskHandle{nullptr};
     };
 } // namespace VOXA

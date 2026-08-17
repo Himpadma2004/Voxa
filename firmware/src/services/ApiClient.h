@@ -43,8 +43,10 @@ namespace VOXA
         bool isHealthy();
 
         // --- Voice Upload ---
-        /// POST multipart/form-data to /api/voice/upload
-        ApiResult uploadVoice(const std::string &filePath);
+        /// POST raw WAV bytes from a PSRAM/DRAM buffer to /api/voice/upload-raw
+        ApiResult uploadVoiceFromBuffer(const uint8_t* buf, size_t size);
+        /// POST a WAV file that was previously staged on SPIFFS (legacy/retry path)
+        ApiResult uploadVoice(const std::string& filePath);
 
         // --- AI Database Search ---
         /// Type Search (POST /api/search)

@@ -9,6 +9,8 @@
 #include "../services/DataService.h"
 #include "../ui/QuickPanel.h"
 #include "../audio/AudioManager.h"
+#include "../services/ButtonService.h"
+#include "../services/PowerManager.h"
 
 
 #include <array>
@@ -559,9 +561,17 @@ namespace VOXA
                 lastCountRefreshMs = nowMs;
             }
 
-            m_elapsed += deltaSecs;
+            // 1. Tick Power Management (auto-sleep inactivity check)
+            PowerManager::instance().tick();
 
-            // 1. Process touch gestures and pressed feedback updates (bypassed if QuickPanel is active)
+            // 2. Check physical hardware record button
+            if (ButtonService::isDirectRecordRequested())
+            {
+                targetScreen = ScreenId::Record;
+                break;
+            }
+
+            // 3. Process touch gestures and pressed feedback updates (bypassed if QuickPanel is active)
             if (entryFrame >= 10 && !QuickPanel::instance().isOpen())
             {
                 processTouch(touch, w, h, remCount, ideaCount, qCount, taskCount, memCount, targetScreen);

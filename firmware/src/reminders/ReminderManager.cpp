@@ -480,16 +480,42 @@ namespace VOXA
 
         // 4. Draw Time Difference
         time_t now = getCurrentTime();
-        long diff = (long)(now - r.reminderTime);
-        char diffBuf[32];
+        char diffBuf[64];
         if (r.reminderTime > now)
         {
-            long fut = (long)(r.reminderTime - now);
-            snprintf(diffBuf, sizeof(diffBuf), "Due in %lds", fut);
+            long futSec = (long)(r.reminderTime - now);
+            if (futSec < 60)
+            {
+                snprintf(diffBuf, sizeof(diffBuf), "Due now");
+            }
+            else if (futSec < 3600)
+            {
+                snprintf(diffBuf, sizeof(diffBuf), "Due in %ldm", futSec / 60);
+            }
+            else
+            {
+                long hrs = futSec / 3600;
+                long mins = (futSec % 3600) / 60;
+                snprintf(diffBuf, sizeof(diffBuf), "Due in %ldh %ldm", hrs, mins);
+            }
         }
         else
         {
-            snprintf(diffBuf, sizeof(diffBuf), "Overdue by %lds", diff);
+            long pastSec = (long)(now - r.reminderTime);
+            if (pastSec < 60)
+            {
+                snprintf(diffBuf, sizeof(diffBuf), "Due now");
+            }
+            else if (pastSec < 3600)
+            {
+                snprintf(diffBuf, sizeof(diffBuf), "Overdue by %ldm", pastSec / 60);
+            }
+            else
+            {
+                long hrs = pastSec / 3600;
+                long mins = (pastSec % 3600) / 60;
+                snprintf(diffBuf, sizeof(diffBuf), "Overdue by %ldh %ldm", hrs, mins);
+            }
         }
         canvas.setTextColor(VoxaTheme::getWarning());
         canvas.drawString(diffBuf, cx, cardY + 110.0f);

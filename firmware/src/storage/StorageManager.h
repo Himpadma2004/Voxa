@@ -1,9 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <SPI.h>
-#include <SD.h>
-#include <SdFat.h>
 #include <SPIFFS.h>
 #include <FS.h>
 #include <ArduinoJson.h>
@@ -11,153 +8,119 @@
 #include <string>
 #include <cstdint>
 
+// NOTE: SdFat / SD / SPI includes removed — SD card adapter unplugged.
+// StorageManager now manages SPIFFS only (used as a temporary WAV buffer
+// during the record → cloud-upload window).
+
 namespace VOXA
 {
     /**
-     * @brief Comprehensive Storage Diagnostics Report structure.
+     * @brief Lightweight diagnostics for the active (SPIFFS-only) filesystem.
      */
     struct StorageDiagnostics
     {
-        std::string activeFilesystem; // "MicroSD" or "SPIFFS"
-        std::string storageMode;      // "Primary" or "Fallback"
-        std::string cardType;         // SDSC, SDHC, SDXC, None
-        std::string filesystem;       // FAT16, FAT32, exFAT, SPIFFS
-        uint64_t capacityMB{0};
-        uint64_t usedSpaceMB{0};
-        uint64_t freeSpaceMB{0};
-        uint32_t clusterSizeBytes{4096};
-        uint32_t blockSizeBytes{512};
-        float readSpeedKBs{0.0f};
-        float writeSpeedKBs{0.0f};
-        uint32_t mountTimeMs{0};
-        bool readTestPassed{false};
-        bool writeTestPassed{false};
-        bool deleteTestPassed{false};
-        bool renameTestPassed{false};
+        std::string activeFilesystem { "SPIFFS" };
+        std::string storageMode      { "Cloud-Primary" };
+        std::string filesystem       { "SPIFFS" };
+        uint64_t    capacityMB       { 0 };
+        uint64_t    usedSpaceMB      { 0 };
+        uint64_t    freeSpaceMB      { 0 };
+        bool        readTestPassed   { false };
+        bool        writeTestPassed  { false };
+        bool        deleteTestPassed { false };
+        bool        renameTestPassed { false };
     };
 
     /**
-     * @brief Production Storage Manager for VOXA hardware & firmware.
-     * Centralized filesystem access, user/system data separation,
-     * filesystem-aware logging, accurate benchmarks, and status summaries.
+     * @brief Minimal StorageManager — SPIFFS only.
+     * All persistent data is stored in the cloud (MongoDB + AWS S3).
+     * SPIFFS is used solely as a temporary staging area for WAV recordings
+     * between capture and HTTP upload.
      */
     class StorageManager
     {
     public:
-        // Hardware SPI Pins for SD Card
-        static constexpr gpio_num_t SD_CS_PIN = GPIO_NUM_1;
-        static constexpr gpio_num_t SD_MOSI_PIN = GPIO_NUM_2;
-        static constexpr gpio_num_t SD_MISO_PIN = GPIO_NUM_13;
-        static constexpr gpio_num_t SD_SCK_PIN = GPIO_NUM_21;
-
         StorageManager();
         ~StorageManager();
 
         /**
-         * @brief Mounts storage, initializes directories, runs health checks, prints summary.
-         * @return true if mounted successfully (SD or SPIFFS).
+         * @brief Mounts SPIFFS. SD card is no longer present.
+         * @return true if SPIFFS mounted successfully.
          */
         bool begin();
 
         /**
-         * @brief Runs complete storage diagnostics & speed benchmarks for active media.
+         * @brief Runs basic SPIFFS health diagnostics.
          */
         StorageDiagnostics runDiagnostics();
 
         /**
-         * @brief Automatically creates standard VOXA directory hierarchy on first boot.
+         * @brief Creates standard VOXA temp directory on SPIFFS.
          */
         void initializeDirectories();
 
         /**
-         * @brief Prints concise VOXA Storage Status Summary table.
+         * @brief Prints concise storage status to Serial.
          */
         void printStorageSummary();
 
         /**
-         * @brief Centralized Storage API: Saves audio recording to /recordings
+         * @brief Saves audio recording temp file to SPIFFS /recordings
          */
-        bool saveRecording(const char *filename, const uint8_t *data, size_t len);
+        bool saveRecording(const char* filename, const uint8_t* data, size_t len);
 
         /**
-         * @brief Centralized Storage API: Saves Whisper transcript to /transcripts
+         * @brief Saves Whisper transcript to SPIFFS /transcripts
          */
-        bool saveTranscript(const char *filename, const char *text);
+        bool saveTranscript(const char* filename, const char* text);
 
         /**
-         * @brief Centralized Storage API: Saves AI summary to /summaries
+         * @brief Saves AI summary to SPIFFS /summaries
          */
-        bool saveSummary(const char *filename, const char *text);
+        bool saveSummary(const char* filename, const char* text);
 
         /**
-         * @brief Centralized Storage API: Appends log message to /logs/device.log
+         * @brief Appends log message to SPIFFS /logs/device.log
          */
-        bool saveLog(const char *message);
+        bool saveLog(const char* message);
 
         /**
-         * @brief Centralized JSON Storage API: Saves JSON document to specified path
+         * @brief Saves JSON document to SPIFFS path.
          */
-        bool saveJson(const char *path, const JsonDocument &doc);
+        bool saveJson(const char* path, const JsonDocument& doc);
 
         /**
-         * @brief Centralized JSON Storage API: Loads JSON document from specified path
+         * @brief Loads JSON document from SPIFFS path.
          */
-        bool loadJson(const char *path, JsonDocument &doc);
+        bool loadJson(const char* path, JsonDocument& doc);
+
+        bool deleteFile(const char* path);
+        bool renameFile(const char* oldPath, const char* newPath);
+        std::vector<std::string> listDirectory(const char* dirPath);
 
         /**
-         * @brief Centralized File Operations API: Deletes file at path
-         */
-        bool deleteFile(const char *path);
-
-        /**
-         * @brief Centralized File Operations API: Renames file
-         */
-        bool renameFile(const char *oldPath, const char *newPath);
-
-        /**
-         * @brief Centralized Directory Listing API: Lists files in dirPath
-         */
-        std::vector<std::string> listDirectory(const char *dirPath);
-
-        /**
-         * @brief Centralized Automatic Cleanup API: Deletes temporary files, old cache, and failed uploads
+         * @brief Deletes temporary/old SPIFFS files to free space before recording.
          */
         void performAutomaticCleanup();
 
-        /**
-         * @brief Returns human-readable storage summary string
-         */
         std::string getStorageInfoString();
 
-        /**
-         * @brief Centralized Filesystem Resolver: Resolves active FS for target path.
-         * Enforces System Data (Config/Settings) on SPIFFS, User Data on MicroSD/SPIFFS.
-         */
-        FS &getFSForPath(const char *path = nullptr);
+        FS& getFSForPath(const char* path = nullptr);
+        const char* getFSNameForPath(const char* path = nullptr);
 
-        /**
-         * @brief Returns active filesystem name string for target path.
-         */
-        const char *getFSNameForPath(const char *path = nullptr);
+        [[nodiscard]] bool     isSdMounted()     const { return false; }
+        [[nodiscard]] bool     isSpiffsMounted()  const { return m_spiffsMounted; }
+        [[nodiscard]] bool     isCardAttached()   const { return false; }
 
-        [[nodiscard]] bool isSdMounted() const { return m_sdMounted; }
-        [[nodiscard]] bool isSpiffsMounted() const { return m_spiffsMounted; }
-        [[nodiscard]] bool isCardAttached() const { return m_cardAttached; }
-
-        [[nodiscard]] uint64_t getTotalSpaceMB() const;
-        [[nodiscard]] uint64_t getUsedSpaceMB() const;
-        [[nodiscard]] uint64_t getFreeSpaceMB() const;
+        [[nodiscard]] uint64_t getTotalSpaceMB()  const;
+        [[nodiscard]] uint64_t getUsedSpaceMB()   const;
+        [[nodiscard]] uint64_t getFreeSpaceMB()   const;
 
     private:
-        bool m_sdMounted{false};
-        bool m_sdHealthPassed{true};
-        bool m_spiffsMounted{false};
-        bool m_cardAttached{false};
-        uint32_t m_mountTimeMs{0};
-        std::string m_lastErrorCode{"SD_ERR_NONE"};
+        bool        m_spiffsMounted  { false };
+        uint32_t    m_mountTimeMs    { 0 };
 
-        bool mountSdCard();
-        std::string resolvePath(const char *category, const char *filename);
+        std::string resolvePath(const char* category, const char* filename);
     };
 
     extern StorageManager storageManager;
