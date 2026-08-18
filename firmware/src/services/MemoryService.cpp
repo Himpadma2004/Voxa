@@ -133,7 +133,7 @@ namespace VOXA
             {
                 return a.title < b.title;
             }
-            return a.id > b.id;
+            return a.id < b.id;
         });
 
         return results;

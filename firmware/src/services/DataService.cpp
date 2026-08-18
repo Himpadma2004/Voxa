@@ -342,7 +342,6 @@ namespace VOXA
     }
 
     // -----------------------------------------------------------------------
-    // -----------------------------------------------------------------------
     // Accessors (sorted from latest to oldest for display)
     // -----------------------------------------------------------------------
 
@@ -352,8 +351,6 @@ namespace VOXA
         auto copy = m_reminders;
         std::sort(copy.begin(), copy.end(), [](const Reminder& a, const Reminder& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            if (!a.dateTime.empty() && !b.dateTime.empty() && a.dateTime != b.dateTime)
-                return a.dateTime > b.dateTime;
             return a.id < b.id;
         });
         return copy;
@@ -365,8 +362,6 @@ namespace VOXA
         auto copy = m_ideas;
         std::sort(copy.begin(), copy.end(), [](const Idea& a, const Idea& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
-                return a.timestamp > b.timestamp;
             return a.id < b.id;
         });
         return copy;
@@ -378,8 +373,6 @@ namespace VOXA
         auto copy = m_questions;
         std::sort(copy.begin(), copy.end(), [](const Question& a, const Question& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
-                return a.timestamp > b.timestamp;
             return a.id < b.id;
         });
         return copy;
@@ -391,8 +384,6 @@ namespace VOXA
         auto copy = m_tasks;
         std::sort(copy.begin(), copy.end(), [](const TaskItem& a, const TaskItem& b) {
             if (a.isPinned != b.isPinned) return a.isPinned > b.isPinned;
-            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
-                return a.timestamp > b.timestamp;
             return a.id < b.id;
         });
         return copy;
@@ -404,8 +395,6 @@ namespace VOXA
         auto copy = m_others;
         std::sort(copy.begin(), copy.end(), [](const Memory& a, const Memory& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
-                return a.timestamp > b.timestamp;
             return a.id < b.id;
         });
         return copy;
@@ -416,8 +405,6 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_recordings;
         std::sort(copy.begin(), copy.end(), [](const Recording& a, const Recording& b) {
-            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
-                return a.timestamp > b.timestamp;
             return a.id < b.id;
         });
         return copy;
@@ -437,7 +424,7 @@ namespace VOXA
     bool DataService::addTaskLocal(const TaskItem& task)
     {
         auto copy = task;
-        copy.id = nextSequentialId(m_tasks);
+        copy.id = 0;
         m_tasks.insert(m_tasks.begin(), copy);
         return true;
     }
@@ -461,7 +448,7 @@ namespace VOXA
     bool DataService::addReminderLocal(const Reminder& reminder)
     {
         auto copy = reminder;
-        copy.id = nextSequentialId(m_reminders);
+        copy.id = 0;
         m_reminders.insert(m_reminders.begin(), copy);
         return true;
     }
@@ -485,7 +472,7 @@ namespace VOXA
     bool DataService::addIdeaLocal(const Idea& idea)
     {
         auto copy = idea;
-        copy.id = nextSequentialId(m_ideas);
+        copy.id = 0;
         m_ideas.insert(m_ideas.begin(), copy);
         return true;
     }
@@ -502,7 +489,7 @@ namespace VOXA
     bool DataService::addQuestionLocal(const Question& question)
     {
         auto copy = question;
-        copy.id = nextSequentialId(m_questions);
+        copy.id = 0;
         m_questions.insert(m_questions.begin(), copy);
         return true;
     }
@@ -519,7 +506,7 @@ namespace VOXA
     bool DataService::addOtherLocal(const Memory& memory)
     {
         auto copy = memory;
-        copy.id = nextSequentialId(m_others);
+        copy.id = 0;
         m_others.insert(m_others.begin(), copy);
         return true;
     }
@@ -543,7 +530,7 @@ namespace VOXA
     bool DataService::addRecordingLocal(const Recording& recording)
     {
         auto copy = recording;
-        copy.id = nextSequentialId(m_recordings);
+        copy.id = 0;
         m_recordings.insert(m_recordings.begin(), copy);
         return true;
     }
