@@ -342,7 +342,8 @@ namespace VOXA
     }
 
     // -----------------------------------------------------------------------
-    // Accessors (sorted for display)
+    // -----------------------------------------------------------------------
+    // Accessors (sorted from latest to oldest for display)
     // -----------------------------------------------------------------------
 
     std::vector<Reminder> DataService::getReminders()
@@ -351,7 +352,9 @@ namespace VOXA
         auto copy = m_reminders;
         std::sort(copy.begin(), copy.end(), [](const Reminder& a, const Reminder& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            return a.id > b.id;
+            if (!a.dateTime.empty() && !b.dateTime.empty() && a.dateTime != b.dateTime)
+                return a.dateTime > b.dateTime;
+            return a.id < b.id;
         });
         return copy;
     }
@@ -362,7 +365,9 @@ namespace VOXA
         auto copy = m_ideas;
         std::sort(copy.begin(), copy.end(), [](const Idea& a, const Idea& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            return a.id > b.id;
+            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
+                return a.timestamp > b.timestamp;
+            return a.id < b.id;
         });
         return copy;
     }
@@ -373,7 +378,9 @@ namespace VOXA
         auto copy = m_questions;
         std::sort(copy.begin(), copy.end(), [](const Question& a, const Question& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            return a.id > b.id;
+            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
+                return a.timestamp > b.timestamp;
+            return a.id < b.id;
         });
         return copy;
     }
@@ -384,7 +391,9 @@ namespace VOXA
         auto copy = m_tasks;
         std::sort(copy.begin(), copy.end(), [](const TaskItem& a, const TaskItem& b) {
             if (a.isPinned != b.isPinned) return a.isPinned > b.isPinned;
-            return a.id > b.id;
+            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
+                return a.timestamp > b.timestamp;
+            return a.id < b.id;
         });
         return copy;
     }
@@ -395,7 +404,9 @@ namespace VOXA
         auto copy = m_others;
         std::sort(copy.begin(), copy.end(), [](const Memory& a, const Memory& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
-            return a.id > b.id;
+            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
+                return a.timestamp > b.timestamp;
+            return a.id < b.id;
         });
         return copy;
     }
@@ -405,7 +416,9 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_recordings;
         std::sort(copy.begin(), copy.end(), [](const Recording& a, const Recording& b) {
-            return a.id > b.id;
+            if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
+                return a.timestamp > b.timestamp;
+            return a.id < b.id;
         });
         return copy;
     }

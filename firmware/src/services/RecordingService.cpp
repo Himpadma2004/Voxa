@@ -33,7 +33,11 @@ namespace VOXA
             }
         }
         std::sort(recordings.begin(), recordings.end(),
-                  [](const Recording& a, const Recording& b) { return a.id > b.id; });
+                  [](const Recording& a, const Recording& b) {
+                      if (!a.timestamp.empty() && !b.timestamp.empty() && a.timestamp != b.timestamp)
+                          return a.timestamp > b.timestamp;
+                      return a.id < b.id;
+                  });
         return recordings;
     }
 

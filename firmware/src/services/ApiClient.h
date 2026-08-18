@@ -44,7 +44,7 @@ namespace VOXA
 
         // --- Voice Upload ---
         /// POST raw WAV bytes from a PSRAM/DRAM buffer to /api/voice/upload-raw
-        ApiResult uploadVoiceFromBuffer(const uint8_t* buf, size_t size);
+        ApiResult uploadVoiceFromBuffer(const uint8_t* buf, size_t size, const std::string& recordedAt = "");
         /// POST a WAV file that was previously staged on SPIFFS (legacy/retry path)
         ApiResult uploadVoice(const std::string& filePath);
 

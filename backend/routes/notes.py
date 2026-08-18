@@ -32,7 +32,10 @@ def serialize_mongo_doc(data):
 
 
 def _sort_key(record):
-    return _safe_str(record.get("created_at") or record.get("processed_at") or record.get("timestamp") or "")
+    val = record.get("created_at") or record.get("processed_at") or record.get("timestamp")
+    if val is None and "_id" in record and hasattr(record["_id"], "generation_time"):
+        val = record["_id"].generation_time
+    return _safe_str(val)
 
 
 def _safe_str(value):
@@ -47,7 +50,11 @@ def _safe_str(value):
 def _build_category_items(docs, default_category):
     items = []
     for doc in docs:
-        created_at = _safe_str(doc.get("created_at") or doc.get("processed_at") or doc.get("timestamp"))
+        raw_time = doc.get("created_at") or doc.get("processed_at") or doc.get("timestamp")
+        if not raw_time and "_id" in doc and hasattr(doc["_id"], "generation_time"):
+            raw_time = doc["_id"].generation_time
+        created_at = _safe_str(raw_time)
+
         # source_id: prefer audio_id (UUID string), fall back to item_id, then serialized _id
         audio_id = _safe_str(doc.get("audio_id") or "")
         item_id = _safe_str(doc.get("item_id") or "")
@@ -78,7 +85,11 @@ def _build_category_items(docs, default_category):
 def _build_recording_items(notes):
     items = []
     for note in notes:
-        created_at = _safe_str(note.get("processed_at") or note.get("created_at") or note.get("timestamp"))
+        # Prefer original recording timestamp
+        raw_time = note.get("created_at") or note.get("processed_at") or note.get("timestamp")
+        if not raw_time and "_id" in note and hasattr(note["_id"], "generation_time"):
+            raw_time = note["_id"].generation_time
+        created_at = _safe_str(raw_time)
         title = note.get("summary") or note.get("filename") or note.get("audio_id") or "Untitled recording"
         file_path = note.get("audio_url") or note.get("s3_key") or note.get("filename") or ""
         status = note.get("status", "")

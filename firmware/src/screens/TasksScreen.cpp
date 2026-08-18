@@ -2,6 +2,7 @@
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../services/DataService.h"
+#include "../services/TimeService.h"
 #include "DetailScreen.h"
 #include "TextInputScreen.h"
 #include "Transition.h"
@@ -37,7 +38,7 @@ namespace VOXA
         {
             TaskItem newTask;
             newTask.title = addedText;
-            newTask.timestamp = "2026-07-20 12:00";
+            newTask.timestamp = timeService.getFormattedDateTime();
             newTask.isDone = false;
             dataService.addTaskLocal(newTask);
         }

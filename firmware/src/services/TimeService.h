@@ -22,6 +22,9 @@ namespace VOXA
         /// Returns a combined date+time string, e.g. "Friday, Jun 26  11:44 AM".
         [[nodiscard]] std::string getFormattedDateTime() const;
 
+        /// Returns the current local date-time as ISO 8601 string, e.g. "2026-08-18T16:12:13".
+        [[nodiscard]] std::string getISO8601Time() const;
+
         /// Returns the current year as an integer.
         [[nodiscard]] int getCurrentYear() const;
 

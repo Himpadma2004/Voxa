@@ -28,17 +28,12 @@ try:
     client = MongoClient(
         MONGO_URI,
         tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=10000,
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000
+        serverSelectionTimeoutMS=2500,
+        connectTimeoutMS=2500,
+        socketTimeoutMS=2500
     )
-
     client.admin.command("ping")
-
-    print(
-        "MongoDB Connected"
-    )
-
+    print("MongoDB Connected")
 except Exception as ssl_err:
     print(f"Standard TLS connection failed ({ssl_err}). Retrying with SSL fallback options...")
     try:
@@ -46,20 +41,18 @@ except Exception as ssl_err:
             MONGO_URI,
             tls=True,
             tlsAllowInvalidCertificates=True,
-            serverSelectionTimeoutMS=10000,
-            connectTimeoutMS=10000,
-            socketTimeoutMS=10000
+            serverSelectionTimeoutMS=2500,
+            connectTimeoutMS=2500,
+            socketTimeoutMS=2500
         )
         client.admin.command("ping")
         print("MongoDB Connected (with SSL fallback)")
     except Exception as e:
-        print("MongoDB Connection Error:", e)
-        raise e
-
-    print(
-        f"MongoDB Connection Error: {e}"
-    )
-    raise
+        print("MongoDB Connection Warning (offline/resilient mode):", e)
+        try:
+            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=1000, connectTimeoutMS=1000)
+        except Exception:
+            client = MongoClient(serverSelectionTimeoutMS=1000)
 
 
 db = client[MONGO_DB]
@@ -78,7 +71,7 @@ def route_and_store_category_items(audio_id, llm_data, timestamp=None):
     Ensures that 'others' ONLY receives items that do NOT belong to Idea, Question, Task, or Reminder!
     """
     if not timestamp:
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now()
 
     cat_raw = str(llm_data.get("category", "Other")).strip()
     cat_clean = cat_raw.lower().rstrip('s')
@@ -264,7 +257,11 @@ def migrate_all_existing_data():
 
     for note in all_notes:
         audio_id = note.get("audio_id") or str(note.get("_id"))
-        timestamp = note.get("processed_at") or note.get("created_at") or datetime.utcnow()
+        timestamp = note.get("created_at") or note.get("processed_at")
+        if not timestamp and "_id" in note and hasattr(note["_id"], "generation_time"):
+            timestamp = note["_id"].generation_time
+        if not timestamp:
+            timestamp = datetime.now()
 
         llm_data = {
             "category": note.get("category", "Other"),
@@ -412,7 +409,7 @@ def update_transcript(
             "$set": {
                 "transcript": transcript,
                 "status": "transcribed",
-                "transcribed_at": datetime.utcnow()
+                "transcribed_at": datetime.now()
             }
         }
     )
@@ -427,7 +424,17 @@ def update_llm_result(
     llm_data,
     model_name
 ):
-    timestamp = datetime.utcnow()
+    # Retrieve original recording timestamp from existing document in audio_notes
+    existing = collection.find_one({"audio_id": audio_id})
+    orig_timestamp = None
+    if existing:
+        orig_timestamp = existing.get("created_at") or existing.get("processed_at")
+        if not orig_timestamp and "_id" in existing and hasattr(existing["_id"], "generation_time"):
+            orig_timestamp = existing["_id"].generation_time
+    if not orig_timestamp:
+        orig_timestamp = datetime.now()
+
+    processed_time = datetime.now()
     collection.update_one(
         {
             "audio_id": audio_id
@@ -435,7 +442,8 @@ def update_llm_result(
         {
             "$set": {
                 "status": "processed",
-                "processed_at": timestamp,
+                "processed_at": processed_time,
+                "created_at": orig_timestamp,
                 "llm_model": model_name,
                 "category": llm_data.get(
                     "category",
@@ -478,8 +486,8 @@ def update_llm_result(
         }
     )
 
-    # Automatically route and store into dedicated MongoDB category collections!
-    route_and_store_category_items(audio_id, llm_data, timestamp)
+    # Automatically route and store into dedicated MongoDB category collections with the original recording timestamp!
+    route_and_store_category_items(audio_id, llm_data, orig_timestamp)
     sync_mongodb_to_local_json_caches()
 
     print(
@@ -508,7 +516,7 @@ def cleanup_old_reminders():
     Cleans up legacy/old cleared or dismissed reminders older than 30 days.
     """
     try:
-        cutoff = datetime.utcnow() - timedelta(days=30)
+        cutoff = datetime.now() - timedelta(days=30)
         reminders_collection.delete_many({
             "status": {"$in": ["cleared", "dismissed", "completed"]},
             "created_at": {"$lt": cutoff}

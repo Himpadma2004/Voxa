@@ -1,5 +1,6 @@
 #include "MicrophoneService.h"
 #include "ApiClient.h"
+#include "TimeService.h"
 #include <driver/i2s.h>
 #include <algorithm>
 #include <cstring>
@@ -177,6 +178,7 @@ namespace VOXA
         m_bufferOffset = 0;
         m_startMs      = nowMs;
         m_durationMs   = 0;
+        m_recordedAt   = timeService.getISO8601Time();
         m_recording    = true;
 
         setState(RecordingState::Recording, caller);
@@ -191,8 +193,8 @@ namespace VOXA
             1             // Core 1 (UI on Core 0)
         );
 
-        Serial.printf("[MicrophoneService] Recording started (title: %s, caller: %s)\n",
-                      title.c_str(), caller);
+        Serial.printf("[MicrophoneService] Recording started (title: %s, time: %s, caller: %s)\n",
+                      title.c_str(), m_recordedAt.c_str(), caller);
         return true;
     }
 
@@ -232,8 +234,8 @@ namespace VOXA
             return false;
         }
 
-        Serial.printf("[MicrophoneService] PCM data: %u bytes | Duration: %u ms\n",
-                      pcmDataSize, m_durationMs);
+        Serial.printf("[MicrophoneService] PCM data: %u bytes | Duration: %u ms | Time: %s\n",
+                      pcmDataSize, m_durationMs, m_recordedAt.c_str());
 
         // ── Build complete WAV = 44-byte header + PCM in a heap buffer ────────
         // We keep the PCM in PSRAM and prepend a small stack header copy.
@@ -273,10 +275,10 @@ namespace VOXA
             memcpy(wavBuf,              header,       kHeaderSize);
             memcpy(wavBuf + kHeaderSize, m_psramBuffer, pcmDataSize);
 
-            Serial.printf("[MicrophoneService] Uploading %u bytes WAV to cloud...\n",
-                          (unsigned)totalWavSize);
+            Serial.printf("[MicrophoneService] Uploading %u bytes WAV to cloud (timestamp: %s)...\n",
+                          (unsigned)totalWavSize, m_recordedAt.c_str());
 
-            ApiResult res = apiClient.uploadVoiceFromBuffer(wavBuf, totalWavSize);
+            ApiResult res = apiClient.uploadVoiceFromBuffer(wavBuf, totalWavSize, m_recordedAt);
             free(wavBuf);
 
             if (res.success)

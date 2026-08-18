@@ -6,6 +6,7 @@
 #include "../screens/ScreenCommon.h"
 #include "../services/WiFiManager.h"
 #include "../services/ApiClient.h"
+#include "../audio/AudioManager.h"
 #include <Arduino.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
@@ -269,6 +270,9 @@ namespace VOXA
         float cardX = (w - cardW) * 0.5f;
         float cardY = (h - cardH) * 0.5f;
 
+        // Play the configured reminder music (reminder.mp3) while the alert popup is active
+        AudioManager::instance().playReminderMusicAsync();
+
         while (activeRem->status == ReminderStatus::ACTIVE)
         {
             uint16_t tx = 0, ty = 0;
@@ -450,6 +454,9 @@ namespace VOXA
             popupSprite.pushSprite(0, 0);
             delay(16); // ~60fps
         }
+
+        // Stop reminder music when dismissed, snoozed, or rescheduled
+        AudioManager::instance().stopReminderMusic();
 
         popupSprite.deleteSprite();
     }

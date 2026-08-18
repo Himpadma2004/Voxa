@@ -495,8 +495,7 @@ void setup()
 
   Serial.println("[Startup] AudioManager (MAX98357A I2S Mono Speaker System)");
   AudioManager::instance().begin();
-  AudioManager::instance().startBackgroundMusicLoop();
-  Serial.println("[Startup] AudioManager ready - Background Music Loop Running");
+  Serial.println("[Startup] AudioManager ready");
 
   Serial.println("[Startup] ButtonService (Physical Long-Press Record Button on GPIO 1)");
   buttonService.begin(PHYSICAL_BUTTON_PIN);

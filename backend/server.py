@@ -42,11 +42,12 @@ async def log_requests(request: Request, call_next):
     return response
 
 # Include modular routes/endpoints
-from routes import notes, reminders, search, summary
+from routes import notes, reminders, search, summary, music
 app.include_router(notes.router)
 app.include_router(reminders.router)
 app.include_router(search.router)
 app.include_router(summary.router)
+app.include_router(music.router)
 
 
 
@@ -57,15 +58,43 @@ def read_root():
 
 @app.on_event("startup")
 def startup_event():
-    from services.reminder_scheduler import start_scheduler
-    from database.mongodb import migrate_all_existing_data
-    start_scheduler()
-    migrate_all_existing_data()
+    try:
+        from services.reminder_scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        print(f"[Startup] Warning starting reminder scheduler: {e}")
+    try:
+        from database.mongodb import migrate_all_existing_data
+        migrate_all_existing_data()
+    except Exception as e:
+        print(f"[Startup] Warning migrating data: {e}")
 
 
 def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
     try:
-        # 1. Upload the audio file to AWS S3
+        # 0. Standardize and resample recorded audio to 44.1kHz 16-bit PCM WAV for perfect speaker playback
+        try:
+            import soundfile as sf
+            import scipy.signal
+            import numpy as np
+
+            audio_data, sr = sf.read(temp_filepath)
+            if audio_data.ndim > 1:
+                audio_data = audio_data.mean(axis=1) # Mono
+            target_sr = 44100
+            if sr != target_sr:
+                num_samples = int(len(audio_data) * target_sr / sr)
+                audio_data = scipy.signal.resample(audio_data, num_samples)
+            peak = np.max(np.abs(audio_data))
+            if peak > 0:
+                audio_data = (audio_data / peak) * 0.98
+            int16_data = (audio_data * 32767).astype(np.int16)
+            sf.write(temp_filepath, int16_data, target_sr, subtype="PCM_16", format="WAV")
+            print(f"[Background] Standardized audio to 44.1kHz 16-bit PCM WAV (from {sr}Hz -> {target_sr}Hz)")
+        except Exception as resample_err:
+            print(f"[Background] Warning during 44.1kHz audio resampling: {resample_err}")
+
+        # 1. Upload the standardized 44.1kHz audio file to AWS S3
         print(f"\n[Background] Uploading to AWS S3 for audio_id: {audio_id}...")
         upload_result = upload_file(temp_filepath)
         s3_key = upload_result["s3_key"]
@@ -147,6 +176,30 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
                 print(f"[Background] Warning: failed to delete {temp_filepath}: {ex}")
 
 
+def extract_record_time(request: Request) -> datetime:
+    """
+    Extract the original recording timestamp provided by the client (ESP32/browser/app),
+    or fall back to the current local datetime.
+    """
+    header_val = (
+        request.headers.get("x-recorded-at") or
+        request.headers.get("x-timestamp") or
+        request.headers.get("x-created-at") or
+        request.query_params.get("recorded_at") or
+        request.query_params.get("timestamp")
+    )
+    if header_val and header_val.strip():
+        val = header_val.strip()
+        try:
+            return datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except Exception:
+            try:
+                return datetime.fromtimestamp(float(val))
+            except Exception:
+                pass
+    return datetime.now()
+
+
 @app.post("/api/voice/upload")
 async def upload_voice(
     request: Request,
@@ -167,6 +220,8 @@ async def upload_voice(
     sys.stdout.flush()
     print(f"\n[Server] Received file upload request: {file.filename}")
 
+    rec_time = extract_record_time(request)
+
     # Ensure recordings temp directory exists outside watched paths to avoid Uvicorn reload loops
     temp_dir = os.path.join(tempfile.gettempdir(), "voxa_recordings")
     os.makedirs(temp_dir, exist_ok=True)
@@ -181,16 +236,16 @@ async def upload_voice(
         await run_in_threadpool(save_file)
         print(f"[Server] Saved uploaded file to temporary path: {temp_filepath}")
 
-        # Store initial metadata with "processing" status in MongoDB
+        # Store initial metadata with "processing" status and accurate recording timestamp in MongoDB
         audio_id = str(uuid.uuid4())
         document = {
             "audio_id": audio_id,
             "filename": temp_filename,
             "status": "processing",
-            "created_at": datetime.utcnow()
+            "created_at": rec_time
         }
         await run_in_threadpool(save_audio_metadata, document)
-        print(f"[Server] Saved initial metadata in MongoDB. Audio ID: {audio_id}")
+        print(f"[Server] Saved initial metadata in MongoDB. Audio ID: {audio_id}, Recorded At: {rec_time}")
 
         # Queue the heavy work in FastAPI background tasks
         background_tasks.add_task(run_upload_pipeline, audio_id, temp_filepath, temp_filename)
@@ -235,6 +290,8 @@ async def upload_voice_raw(
     print("=" * 60)
     sys.stdout.flush()
 
+    rec_time = extract_record_time(request)
+
     # Ensure recordings temp directory exists outside watched paths to avoid Uvicorn reload loops
     temp_dir = os.path.join(tempfile.gettempdir(), "voxa_recordings")
     os.makedirs(temp_dir, exist_ok=True)
@@ -261,16 +318,16 @@ async def upload_voice_raw(
         await run_in_threadpool(write_file)
         print(f"[Server] Saved raw uploaded file to temporary path: {temp_filepath}")
 
-        # Store initial metadata with "processing" status in MongoDB
+        # Store initial metadata with "processing" status and accurate recording timestamp in MongoDB
         audio_id = str(uuid.uuid4())
         document = {
             "audio_id": audio_id,
             "filename": temp_filename,
             "status": "processing",
-            "created_at": datetime.utcnow()
+            "created_at": rec_time
         }
         await run_in_threadpool(save_audio_metadata, document)
-        print(f"[Server] Saved initial metadata in MongoDB. Audio ID: {audio_id}")
+        print(f"[Server] Saved initial metadata in MongoDB. Audio ID: {audio_id}, Recorded At: {rec_time}")
 
         # Queue the heavy work in FastAPI background tasks
         background_tasks.add_task(run_upload_pipeline, audio_id, temp_filepath, temp_filename)

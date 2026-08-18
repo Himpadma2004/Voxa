@@ -1,19 +1,17 @@
 #include "AudioManager.h"
-#include "../storage/StorageManager.h"
-#include "../services/ApiClient.h"
-#include <cmath>
-#include <algorithm>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <cmath>
+#include "../services/ApiClient.h"
 
-
+extern VOXA::ApiClient apiClient;
 
 namespace VOXA
 {
-    AudioManager& AudioManager::instance()
+    AudioManager &AudioManager::instance()
     {
-        static AudioManager inst;
-        return inst;
+        static AudioManager s_instance;
+        return s_instance;
     }
 
     AudioManager::AudioManager()
@@ -23,33 +21,24 @@ namespace VOXA
     AudioManager::~AudioManager()
     {
         stop();
-        if (m_initialized)
-        {
-            i2s_driver_uninstall(AUDIO_I2S_PORT);
-        }
+        uninstallI2SDriver();
     }
 
-    bool AudioManager::initI2S()
+    bool AudioManager::initI2SDriver()
     {
         if (m_initialized)
         {
             return true;
         }
 
-        Serial.println("\n=======================================");
-        Serial.println("[Audio] MAX98357A I2S Initialization");
-        Serial.printf("  - I2S Port : I2S_NUM_1\n");
-        Serial.printf("  - BCLK GPIO: %d\n", AUDIO_I2S_BCLK_PIN);
-        Serial.printf("  - LRCK GPIO: %d\n", AUDIO_I2S_LRC_PIN);
-        Serial.printf("  - DATA GPIO: %d\n", AUDIO_I2S_DOUT_PIN);
+        Serial.println("\n[AudioManager] Installing Brand New MAX98357A I2S Driver...");
+        Serial.printf("  - Controller : I2S_NUM_1\n");
+        Serial.printf("  - BCLK Pin   : GPIO %d\n", AUDIO_I2S_BCLK_PIN);
+        Serial.printf("  - LRC/WS Pin : GPIO %d\n", AUDIO_I2S_LRC_PIN);
+        Serial.printf("  - DOUT Pin   : GPIO %d\n", AUDIO_I2S_DOUT_PIN);
         Serial.printf("  - Sample Rate: %d Hz\n", AUDIO_SAMPLE_RATE);
-        Serial.printf("  - Bits: 16-bit\n");
-        Serial.printf("  - Channels: Stereo\n");
-        Serial.printf("  - DMA Buffer Count : 8\n");
-        Serial.printf("  - DMA Buffer Length: 512\n");
-        Serial.println("=======================================\n");
 
-        // Communication Format: Standard Philips I2S timing required by MAX98357A amplifier
+        // Standard Philips I2S TX Configuration (44.1kHz, 16-bit, Stereo DMA)
         i2s_config_t i2s_config = {
             .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
             .sample_rate = AUDIO_SAMPLE_RATE,
@@ -58,7 +47,7 @@ namespace VOXA
             .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S),
             .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
             .dma_buf_count = 8,
-            .dma_buf_len = 512,
+            .dma_buf_len = 256,
             .use_apll = false,
             .tx_desc_auto_clear = true,
             .fixed_mclk = 0
@@ -71,111 +60,108 @@ namespace VOXA
             .data_in_num = I2S_PIN_NO_CHANGE
         };
 
-        esp_err_t installErr = i2s_driver_install(AUDIO_I2S_PORT, &i2s_config, 0, NULL);
-        Serial.printf("Driver Install : %s\n", esp_err_to_name(installErr));
-        if (installErr != ESP_OK)
+        esp_err_t err = i2s_driver_install(AUDIO_I2S_PORT, &i2s_config, 0, NULL);
+        if (err != ESP_OK)
         {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED: Driver install error");
+            Serial.printf("[AudioManager] ERROR: i2s_driver_install failed: %s\n", esp_err_to_name(err));
             return false;
         }
 
-        esp_err_t pinErr = i2s_set_pin(AUDIO_I2S_PORT, &pin_config);
-        Serial.printf("Pin Config     : %s\n", esp_err_to_name(pinErr));
-        if (pinErr != ESP_OK)
+        err = i2s_set_pin(AUDIO_I2S_PORT, &pin_config);
+        if (err != ESP_OK)
         {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED: Pin config error");
+            Serial.printf("[AudioManager] ERROR: i2s_set_pin failed: %s\n", esp_err_to_name(err));
             i2s_driver_uninstall(AUDIO_I2S_PORT);
             return false;
         }
 
-        // Explicit Clock Configuration immediately after i2s_set_pin()
-        esp_err_t clkErr = i2s_set_clk(
-            AUDIO_I2S_PORT,
-            AUDIO_SAMPLE_RATE,
-            I2S_BITS_PER_SAMPLE_16BIT,
-            I2S_CHANNEL_STEREO
-        );
-        Serial.printf("Clock Config   : %s\n", esp_err_to_name(clkErr));
-        if (clkErr != ESP_OK)
-        {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED: Clock config error");
-            i2s_driver_uninstall(AUDIO_I2S_PORT);
-            return false;
-        }
+        // Set maximum GPIO drive strength for sharp square-wave clock and data signals
+        gpio_set_drive_capability((gpio_num_t)AUDIO_I2S_BCLK_PIN, GPIO_DRIVE_CAP_3);
+        gpio_set_drive_capability((gpio_num_t)AUDIO_I2S_LRC_PIN, GPIO_DRIVE_CAP_3);
+        gpio_set_drive_capability((gpio_num_t)AUDIO_I2S_DOUT_PIN, GPIO_DRIVE_CAP_3);
 
         i2s_zero_dma_buffer(AUDIO_I2S_PORT);
         m_initialized = true;
-        Serial.println("DMA Ready");
+        Serial.println("[AudioManager] MAX98357A I2S Driver successfully installed and DMA ready!");
         return true;
+    }
+
+    void AudioManager::uninstallI2SDriver()
+    {
+        if (m_initialized)
+        {
+            i2s_zero_dma_buffer(AUDIO_I2S_PORT);
+            i2s_driver_uninstall(AUDIO_I2S_PORT);
+            m_initialized = false;
+            Serial.println("[AudioManager] I2S Driver uninstalled.");
+        }
     }
 
     bool AudioManager::begin()
     {
-        Serial.println("[Audio] Initializing...");
-
-        if (!initI2S())
+        if (!initI2SDriver())
         {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED");
             return false;
         }
 
-        // Speaker Self Test: 1000 Hz for 1000 ms -> Pause 500 ms -> 1000 Hz for 1000 ms
-        Serial.println("Tone Playback Started");
-        bool playOk = playTone(1000, 1000);
-        delay(500);
-        playOk &= playTone(1000, 1000);
-
-        if (!playOk)
-        {
-            Serial.println("[Audio] AUDIO OUTPUT FAILED");
-            return false;
-        }
-
-        Serial.println("Tone Playback Completed");
+        // Play short 44.1kHz power-up acoustic tone (880 Hz -> 1760 Hz)
+        Serial.println("[AudioManager] Playing bootup chime...");
+        playTone(880, 100);
+        delay(20);
+        playTone(1760, 150);
         return true;
+    }
+
+    void AudioManager::stop()
+    {
+        m_isPlaying = false;
+        m_reminderPlaying = false;
+
+        if (m_initialized)
+        {
+            i2s_zero_dma_buffer(AUDIO_I2S_PORT);
+        }
+
+        if (m_playbackTaskHandle != nullptr)
+        {
+            vTaskDelete(m_playbackTaskHandle);
+            m_playbackTaskHandle = nullptr;
+        }
+
+        if (m_reminderTaskHandle != nullptr)
+        {
+            vTaskDelete(m_reminderTaskHandle);
+            m_reminderTaskHandle = nullptr;
+        }
     }
 
     void AudioManager::setVolume(uint8_t volume)
     {
         m_volume = std::min((uint8_t)100, volume);
-        Serial.printf("[Audio] Volume set to %u%%\n", m_volume);
+        Serial.printf("[AudioManager] Volume set to %u%%\n", m_volume);
     }
 
-    void AudioManager::applyVolumeScaling(int16_t* samples, size_t count)
-    {
-        if (m_volume >= 100)
-        {
-            return;
-        }
-        float scale = m_volume / 100.0f;
-        for (size_t i = 0; i < count; ++i)
-        {
-            samples[i] = (int16_t)(samples[i] * scale);
-        }
-    }
-
-    bool AudioManager::writePCMChunk(const int16_t* samples, size_t sampleCount)
+    bool AudioManager::writePCMChunk(const int16_t *samples, size_t sampleCount)
     {
         if (!m_initialized || !samples || sampleCount == 0)
         {
             return false;
         }
 
-        // Duplicate each 16-bit mono sample into a stereo pair (L, R)
-        // so MAX98357A receives data on both Left and Right clock cycles
+        // Expand Mono samples into Stereo (L+R) for MAX98357A
         std::vector<int16_t> stereoBuffer;
         stereoBuffer.reserve(sampleCount * 2);
 
-        float scale = (m_volume / 100.0f);
+        float scale = m_volume / 100.0f;
         for (size_t i = 0; i < sampleCount; ++i)
         {
-            int16_t val = (int16_t)(samples[i] * scale);
-            stereoBuffer.push_back(val); // Left channel
-            stereoBuffer.push_back(val); // Right channel
+            int16_t sample = (m_volume >= 100) ? samples[i] : (int16_t)(samples[i] * scale);
+            stereoBuffer.push_back(sample); // Left Channel
+            stereoBuffer.push_back(sample); // Right Channel
         }
 
-        size_t bytesWritten = 0;
         size_t bytesToWrite = stereoBuffer.size() * sizeof(int16_t);
+        size_t bytesWritten = 0;
 
         esp_err_t err = i2s_write(
             AUDIO_I2S_PORT,
@@ -185,14 +171,16 @@ namespace VOXA
             portMAX_DELAY
         );
 
-        if (err != ESP_OK || bytesWritten == 0)
+        if (err != ESP_OK)
         {
+            Serial.printf("[AudioManager] ERROR: i2s_write failed (%s)\n", esp_err_to_name(err));
             return false;
         }
-        return true;
+
+        return (bytesWritten == bytesToWrite);
     }
 
-    bool AudioManager::playPCM(const int16_t* samples, size_t sampleCount)
+    bool AudioManager::playPCM(const int16_t *samples, size_t sampleCount)
     {
         if (!m_initialized || !samples || sampleCount == 0)
         {
@@ -226,8 +214,8 @@ namespace VOXA
             size_t count = std::min(CHUNK_SIZE, samplesRemaining);
             for (size_t i = 0; i < count; ++i)
             {
-                // Full high-dynamic range 26,000 peak amplitude for clear, crisp audio
-                chunk[i] = (int16_t)(sin(phase) * 26000.0);
+                // Full scale 0 dBFS peak amplitude (32,700)
+                chunk[i] = (int16_t)(sin(phase) * 32700.0);
                 phase += phaseIncrement;
                 if (phase >= 2.0 * M_PI)
                 {
@@ -243,228 +231,63 @@ namespace VOXA
         return true;
     }
 
-    void AudioManager::playBootChimeAsync()
-    {
-        stop();
-        xTaskCreatePinnedToCore(
-            [](void* param)
-            {
-                // Futuristic VOXA Boot Chime sequence: C5 (523Hz) -> E5 (659Hz) -> G5 (784Hz) -> C6 (1046Hz)
-                AudioManager::instance().playTone(523, 90);
-                delay(20);
-                AudioManager::instance().playTone(659, 90);
-                delay(20);
-                AudioManager::instance().playTone(784, 90);
-                delay(20);
-                AudioManager::instance().playTone(1046, 220);
-                AudioManager::instance().m_audioTaskHandle = nullptr;
-                vTaskDelete(NULL);
-            },
-            "BootChime",
-            4096,
-            nullptr,
-            2,
-            &m_audioTaskHandle,
-            0
-        );
-    }
-
-    void AudioManager::playTapSoundAsync()
-    {
-        if (!m_initialized) return;
-        // Don't interrupt full audio playback / WAV playing
-        if (m_isPlaying && m_audioTaskHandle != nullptr) return;
-
-        xTaskCreatePinnedToCore(
-            [](void* param)
-            {
-                // Crisp, pleasant, ultra-short UI acoustic click (2200Hz for 15ms)
-                AudioManager::instance().playTone(2200, 15);
-                vTaskDelete(NULL);
-            },
-            "TapSound",
-            2048,
-            nullptr,
-            3,
-            nullptr,
-            0
-        );
-    }
-
-    void AudioManager::playNotificationSoundAsync()
-    {
-        stop();
-        xTaskCreatePinnedToCore(
-            [](void* param)
-            {
-                AudioManager::instance().playTone(880, 80);
-                delay(20);
-                AudioManager::instance().playTone(1760, 120);
-                AudioManager::instance().m_audioTaskHandle = nullptr;
-                vTaskDelete(NULL);
-            },
-            "NotifySound",
-            3072,
-            nullptr,
-            2,
-            &m_audioTaskHandle,
-            0
-        );
-    }
-
-    void AudioManager::playSuccessSoundAsync()
-    {
-        stop();
-        xTaskCreatePinnedToCore(
-            [](void* param)
-            {
-                AudioManager::instance().playTone(523, 80);
-                delay(15);
-                AudioManager::instance().playTone(659, 80);
-                delay(15);
-                AudioManager::instance().playTone(784, 150);
-                AudioManager::instance().m_audioTaskHandle = nullptr;
-                vTaskDelete(NULL);
-            },
-            "SuccessSound",
-            3072,
-            nullptr,
-            2,
-            &m_audioTaskHandle,
-            0
-        );
-    }
-
-    void AudioManager::startBackgroundMusicLoop()
-    {
-        if (m_bgMusicTaskHandle != nullptr)
-        {
-            return; // Already running
-        }
-
-        m_bgMusicEnabled = true;
-        xTaskCreatePinnedToCore(
-            [](void* param)
-            {
-                Serial.println("[Audio] Continuous Background Music Loop Started!");
-                // Soothing ambient melodic progression (Hz)
-                const uint16_t notes[] = {
-                    261, 329, 392, 523, 659, 784, 659, 523,
-                    392, 329, 261, 349, 440, 523, 698, 523,
-                    440, 349, 293, 370, 440, 587, 740, 587,
-                    440, 370, 392, 493, 587, 784, 587, 493
-                };
-                size_t numNotes = sizeof(notes) / sizeof(notes[0]);
-
-                while (AudioManager::instance().m_bgMusicEnabled)
-                {
-                    for (size_t i = 0; i < numNotes; ++i)
-                    {
-                        if (!AudioManager::instance().m_bgMusicEnabled || !AudioManager::instance().m_initialized) break;
-
-                        // Pause background music notes if foreground audio is playing
-                        while (AudioManager::instance().m_isPlaying && AudioManager::instance().m_bgMusicEnabled)
-                        {
-                            vTaskDelay(pdMS_TO_TICKS(100));
-                        }
-
-                        if (!AudioManager::instance().m_bgMusicEnabled) break;
-
-                        AudioManager::instance().playTone(notes[i], 180);
-                        vTaskDelay(pdMS_TO_TICKS(40));
-                    }
-                    vTaskDelay(pdMS_TO_TICKS(400)); // Brief pause between loop iterations
-                }
-
-                AudioManager::instance().m_bgMusicTaskHandle = nullptr;
-                vTaskDelete(NULL);
-            },
-            "BgMusicLoop",
-            4096,
-            nullptr,
-            1,
-            &m_bgMusicTaskHandle,
-            0 // Core 0 background execution
-        );
-    }
-
-    void AudioManager::stopBackgroundMusic()
-    {
-        m_bgMusicEnabled = false;
-        if (m_bgMusicTaskHandle != nullptr)
-        {
-            vTaskDelete(m_bgMusicTaskHandle);
-            m_bgMusicTaskHandle = nullptr;
-        }
-        Serial.println("[Audio] Background music stopped.");
-    }
-
-    void AudioManager::toggleBackgroundMusic()
-    {
-        if (m_bgMusicEnabled)
-        {
-            stopBackgroundMusic();
-        }
-        else
-        {
-            startBackgroundMusicLoop();
-        }
-    }
-
-    bool AudioManager::playUrl(const std::string& url)
+    bool AudioManager::playUrl(const std::string &url)
     {
         if (!m_initialized || url.empty())
         {
-            Serial.println("[Audio] Playback failed: Invalid URL or audio engine uninitialized");
             return false;
         }
 
-        Serial.printf("[Audio] Streaming audio from AWS S3/HTTP URL: %s\n", url.c_str());
+        if (!WiFi.isConnected())
+        {
+            Serial.println("[AudioManager] WiFi not connected. Cannot stream audio URL.");
+            return false;
+        }
+
+        Serial.printf("[AudioManager] Streaming audio from: %s\n", url.c_str());
 
         HTTPClient http;
-        if (!http.begin(url.c_str()))
-        {
-            Serial.println("[Audio] HTTP begin failed for streaming URL");
-            return false;
-        }
+        http.begin(url.c_str());
+        http.setTimeout(10000);
 
         int httpCode = http.GET();
-        if (httpCode != HTTP_CODE_OK && httpCode != 206)
+        if (httpCode != HTTP_CODE_OK)
         {
-            Serial.printf("[Audio] HTTP GET audio failed with status code: %d\n", httpCode);
+            Serial.printf("[AudioManager] HTTP GET failed (Code: %d)\n", httpCode);
             http.end();
             return false;
         }
 
-        WiFiClient* stream = http.getStreamPtr();
+        WiFiClient *stream = http.getStreamPtr();
         if (!stream)
         {
-            Serial.println("[Audio] HTTP stream pointer NULL");
+            Serial.println("[AudioManager] Stream pointer NULL");
             http.end();
             return false;
         }
 
-        // Check for 44-byte WAV header if present
+        // Check if stream begins with a standard 44-byte WAV header
         uint8_t header[44];
-        size_t headerRead = stream->readBytes(header, 44);
-        if (headerRead == 44 && header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F')
+        size_t headerBytes = stream->readBytes(header, 44);
+        if (headerBytes == 44 && header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F')
         {
-            Serial.println("[Audio] Stream WAV header verified (RIFF/WAVE)");
+            Serial.println("[AudioManager] Verified RIFF/WAVE header. Streaming PCM payload...");
         }
 
         m_isPlaying = true;
         constexpr size_t BUFFER_SAMPLES = 512;
         int16_t pcmBuffer[BUFFER_SAMPLES];
 
-        while (http.connected() && (stream->available() > 0 || m_isPlaying))
+        while (http.connected() && m_isPlaying)
         {
-            if (!m_isPlaying) break;
-
-            size_t bytesRead = stream->readBytes((uint8_t*)pcmBuffer, BUFFER_SAMPLES * sizeof(int16_t));
-            size_t samplesRead = bytesRead / sizeof(int16_t);
-            if (samplesRead > 0)
+            if (stream->available() > 0)
             {
-                writePCMChunk(pcmBuffer, samplesRead);
+                size_t bytesRead = stream->readBytes((uint8_t *)pcmBuffer, BUFFER_SAMPLES * sizeof(int16_t));
+                size_t samplesRead = bytesRead / sizeof(int16_t);
+                if (samplesRead > 0)
+                {
+                    writePCMChunk(pcmBuffer, samplesRead);
+                }
             }
             else
             {
@@ -474,224 +297,82 @@ namespace VOXA
 
         http.end();
         m_isPlaying = false;
-        Serial.println("[Audio] Finished streaming audio URL!");
+        Serial.println("[AudioManager] Audio stream finished.");
         return true;
     }
 
-    bool AudioManager::playUrlAsync(const std::string& url)
+    bool AudioManager::playUrlAsync(const std::string &url)
     {
         stop();
         static std::string s_asyncUrl;
         s_asyncUrl = url;
 
         xTaskCreatePinnedToCore(
-            [](void* param)
+            [](void *param)
             {
-                const char* streamUrl = static_cast<const char*>(param);
+                const char *streamUrl = static_cast<const char *>(param);
                 AudioManager::instance().playUrl(std::string(streamUrl));
-                AudioManager::instance().m_audioTaskHandle = nullptr;
+                AudioManager::instance().m_playbackTaskHandle = nullptr;
                 vTaskDelete(NULL);
             },
-            "AudioUrlAsync",
+            "AudioStreamTask",
             8192,
-            (void*)s_asyncUrl.c_str(),
-            1,
-            &m_audioTaskHandle,
+            (void *)s_asyncUrl.c_str(),
+            2,
+            &m_playbackTaskHandle,
             0
         );
+
         return true;
     }
 
-    bool AudioManager::playWavAsync(const std::string& path)
+    bool AudioManager::playReminderMusicAsync()
     {
-        stop(); // Stop active playback and delete any existing task
-
-        if (path.find("http://") == 0 || path.find("https://") == 0)
+        if (m_reminderPlaying)
         {
-            return playUrlAsync(path);
-        }
-        if (path.find("/api/") == 0)
-        {
-            return playUrlAsync(VOXA::apiClient.getBaseUrl() + path);
+            return true;
         }
 
-
-        static std::string s_asyncPath;
-        s_asyncPath = path;
+        stop();
+        m_reminderPlaying = true;
 
         xTaskCreatePinnedToCore(
-            [](void* param)
+            [](void *param)
             {
-                const char* filePath = static_cast<const char*>(param);
-                AudioManager::instance().playWav(std::string(filePath));
-                AudioManager::instance().m_audioTaskHandle = nullptr;
+                while (AudioManager::instance().m_reminderPlaying)
+                {
+                    if (WiFi.isConnected())
+                    {
+                        std::string reminderUrl = VOXA::apiClient.getBaseUrl() + "/api/music/reminder";
+                        AudioManager::instance().playUrl(reminderUrl);
+                    }
+                    else
+                    {
+                        // Offline alert melody
+                        AudioManager::instance().playTone(1000, 200);
+                        delay(100);
+                        AudioManager::instance().playTone(1500, 300);
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(500));
+                }
+                AudioManager::instance().m_reminderTaskHandle = nullptr;
                 vTaskDelete(NULL);
             },
-            "AudioAsync",
+            "ReminderAudioTask",
             8192,
-            (void*)s_asyncPath.c_str(),
-            1,
-            &m_audioTaskHandle,
-            0 // Pin to Core 0 for background audio streaming
+            nullptr,
+            2,
+            &m_reminderTaskHandle,
+            0
         );
 
         return true;
     }
 
-
-    bool AudioManager::playWav(const std::string& path)
+    void AudioManager::stopReminderMusic()
     {
-        if (!m_initialized)
-        {
-            Serial.println("[Audio] ERROR:\nPlayback failed (audio engine not initialized)");
-            return false;
-        }
-
-        FS* pFs = &storageManager.getFSForPath(path.c_str());
-        const char* relPath = path.c_str();
-
-        if (strncmp(path.c_str(), "/spiffs", 7) == 0)
-        {
-            pFs = &static_cast<FS&>(SPIFFS);
-            relPath = path.c_str() + 7; // strip "/spiffs" prefix for SPIFFS.open()
-        }
-
-        File file = pFs->open(relPath, "r");
-        if (!file && pFs != &static_cast<FS&>(SPIFFS))
-        {
-            // Fallback: check SPIFFS if not found on primary FS
-            pFs = &static_cast<FS&>(SPIFFS);
-            relPath = (strncmp(path.c_str(), "/spiffs", 7) == 0) ? path.c_str() + 7 : path.c_str();
-            file = pFs->open(relPath, "r");
-        }
-
-        if (!file)
-        {
-            Serial.printf("[Audio] ERROR:\nPlayback failed (file not found: %s)\n", path.c_str());
-            return false;
-        }
-
-        // Basic WAV Header Parsing (44 bytes standard header)
-        uint8_t header[44];
-        if (file.read(header, 44) != 44)
-        {
-            Serial.println("[Audio] ERROR:\nPlayback failed (invalid WAV header)");
-            file.close();
-            return false;
-        }
-
-        // Verify "RIFF" and "WAVE" signatures
-        if (header[0] != 'R' || header[1] != 'I' || header[2] != 'F' || header[3] != 'F' ||
-            header[8] != 'W' || header[9] != 'A' || header[10] != 'V' || header[11] != 'E')
-        {
-            Serial.println("[Audio] ERROR:\nPlayback failed (not a valid WAV file)");
-            file.close();
-            return false;
-        }
-
-        m_isPlaying = true;
-        constexpr size_t BUFFER_SAMPLES = 512;
-        int16_t pcmBuffer[BUFFER_SAMPLES];
-
-        while (file.available() && m_isPlaying)
-        {
-            size_t bytesRead = file.read((uint8_t*)pcmBuffer, BUFFER_SAMPLES * sizeof(int16_t));
-            size_t samplesRead = bytesRead / sizeof(int16_t);
-            if (samplesRead > 0)
-            {
-                writePCMChunk(pcmBuffer, samplesRead);
-            }
-        }
-
-        file.close();
-        m_isPlaying = false;
-        Serial.printf("[Audio] Finished playing WAV file: %s\n", path.c_str());
-        return true;
-    }
-
-    void AudioManager::stop()
-    {
-        m_isPlaying = false;
-        if (m_audioTaskHandle != nullptr)
-        {
-            vTaskDelete(m_audioTaskHandle);
-            m_audioTaskHandle = nullptr;
-        }
-        if (m_initialized)
-        {
-            i2s_zero_dma_buffer(AUDIO_I2S_PORT);
-        }
-        Serial.println("[Audio] Playback stopped.");
-    }
-
-    bool AudioManager::runDiagnostics()
-    {
-        Serial.println("[Audio] Running audio diagnostics...");
-
-        bool i2sOk = initI2S();
-        bool dmaOk = m_initialized;
-        bool spkOk = m_initialized;
-
-        // Play diagnostic sweep sequence: 500 Hz -> 700 Hz -> 900 Hz
-        bool playOk = playTone(500, 100);
-        delay(30);
-        playOk &= playTone(700, 100);
-        delay(30);
-        playOk &= playTone(900, 100);
-
-        Serial.println("\n========== AUDIO DIAGNOSTICS ==========");
-        Serial.printf("I2S Initialized : %s\n", i2sOk ? "PASS" : "FAIL");
-        Serial.printf("DMA Allocated   : %s\n", dmaOk ? "PASS" : "FAIL");
-        Serial.printf("Speaker Enabled : %s\n", spkOk ? "PASS" : "FAIL");
-        Serial.printf("Playback Test   : %s\n", playOk ? "PASS" : "FAIL");
-        Serial.println("=======================================\n");
-
-        return i2sOk && dmaOk && spkOk && playOk;
-    }
-
-    bool AudioManager::runSpeakerDiagnostic()
-    {
-        Serial.println("\n=================================================");
-        Serial.println("[Audio] MAX98357A Speaker Hardware Diagnostic Test");
-        Serial.printf("  - Target Chip: MAX98357A Mono I2S Amplifier\n");
-        Serial.printf("  - I2S Port   : I2S_NUM_1\n");
-        Serial.printf("  - BCLK Pin   : GPIO %d\n", AUDIO_I2S_BCLK_PIN);
-        Serial.printf("  - LRCK Pin   : GPIO %d (Word Select)\n", AUDIO_I2S_LRC_PIN);
-        Serial.printf("  - DOUT Pin   : GPIO %d (Data In)\n", AUDIO_I2S_DOUT_PIN);
-        Serial.println("=================================================\n");
-
-        bool i2sOk = initI2S();
-        bool playOk = false;
-
-        if (i2sOk)
-        {
-            Serial.println("[Speaker Diagnostic] Generating 800 Hz Diagnostic Tone...");
-            playOk = playTone(800, 1500); // Play 800 Hz test tone for 1.5 seconds
-        }
-
-        bool overallPass = i2sOk && playOk;
-
-        // Visual Light Flash Diagnostics on Display Screen
-        extern void renderSpeakerDiagnosticFlash(bool passed, const char* details);
-
-        if (overallPass)
-        {
-            Serial.println("\n=================================================");
-            Serial.println("[Speaker Diagnostic] >>> GREEN LIGHT FLASH <<<");
-            Serial.println("[Speaker Diagnostic] STATUS: PASSED!");
-            Serial.println("[Speaker Diagnostic] MAX98357A Speaker System Identified & Working.");
-            Serial.println("=================================================\n");
-        }
-        else
-        {
-            Serial.println("\n=================================================");
-            Serial.println("[Speaker Diagnostic] >>> RED LIGHT FLASH <<<");
-            Serial.println("[Speaker Diagnostic] STATUS: FAILED!");
-            Serial.println("[Speaker Diagnostic] Speaker Hardware Connection Failed or Missing.");
-            Serial.println("=================================================\n");
-        }
-
-        return overallPass;
+        m_reminderPlaying = false;
+        stop();
     }
 
 } // namespace VOXA

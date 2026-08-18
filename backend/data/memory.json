@@ -268,5 +268,20 @@
     "timestamp": "2026-08-17T05:57:33.590000",
     "durationSeconds": "0",
     "comments": ""
+  },
+  {
+    "id": "19",
+    "title": "Happy Birthday",
+    "content": "Happy Birthday",
+    "category": "other",
+    "tags": "other,voxa",
+    "createdAt": "2026-08-18T10:11:46.931000",
+    "updatedAt": "2026-08-18T10:11:46.931000",
+    "importance": "1",
+    "favorite": "false",
+    "source": "MongoDB",
+    "timestamp": "2026-08-18T10:11:46.931000",
+    "durationSeconds": "0",
+    "comments": ""
   }
 ]

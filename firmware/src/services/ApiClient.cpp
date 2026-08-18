@@ -220,7 +220,7 @@ namespace VOXA
     // ── Voice Upload: Buffer → Cloud (Primary Path) ──────────────────────────
     // Posts raw WAV bytes directly from PSRAM/DRAM to the backend.
     // No SPIFFS write needed — the audio lives in the PSRAM buffer until upload.
-    ApiResult ApiClient::uploadVoiceFromBuffer(const uint8_t* buf, size_t size)
+    ApiResult ApiClient::uploadVoiceFromBuffer(const uint8_t* buf, size_t size, const std::string& recordedAt)
     {
         ApiResult result;
 
@@ -250,6 +250,10 @@ namespace VOXA
             http.begin(url);
             http.setTimeout(60000);
             http.addHeader("Content-Type", "audio/wav");
+            if (!recordedAt.empty())
+            {
+                http.addHeader("X-Recorded-At", recordedAt.c_str());
+            }
 
             httpCode = http.POST(const_cast<uint8_t*>(buf), size);
             Serial.printf("[UploadBuffer] Attempt %d/%d — HTTP %d\n", attempt, MAX_ATTEMPTS, httpCode);

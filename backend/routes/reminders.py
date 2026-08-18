@@ -86,10 +86,13 @@ def read_all_reminders(
                 r["status"] = "missed"
                 r["notice"] = "This reminder was missed by you."
 
-        reminders.sort(
-            key=lambda r: _serialize_value(r.get("created_at") or r.get("reminder_time") or r.get("_id") or ""),
-            reverse=True
-        )
+        def _reminder_sort_key(r):
+            val = r.get("created_at") or r.get("reminder_time") or r.get("dateTime")
+            if val is None and "_id" in r and hasattr(r["_id"], "generation_time"):
+                val = r["_id"].generation_time
+            return _serialize_value(val) if val is not None else ""
+
+        reminders.sort(key=_reminder_sort_key, reverse=True)
 
         total = len(reminders)
         page_items = reminders[skip: skip + limit]

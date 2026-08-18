@@ -58,6 +58,14 @@ namespace VOXA
         return std::string(buf);
     }
 
+    std::string TimeService::getISO8601Time() const
+    {
+        std::tm local = localNow();
+        char buf[64];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &local);
+        return std::string(buf);
+    }
+
     int TimeService::getCurrentYear() const
     {
         std::tm local = localNow();

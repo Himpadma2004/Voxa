@@ -60,6 +60,7 @@ namespace VOXA
         bool        m_recording     { false };
         bool        m_saving        { false };
         std::string m_recordingTitle;
+        std::string m_recordedAt;
         std::string m_lastAudioId;
         uint32_t    m_startMs       { 0 };
         uint32_t    m_durationMs    { 0 };
