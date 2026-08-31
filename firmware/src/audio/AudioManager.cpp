@@ -761,6 +761,22 @@ namespace VOXA
         uint32_t playbackStartMs = millis();
         float scale = m_volume / 100.0f;
 
+        // 5.0x Vocal Gain Boost with Smooth Soft-Saturation Knee (loud speech without clipping distortion)
+        auto applyVocalGain = [scale](int16_t sample) -> int16_t {
+            float amplified = (float)sample * scale * 5.0f;
+            if (amplified > 22000.0f)
+            {
+                amplified = 22000.0f + (amplified - 22000.0f) / (1.0f + (amplified - 22000.0f) / 10767.0f);
+            }
+            else if (amplified < -22000.0f)
+            {
+                amplified = -22000.0f + (amplified + 22000.0f) / (1.0f - (amplified + 22000.0f) / 10768.0f);
+            }
+            if (amplified > 32767.0f) amplified = 32767.0f;
+            if (amplified < -32768.0f) amplified = -32768.0f;
+            return (int16_t)amplified;
+        };
+
         while (http.connected() && m_voiceStreamPlaying && dataBytesRemaining > 0 && !reader.isEof())
         {
             size_t bytesWanted = std::min({(size_t)(READ_SAMPLES * sizeof(int16_t)), (size_t)dataBytesRemaining});
@@ -782,15 +798,10 @@ namespace VOXA
             {
                 if (numChannels == 1)
                 {
-                    // Mono -> Stereo expansion
+                    // Mono -> Stereo expansion with 5.0x Vocal Gain
                     for (size_t i = 0; i < samplesRead; ++i)
                     {
-                        int32_t val = s_rawBuffer[i];
-                        if (m_volume < 100) val = (int32_t)(val * scale);
-                        if (val > 32767) val = 32767;
-                        if (val < -32768) val = -32768;
-
-                        int16_t s = (int16_t)val;
+                        int16_t s = applyVocalGain(s_rawBuffer[i]);
                         s_stereoBuffer[i * 2]     = s;
                         s_stereoBuffer[i * 2 + 1] = s;
                     }
@@ -810,14 +821,10 @@ namespace VOXA
                 }
                 else
                 {
-                    // Stereo native
+                    // Stereo native with 5.0x Vocal Gain
                     for (size_t i = 0; i < samplesRead; ++i)
                     {
-                        int32_t val = s_rawBuffer[i];
-                        if (m_volume < 100) val = (int32_t)(val * scale);
-                        if (val > 32767) val = 32767;
-                        if (val < -32768) val = -32768;
-                        s_rawBuffer[i] = (int16_t)val;
+                        s_rawBuffer[i] = applyVocalGain(s_rawBuffer[i]);
                     }
                     size_t bytesWritten = 0;
                     totalI2sWrites++;
