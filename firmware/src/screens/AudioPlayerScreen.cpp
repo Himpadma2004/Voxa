@@ -2,6 +2,7 @@
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../services/RecordingService.h"
+#include "../services/ApiClient.h"
 #include "../audio/AudioManager.h"
 #include "Transition.h"
 #include <cmath>
@@ -10,6 +11,7 @@
 namespace VOXA
 {
     extern RecordingService recordingService;
+    extern ApiClient apiClient;
 
     uint32_t AudioPlayerScreen::s_recordingId = 0;
     ScreenId AudioPlayerScreen::s_backRoute = ScreenId::RecordingsLibrary;
@@ -237,7 +239,23 @@ namespace VOXA
                         Serial.printf("[AudioPlayer] Toggle play: %s (%s)\n", isPlaying ? "PLAYING" : "PAUSED", rec.filePath.c_str());
                         if (isPlaying)
                         {
-                            AudioManager::instance().playWavAsync(rec.filePath);
+                            std::string playUrl = rec.filePath;
+                            if (!playUrl.empty())
+                            {
+                                if (playUrl.rfind("http://", 0) != 0 && playUrl.rfind("https://", 0) != 0)
+                                {
+                                    if (playUrl.find("/api/") == std::string::npos)
+                                    {
+                                        playUrl = VOXA::apiClient.getBaseUrl() + "/api/audio/" + playUrl;
+                                    }
+                                    else
+                                    {
+                                        playUrl = VOXA::apiClient.getBaseUrl() + playUrl;
+                                    }
+                                }
+                                Serial.printf("[AudioPlayer] Streaming audio to speaker: %s\n", playUrl.c_str());
+                                AudioManager::instance().playUrlAsync(playUrl);
+                            }
                         }
                         else
                         {

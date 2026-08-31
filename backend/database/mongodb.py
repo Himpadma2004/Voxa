@@ -311,8 +311,20 @@ def sync_mongodb_to_local_json_caches():
     for d in target_dirs:
         os.makedirs(d, exist_ok=True)
 
+    def _doc_sort_key(doc):
+        from routes.notes import parse_to_datetime
+        val = (
+            doc.get("reminder_time") or
+            doc.get("dateTime") or
+            doc.get("created_at") or
+            doc.get("processed_at") or
+            doc.get("timestamp")
+        )
+        return parse_to_datetime(val, doc.get("_id"))
+
     # 1. Sync Others -> memory.json
     others_docs = list(others_collection.find())
+    others_docs.sort(key=_doc_sort_key, reverse=True)
     memories_payload = []
     for idx, doc in enumerate(others_docs):
         created_str = doc.get("created_at").isoformat() if hasattr(doc.get("created_at"), "isoformat") else str(doc.get("created_at", ""))
@@ -334,6 +346,7 @@ def sync_mongodb_to_local_json_caches():
 
     # 2. Sync Ideas -> ideas.json
     ideas_docs = list(ideas_collection.find())
+    ideas_docs.sort(key=_doc_sort_key, reverse=True)
     ideas_payload = []
     for idx, doc in enumerate(ideas_docs):
         created_str = doc.get("created_at").isoformat() if hasattr(doc.get("created_at"), "isoformat") else str(doc.get("created_at", ""))
@@ -346,6 +359,7 @@ def sync_mongodb_to_local_json_caches():
 
     # 3. Sync Questions -> questions.json
     questions_docs = list(questions_collection.find())
+    questions_docs.sort(key=_doc_sort_key, reverse=True)
     questions_payload = []
     for idx, doc in enumerate(questions_docs):
         created_str = doc.get("created_at").isoformat() if hasattr(doc.get("created_at"), "isoformat") else str(doc.get("created_at", ""))
@@ -359,9 +373,10 @@ def sync_mongodb_to_local_json_caches():
 
     # 4. Sync Reminders -> reminders.json
     reminders_docs = list(reminders_collection.find())
+    reminders_docs.sort(key=_doc_sort_key, reverse=True)
     reminders_payload = []
     for idx, doc in enumerate(reminders_docs):
-        r_time = doc.get("reminder_time")
+        r_time = doc.get("reminder_time") or doc.get("dateTime") or doc.get("created_at")
         time_str = r_time.isoformat() if hasattr(r_time, "isoformat") else str(r_time or "")
         status_str = str(doc.get("status", "pending")).lower()
         reminders_payload.append({

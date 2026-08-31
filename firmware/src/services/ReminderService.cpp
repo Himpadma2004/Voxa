@@ -54,6 +54,14 @@ namespace VOXA
             }
         }
 
+        std::sort(synced.begin(), synced.end(), [](const Reminder& a, const Reminder& b) {
+            if (a.pinned != b.pinned) return a.pinned > b.pinned;
+            time_t tA = DataService::parseTimestampToEpoch(a.dateTime);
+            time_t tB = DataService::parseTimestampToEpoch(b.dateTime);
+            if (tA != tB) return tA > tB;
+            return a.id < b.id;
+        });
+
         return synced;
     }
 

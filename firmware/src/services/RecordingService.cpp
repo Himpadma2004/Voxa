@@ -34,6 +34,9 @@ namespace VOXA
         }
         std::sort(recordings.begin(), recordings.end(),
                   [](const Recording& a, const Recording& b) {
+                      time_t tA = DataService::parseTimestampToEpoch(a.timestamp);
+                      time_t tB = DataService::parseTimestampToEpoch(b.timestamp);
+                      if (tA != tB) return tA > tB;
                       return a.id < b.id;
                   });
         return recordings;

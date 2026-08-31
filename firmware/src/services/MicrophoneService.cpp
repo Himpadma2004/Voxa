@@ -98,7 +98,7 @@ namespace VOXA
             .bck_io_num   = 4,   // BCLK → GPIO4
             .ws_io_num    = 5,   // LRCK → GPIO5
             .data_out_num = -1,
-            .data_in_num  = 7    // DATA → GPIO7
+            .data_in_num  = 8    // DATA → GPIO8 (Dedicated input, no conflict with Speaker on GPIO7)
         };
 
         esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
@@ -347,7 +347,7 @@ namespace VOXA
                 int sampleCount = bytesRead / sizeof(int32_t);
                 for (int i = 0; i < sampleCount; i++)
                 {
-                    int32_t sample = rawBuffer[i] >> 16;  // upper 16 bits
+                    int32_t sample = rawBuffer[i] >> 14;  // Optimal 24-to-16-bit shift with clear vocal volume
                     if (sample >  32767) sample =  32767;
                     if (sample < -32768) sample = -32768;
                     pcmBuffer[i] = (int16_t)sample;

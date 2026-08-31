@@ -151,6 +151,84 @@ namespace VOXA
         return normalizeTimestamp(value);
     }
 
+    time_t DataService::parseTimestampToEpoch(const std::string& value)
+    {
+        if (value.empty()) return 0;
+
+        // 1. Try ISO formats: YYYY-MM-DD[T or space]HH:MM[:SS]
+        int year = 0, month = 0, day = 0, hour = 0, minute = 0, sec = 0;
+        if (sscanf(value.c_str(), "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute, &sec) >= 3 ||
+            sscanf(value.c_str(), "%d-%d-%d %d:%d:%d",  &year, &month, &day, &hour, &minute, &sec) >= 3 ||
+            sscanf(value.c_str(), "%d-%d-%dT%d:%d",    &year, &month, &day, &hour, &minute) >= 3 ||
+            sscanf(value.c_str(), "%d-%d-%d %d:%d",     &year, &month, &day, &hour, &minute) >= 3 ||
+            sscanf(value.c_str(), "%d-%d-%d",           &year, &month, &day) == 3)
+        {
+            struct tm t = {};
+            t.tm_year = (year > 1900) ? (year - 1900) : year;
+            t.tm_mon  = month - 1;
+            t.tm_mday = day;
+            t.tm_hour = hour;
+            t.tm_min  = minute;
+            t.tm_sec  = sec;
+            t.tm_isdst = -1;
+            return mktime(&t);
+        }
+
+        // 2. Try Human-readable: "Jul 20, 9:41 AM" or "Aug 15, 2026, 9:00 PM" or "Aug 15, 9:00 PM"
+        char monthName[16] = {};
+        char ampm[8] = {};
+        int count = sscanf(value.c_str(), "%15s %d, %d %d:%d %7s", monthName, &day, &year, &hour, &minute, ampm);
+        if (count < 5)
+        {
+            year = 2026; // Default year if not specified
+            count = sscanf(value.c_str(), "%15s %d, %d:%d %7s", monthName, &day, &hour, &minute, ampm);
+        }
+        if (count >= 2)
+        {
+            static const char* shortMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+            static const char* fullMonths[]  = {"January", "February", "March", "April", "May", "June",
+                                                "July", "August", "September", "October", "November", "December"};
+            month = 0;
+            for (int m = 0; m < 12; ++m)
+            {
+                if (strncasecmp(monthName, shortMonths[m], 3) == 0 ||
+                    strcasecmp(monthName, fullMonths[m]) == 0)
+                {
+                    month = m + 1;
+                    break;
+                }
+            }
+
+            if (month > 0)
+            {
+                if (strcasecmp(ampm, "PM") == 0 && hour < 12) hour += 12;
+                else if (strcasecmp(ampm, "AM") == 0 && hour == 12) hour = 0;
+
+                struct tm t = {};
+                t.tm_year = (year > 1900) ? (year - 1900) : year;
+                t.tm_mon  = month - 1;
+                t.tm_mday = day;
+                t.tm_hour = hour;
+                t.tm_min  = minute;
+                t.tm_sec  = 0;
+                t.tm_isdst = -1;
+                return mktime(&t);
+            }
+        }
+
+        // 3. Try plain digits epoch (e.g. 1721468460)
+        char* endPtr = nullptr;
+        unsigned long long epoch = strtoull(value.c_str(), &endPtr, 10);
+        if (endPtr && *endPtr == '\0' && epoch > 100000)
+        {
+            if (epoch > 1000000000000ULL) epoch /= 1000ULL;
+            return static_cast<time_t>(epoch);
+        }
+
+        return 0;
+    }
+
     std::string DataService::formatCountdownTimer(const std::string& value)
     {
         if (value.empty()) return "No time set";
@@ -351,6 +429,9 @@ namespace VOXA
         auto copy = m_reminders;
         std::sort(copy.begin(), copy.end(), [](const Reminder& a, const Reminder& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
+            time_t tA = parseTimestampToEpoch(a.dateTime);
+            time_t tB = parseTimestampToEpoch(b.dateTime);
+            if (tA != tB) return tA > tB; // Latest date on top
             return a.id < b.id;
         });
         return copy;
@@ -362,6 +443,9 @@ namespace VOXA
         auto copy = m_ideas;
         std::sort(copy.begin(), copy.end(), [](const Idea& a, const Idea& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
+            time_t tA = parseTimestampToEpoch(a.timestamp);
+            time_t tB = parseTimestampToEpoch(b.timestamp);
+            if (tA != tB) return tA > tB; // Latest date on top
             return a.id < b.id;
         });
         return copy;
@@ -373,6 +457,9 @@ namespace VOXA
         auto copy = m_questions;
         std::sort(copy.begin(), copy.end(), [](const Question& a, const Question& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
+            time_t tA = parseTimestampToEpoch(a.timestamp);
+            time_t tB = parseTimestampToEpoch(b.timestamp);
+            if (tA != tB) return tA > tB; // Latest date on top
             return a.id < b.id;
         });
         return copy;
@@ -384,6 +471,9 @@ namespace VOXA
         auto copy = m_tasks;
         std::sort(copy.begin(), copy.end(), [](const TaskItem& a, const TaskItem& b) {
             if (a.isPinned != b.isPinned) return a.isPinned > b.isPinned;
+            time_t tA = parseTimestampToEpoch(a.timestamp);
+            time_t tB = parseTimestampToEpoch(b.timestamp);
+            if (tA != tB) return tA > tB; // Latest date on top
             return a.id < b.id;
         });
         return copy;
@@ -395,6 +485,9 @@ namespace VOXA
         auto copy = m_others;
         std::sort(copy.begin(), copy.end(), [](const Memory& a, const Memory& b) {
             if (a.pinned != b.pinned) return a.pinned > b.pinned;
+            time_t tA = parseTimestampToEpoch(a.timestamp.empty() ? a.createdAt : a.timestamp);
+            time_t tB = parseTimestampToEpoch(b.timestamp.empty() ? b.createdAt : b.timestamp);
+            if (tA != tB) return tA > tB; // Latest date on top
             return a.id < b.id;
         });
         return copy;
@@ -405,6 +498,9 @@ namespace VOXA
         if (!m_loaded) begin();
         auto copy = m_recordings;
         std::sort(copy.begin(), copy.end(), [](const Recording& a, const Recording& b) {
+            time_t tA = parseTimestampToEpoch(a.timestamp);
+            time_t tB = parseTimestampToEpoch(b.timestamp);
+            if (tA != tB) return tA > tB; // Latest date on top
             return a.id < b.id;
         });
         return copy;

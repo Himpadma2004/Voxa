@@ -36,6 +36,7 @@ namespace VOXA
         float contentHeight = recordings.size() * 50.0f + 10.0f;
         float visibleHeight = h - 70.0f - 18.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+        uint32_t lastDataRefreshMs = millis();
 
         while (targetScreen == ScreenId::RecordingsLibrary)
         {
@@ -43,9 +44,14 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            recordings = recordingService.getAll();
-            contentHeight = recordings.size() * 50.0f + 10.0f;
-            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+            // Only refresh data every 2 seconds or after deletion (not every 16ms frame)
+            if (nowMs - lastDataRefreshMs > 2000)
+            {
+                recordings = recordingService.getAll();
+                contentHeight = recordings.size() * 50.0f + 10.0f;
+                maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+                lastDataRefreshMs = nowMs;
+            }
 
             // 1. Process Touch
             uint16_t tx = 0, ty = 0;
@@ -185,6 +191,9 @@ namespace VOXA
                         if (m_selectedDeleteIndex >= 0 && m_selectedDeleteIndex < (int)recordings.size())
                         {
                             recordingService.remove(recordings[m_selectedDeleteIndex].id);
+                            recordings = recordingService.getAll();
+                            contentHeight = recordings.size() * 50.0f + 10.0f;
+                            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
                         }
                         m_selectedDeleteIndex = -1;
                     }
@@ -238,16 +247,27 @@ namespace VOXA
 
             canvas.setClipRect(0, 70, w, h - 70 - 18);
 
-            for (std::size_t i = 0; i < recordings.size(); ++i)
+            if (recordings.empty())
             {
-                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
-                    continue;
+                // Empty state card
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextColor(VoxaTheme::getTextSecondary());
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.drawString("No Voice Recordings", w * 0.5f, h * 0.48f);
+                canvas.drawString("Hold physical button to record", w * 0.5f, h * 0.58f);
+            }
+            else
+            {
+                for (std::size_t i = 0; i < recordings.size(); ++i)
+                {
+                    float itemY = 72.0f + i * 50.0f - m_scrollY;
+                    if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
+                        continue;
 
-                bool isPressed = (m_pressedItemIndex == (int)i);
-                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
-                uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+                    bool isPressed = (m_pressedItemIndex == (int)i);
+                    uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
+                    uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
+                    uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
                 uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
 
                 canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
@@ -277,6 +297,7 @@ namespace VOXA
 
                 float chevX = leftX + cardW - 16.0f;
                 ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+            }
             }
 
             canvas.clearClipRect();

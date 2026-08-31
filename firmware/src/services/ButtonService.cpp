@@ -140,12 +140,12 @@ namespace VOXA
                 m_cooldownUntil = now + 700;
                 Serial.println("[ButtonService] Stop & Upload Triggered on Button Release. Cooldown locked for 700ms.");
             }
-            else
+            else if (totalDuration >= 50 && totalDuration < HOLD_TO_RECORD_MS)
             {
-                // Short Click (< 300ms): Toggle Sleep / Wake Mode (like a phone power button!)
+                // Short Press (50ms - 300ms): Clean Power Button Sleep / Wake Toggle
                 PowerManager::instance().toggleSleep();
-                m_cooldownUntil = now + 250; // 250ms debounce cooldown
-                Serial.println("[ButtonService] Short Press (<300ms) -> Toggled Sleep/Wake Mode");
+                m_cooldownUntil = now + 350; // 350ms anti-bounce cooldown
+                Serial.printf("[ButtonService] Power Button Pressed (%u ms) -> Toggled Sleep/Wake\n", totalDuration);
             }
 
             m_recordTriggerFired = false;

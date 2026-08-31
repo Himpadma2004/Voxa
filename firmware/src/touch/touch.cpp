@@ -71,7 +71,10 @@ bool Touch::getPoint(uint16_t &x, uint16_t &y)
     {
         m_wasTouched = true;
         VOXA::PowerManager::instance().reportActivity();
-        VOXA::AudioManager::instance().playTapSoundAsync();
+        if (!VOXA::AudioManager::instance().isPlaying() && !VOXA::AudioManager::instance().isBackgroundPlaying())
+        {
+            VOXA::AudioManager::instance().playTapSoundAsync();
+        }
         Serial.printf("[Touch] Press: x=%d, y=%d\n", x, y);
     }
     else

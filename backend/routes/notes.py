@@ -31,11 +31,108 @@ def serialize_mongo_doc(data):
         return data
 
 
+MONTH_MAP = {
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12
+}
+
+
+def parse_to_datetime(val, fallback_obj_id=None) -> datetime:
+    if isinstance(val, datetime):
+        return val
+
+    if fallback_obj_id is not None and hasattr(fallback_obj_id, "generation_time"):
+        default_fallback = fallback_obj_id.generation_time
+    else:
+        default_fallback = datetime.min
+
+    if val is None or not str(val).strip():
+        return default_fallback
+
+    val_str = str(val).strip()
+
+    # 1. Try ISO standard formats
+    iso_str = val_str.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(iso_str).replace(tzinfo=None)
+    except Exception:
+        pass
+
+    # 2. Try common formats
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+        "%d-%m-%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M",
+        "%b %d, %Y, %I:%M %p",
+        "%B %d, %Y, %I:%M %p",
+        "%b %d, %I:%M %p",
+        "%B %d, %I:%M %p",
+    ):
+        try:
+            dt = datetime.strptime(val_str, fmt)
+            if dt.year == 1900:
+                dt = dt.replace(year=datetime.now().year)
+            return dt
+        except Exception:
+            pass
+
+    # 3. Regex for "Mon Day, [Year,] HH:MM AM/PM"
+    import re
+    m = re.match(r"^([A-Za-z]+)\s+(\d{1,2})(?:,\s*(\d{4}))?,\s*(\d{1,2}):(\d{2})(?:\s*([APap][Mm]))?", val_str)
+    if m:
+        mon_str, day_str, year_str, hr_str, min_str, ampm_str = m.groups()
+        mon = MONTH_MAP.get(mon_str.lower(), 1)
+        day = int(day_str)
+        year = int(year_str) if year_str else datetime.now().year
+        hr = int(hr_str)
+        minute = int(min_str)
+        if ampm_str:
+            if ampm_str.upper() == "PM" and hr < 12:
+                hr += 12
+            elif ampm_str.upper() == "AM" and hr == 12:
+                hr = 0
+        try:
+            return datetime(year, mon, day, hr, minute)
+        except Exception:
+            pass
+
+    # 4. Unix timestamp
+    try:
+        ts = float(val_str)
+        if ts > 1000000000000:
+            ts /= 1000.0
+        if ts > 100000:
+            return datetime.fromtimestamp(ts)
+    except Exception:
+        pass
+
+    return default_fallback
+
+
 def _sort_key(record):
-    val = record.get("created_at") or record.get("processed_at") or record.get("timestamp")
-    if val is None and "_id" in record and hasattr(record["_id"], "generation_time"):
-        val = record["_id"].generation_time
-    return _safe_str(val)
+    val = (
+        record.get("created_at") or
+        record.get("processed_at") or
+        record.get("timestamp") or
+        record.get("dateTime") or
+        record.get("reminder_time")
+    )
+    fallback_id = record.get("_id")
+    return parse_to_datetime(val, fallback_id)
 
 
 def _safe_str(value):
@@ -82,6 +179,9 @@ def _build_category_items(docs, default_category):
 
 
 
+from fastapi.responses import JSONResponse, StreamingResponse
+from services.s3_service import s3_client, AWS_BUCKET_NAME
+
 def _build_recording_items(notes):
     items = []
     for note in notes:
@@ -91,7 +191,8 @@ def _build_recording_items(notes):
             raw_time = note["_id"].generation_time
         created_at = _safe_str(raw_time)
         title = note.get("summary") or note.get("filename") or note.get("audio_id") or "Untitled recording"
-        file_path = note.get("audio_url") or note.get("s3_key") or note.get("filename") or ""
+        audio_id_str = _safe_str(note.get("audio_id") or note.get("_id"))
+        file_path = f"/api/audio/{audio_id_str}"
         status = note.get("status", "")
 
         items.append({
@@ -100,12 +201,49 @@ def _build_recording_items(notes):
             "filePath": file_path,
             "durationSeconds": 0,
             "timestamp": created_at if status != "processing" else "Pending",
-            "audio_id": _safe_str(note.get("audio_id") or note.get("_id")),
+            "audio_id": audio_id_str,
             "status": status,
             "category": note.get("category", "")
         })
 
     return items
+
+
+@router.get("/audio/{audio_id}")
+@router.get("/audio/{audio_id}.wav")
+def stream_audio_notes(audio_id: str):
+    """
+    Streams audio recording from AWS S3 directly to the ESP32 / client.
+    """
+    try:
+        from database.mongodb import collection
+        note = collection.find_one({"$or": [{"audio_id": audio_id}, {"filename": audio_id}, {"s3_key": audio_id}]})
+        s3_key = None
+        if note:
+            s3_key = note.get("s3_key")
+        if not s3_key:
+            if audio_id.startswith("audio/"):
+                s3_key = audio_id
+            else:
+                s3_key = f"audio/{audio_id}"
+
+        print(f"[AudioStream] Streaming S3 object: {s3_key}")
+        s3_obj = s3_client.get_object(Bucket=AWS_BUCKET_NAME, Key=s3_key)
+        headers = {
+            "Content-Type": "audio/wav",
+            "Accept-Ranges": "bytes"
+        }
+        if "ContentLength" in s3_obj:
+            headers["Content-Length"] = str(s3_obj["ContentLength"])
+
+        return StreamingResponse(
+            s3_obj["Body"],
+            media_type="audio/wav",
+            headers=headers
+        )
+    except Exception as e:
+        print(f"[AudioStream] Error streaming audio {audio_id}: {e}")
+        raise HTTPException(status_code=404, detail=f"Audio not found: {e}")
 
 
 def _page(items, skip, limit):

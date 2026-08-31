@@ -25,6 +25,7 @@ namespace VOXA
 
         static std::string formatReadableTimestamp(const std::string& value);
         static std::string formatCountdownTimer(const std::string& value);
+        static time_t      parseTimestampToEpoch(const std::string& value);
 
         /// Called once at startup — triggers first cloud sync.
         void begin();

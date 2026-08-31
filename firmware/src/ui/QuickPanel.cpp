@@ -29,20 +29,20 @@ namespace VOXA
         // 1. GESTURE DETECTION (Pull down from status bar to open, pull up from handle to close)
         if (touched)
         {
-            if (!m_trackingPull)
+            if (!m_trackingPull && m_activeSlider == -1)
             {
                 if (!m_isOpen && ty <= 45) // Touch down on top status bar
                 {
                     m_trackingPull = true;
                     m_pullStartY = ty;
                 }
-                else if (m_isOpen && ty >= h * 0.65f) // Touch down near bottom handle area
+                else if (m_isOpen && ty >= 195) // Touch down near bottom handle area (below sliders)
                 {
                     m_trackingPull = true;
                     m_pullStartY = ty;
                 }
             }
-            else
+            else if (m_trackingPull)
             {
                 float deltaY = ty - m_pullStartY;
                 if (!m_isOpen && deltaY > 15.0f)
@@ -99,6 +99,15 @@ namespace VOXA
             }
 
             m_trackingPull = false;
+            if (m_activeSlider == 1)
+            {
+                // Save volume setting to NVS on release
+                AudioManager::instance().setVolume(AudioManager::instance().getVolume(), true);
+                if (AudioManager::instance().getVolume() > 0)
+                {
+                    AudioManager::instance().playTone(1200, 30);
+                }
+            }
             m_activeSlider = -1;
             m_pressedBtn = -1;
             m_touchStartMs = 0;
@@ -128,7 +137,7 @@ namespace VOXA
             float btnW = (w - 30.0f) / 4.0f; // 4 Grid Toggle Buttons
 
             // Toggle Buttons Touch Region (Y = toggleY to toggleY + 60)
-            if (ty >= toggleY - 5.0f && ty <= toggleY + 65.0f)
+            if (ty >= toggleY - 5.0f && ty <= toggleY + 65.0f && m_activeSlider == -1)
             {
                 if (m_pressedBtn == -1)
                 {
@@ -168,27 +177,64 @@ namespace VOXA
 
             // Sliders Touch Region
             float brightY = currentPanelY + 116.0f;
-            float volY    = currentPanelY + 152.0f;
+            float volY    = currentPanelY + 154.0f;
             float sliderX = 46.0f;
-            float sliderW = w - 66.0f;
+            float sliderW = w - 100.0f; // Leaves room for percentage badge on the right
 
-            if (ty >= brightY - 10.0f && ty <= brightY + 24.0f)
+            if (m_activeSlider == 0) // Currently dragging Brightness slider
             {
-                m_activeSlider = 0;
                 float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
                 uint8_t newBright = static_cast<uint8_t>(pct * 255.0f);
                 Display::setBrightness(std::max((uint8_t)15, newBright));
             }
-            else if (ty >= volY - 10.0f && ty <= volY + 24.0f)
+            else if (m_activeSlider == 1) // Currently dragging Volume slider
             {
-                m_activeSlider = 1;
                 float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
-                uint8_t newVol = static_cast<uint8_t>(pct * 100.0f);
-                AudioManager::instance().setVolume(newVol);
+                uint8_t newVol = static_cast<uint8_t>(pct * 100.0f + 0.5f);
+                AudioManager::instance().setVolume(newVol, false);
+            }
+            else if (m_pressedBtn == -1) // If no toggle button is touched, check slider hitboxes
+            {
+                if (ty >= brightY - 12.0f && ty <= brightY + 28.0f)
+                {
+                    m_activeSlider = 0;
+                    float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
+                    uint8_t newBright = static_cast<uint8_t>(pct * 255.0f);
+                    Display::setBrightness(std::max((uint8_t)15, newBright));
+                }
+                else if (ty >= volY - 14.0f && ty <= volY + 30.0f)
+                {
+                    // Tapping directly on the Volume Icon on the left (< sliderX - 4) toggles Mute/Unmute
+                    if (tx < sliderX - 4.0f)
+                    {
+                        uint8_t curVol = AudioManager::instance().getVolume();
+                        if (curVol > 0)
+                        {
+                            m_prevNonZeroVol = curVol;
+                            AudioManager::instance().setVolume(0, true);
+                            Serial.println("[QuickPanel] Volume Muted");
+                        }
+                        else
+                        {
+                            uint8_t restoreVol = (m_prevNonZeroVol > 0) ? m_prevNonZeroVol : 80;
+                            AudioManager::instance().setVolume(restoreVol, true);
+                            AudioManager::instance().playTone(1200, 30);
+                            Serial.printf("[QuickPanel] Volume Unmuted -> %u%%\n", restoreVol);
+                        }
+                        m_activeSlider = -1; // Tap action, don't drag
+                    }
+                    else
+                    {
+                        m_activeSlider = 1;
+                        float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
+                        uint8_t newVol = static_cast<uint8_t>(pct * 100.0f + 0.5f);
+                        AudioManager::instance().setVolume(newVol, false);
+                    }
+                }
             }
             
-            // Handle Bar tap to close
-            if (ty >= currentPanelY + panelH - 25.0f && ty <= currentPanelY + panelH + 15.0f)
+            // Handle Bar tap to close (bottom area only)
+            if (ty >= currentPanelY + panelH - 18.0f && m_activeSlider == -1)
             {
                 m_isOpen = false;
             }
@@ -264,27 +310,71 @@ namespace VOXA
 
         // ── BRIGHTNESS SLIDER ────────────────────────────────────────────────
         float brightY = currentPanelY + 116.0f;
+        float sliderX = 46.0f;
+        float sliderW = w - 100.0f;
+        float sliderH = 14.0f;
+
         ScreenCommon::drawIcon(target, Icon::Sun, 16, brightY, 20.0f, VoxaTheme::getPrimary());
         
-        float sliderX = 46.0f;
-        float sliderW = w - 66.0f;
-        float sliderH = 14.0f;
         target.fillRoundRect((int)sliderX, (int)brightY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getBackground());
-        
         uint8_t curBright = Display::getBrightness();
         float brightPct = curBright / 255.0f;
-        target.fillRoundRect((int)sliderX, (int)brightY + 3, (int)(sliderW * brightPct), (int)sliderH, 7, VoxaTheme::getPrimary());
+        int bFillW = (int)(sliderW * brightPct);
+        if (bFillW > 0)
+        {
+            target.fillRoundRect((int)sliderX, (int)brightY + 3, bFillW, (int)sliderH, 7, VoxaTheme::getPrimary());
+        }
         target.drawRoundRect((int)sliderX, (int)brightY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getDivider());
 
+        // Brightness Knob
+        int bKnobX = (int)(sliderX + sliderW * brightPct);
+        target.fillCircle(bKnobX, (int)brightY + 10, 8, VoxaTheme::getTextPrimary());
+        target.drawCircle(bKnobX, (int)brightY + 10, 8, VoxaTheme::getPrimary());
+
+        // Brightness % Text
+        target.setFont(&fonts::Font0);
+        target.setTextDatum(textdatum_t::middle_right);
+        target.setTextColor(VoxaTheme::getTextPrimary());
+        char bStr[8];
+        snprintf(bStr, sizeof(bStr), "%d%%", (int)(brightPct * 100.0f + 0.5f));
+        target.drawString(bStr, w - 14, (int)brightY + 10);
+
         // ── VOLUME SLIDER ────────────────────────────────────────────────────
-        float volY = currentPanelY + 152.0f;
-        ScreenCommon::drawIcon(target, Icon::Volume, 16, volY, 20.0f, VoxaTheme::getPrimary());
-        
-        target.fillRoundRect((int)sliderX, (int)volY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getBackground());
+        float volY = currentPanelY + 154.0f;
         uint8_t curVol = AudioManager::instance().getVolume();
         float volPct = curVol / 100.0f;
-        target.fillRoundRect((int)sliderX, (int)volY + 3, (int)(sliderW * volPct), (int)sliderH, 7, VoxaTheme::getPrimary());
+        uint16_t volIconColor = (curVol == 0) ? VoxaTheme::getTextSecondary() : VoxaTheme::getPrimary();
+
+        ScreenCommon::drawIcon(target, Icon::Volume, 16, volY, 20.0f, volIconColor);
+        
+        // Slider track
+        target.fillRoundRect((int)sliderX, (int)volY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getBackground());
+        int vFillW = (int)(sliderW * volPct);
+        if (vFillW > 0)
+        {
+            target.fillRoundRect((int)sliderX, (int)volY + 3, vFillW, (int)sliderH, 7, (curVol == 0) ? VoxaTheme::getDivider() : VoxaTheme::getPrimary());
+        }
         target.drawRoundRect((int)sliderX, (int)volY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getDivider());
+
+        // Volume Knob
+        int vKnobX = (int)(sliderX + sliderW * volPct);
+        target.fillCircle(vKnobX, (int)volY + 10, 8, (curVol == 0) ? VoxaTheme::getDivider() : VoxaTheme::getTextPrimary());
+        target.drawCircle(vKnobX, (int)volY + 10, 8, (curVol == 0) ? VoxaTheme::getTextSecondary() : VoxaTheme::getPrimary());
+
+        // Volume % / MUTED badge
+        target.setFont(&fonts::Font0);
+        target.setTextDatum(textdatum_t::middle_right);
+        target.setTextColor((curVol == 0) ? VoxaTheme::getTextSecondary() : VoxaTheme::getTextPrimary());
+        if (curVol == 0)
+        {
+            target.drawString("MUTE", w - 14, (int)volY + 10);
+        }
+        else
+        {
+            char vStr[8];
+            snprintf(vStr, sizeof(vStr), "%u%%", curVol);
+            target.drawString(vStr, w - 14, (int)volY + 10);
+        }
 
         return navTarget;
     }

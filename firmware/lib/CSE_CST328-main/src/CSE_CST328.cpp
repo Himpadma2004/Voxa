@@ -62,9 +62,6 @@ bool CSE_CST328:: begin() {
     return true;
   }
   
-  // Initialize I2C if not already done.
-  wireInstance->begin();
-  
   // If reset pin is defined, toggle it to reset the controller.
   if (pinReset != -1) {
     pinMode (pinReset, OUTPUT);
@@ -106,7 +103,7 @@ bool CSE_CST328:: begin() {
 
   // Put the device in normal reporting mode.
   write16 (REG_MODE_NORMAL);
-  
+  inited = true;
   return true;
 }
 

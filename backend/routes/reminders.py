@@ -87,10 +87,10 @@ def read_all_reminders(
                 r["notice"] = "This reminder was missed by you."
 
         def _reminder_sort_key(r):
-            val = r.get("created_at") or r.get("reminder_time") or r.get("dateTime")
-            if val is None and "_id" in r and hasattr(r["_id"], "generation_time"):
-                val = r["_id"].generation_time
-            return _serialize_value(val) if val is not None else ""
+            from routes.notes import parse_to_datetime
+            val = r.get("reminder_time") or r.get("dateTime") or r.get("created_at") or r.get("timestamp")
+            fallback_id = r.get("_id")
+            return parse_to_datetime(val, fallback_id)
 
         reminders.sort(key=_reminder_sort_key, reverse=True)
 

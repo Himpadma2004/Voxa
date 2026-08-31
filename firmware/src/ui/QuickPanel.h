@@ -40,8 +40,9 @@ namespace VOXA
         bool m_nightMode{false};
         
         // Touch interaction tracking for sliders and toggles
-        int  m_activeSlider{-1}; // -1 = none, 0 = brightness, 1 = volume
-        bool m_btnLatched{false};
+        int     m_activeSlider{-1}; // -1 = none, 0 = brightness, 1 = volume
+        bool    m_btnLatched{false};
+        uint8_t m_prevNonZeroVol{80};
     };
 
 }

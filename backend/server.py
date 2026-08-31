@@ -49,6 +49,46 @@ app.include_router(search.router)
 app.include_router(summary.router)
 app.include_router(music.router)
 
+from fastapi.responses import StreamingResponse
+from services.s3_service import s3_client, AWS_BUCKET_NAME
+
+@app.get("/api/audio/{audio_id}")
+@app.get("/api/audio/{audio_id}.wav")
+def stream_audio_direct(audio_id: str):
+    """
+    Directly streams audio from AWS S3 to the ESP32 speaker.
+    """
+    try:
+        from database.mongodb import collection
+        note = collection.find_one({"$or": [{"audio_id": audio_id}, {"filename": audio_id}, {"s3_key": audio_id}]})
+        s3_key = None
+        if note:
+            s3_key = note.get("s3_key")
+        if not s3_key:
+            if audio_id.startswith("audio/"):
+                s3_key = audio_id
+            else:
+                s3_key = f"audio/{audio_id}"
+
+        print(f"[Server AudioStream] Streaming S3 object: {s3_key}")
+        s3_obj = s3_client.get_object(Bucket=AWS_BUCKET_NAME, Key=s3_key)
+        headers = {
+            "Content-Type": "audio/wav",
+            "Accept-Ranges": "bytes"
+        }
+        if "ContentLength" in s3_obj:
+            headers["Content-Length"] = str(s3_obj["ContentLength"])
+
+        return StreamingResponse(
+            s3_obj["Body"],
+            media_type="audio/wav",
+            headers=headers
+        )
+    except Exception as e:
+        print(f"[Server AudioStream] Error streaming {audio_id}: {e}")
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Audio not found: {e}")
+
 
 
 @app.get("/")
@@ -72,7 +112,7 @@ def startup_event():
 
 def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
     try:
-        # 0. Standardize and resample recorded audio to 44.1kHz 16-bit PCM WAV for perfect speaker playback
+        # 0. Standardize and normalize recorded audio to 16kHz 16-bit Mono PCM WAV (matches ESP32 mic and Whisper AI)
         try:
             import soundfile as sf
             import scipy.signal
@@ -81,18 +121,18 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
             audio_data, sr = sf.read(temp_filepath)
             if audio_data.ndim > 1:
                 audio_data = audio_data.mean(axis=1) # Mono
-            target_sr = 44100
+            target_sr = 16000
             if sr != target_sr:
                 num_samples = int(len(audio_data) * target_sr / sr)
                 audio_data = scipy.signal.resample(audio_data, num_samples)
             peak = np.max(np.abs(audio_data))
             if peak > 0:
-                audio_data = (audio_data / peak) * 0.98
+                audio_data = (audio_data / peak) * 0.95
             int16_data = (audio_data * 32767).astype(np.int16)
             sf.write(temp_filepath, int16_data, target_sr, subtype="PCM_16", format="WAV")
-            print(f"[Background] Standardized audio to 44.1kHz 16-bit PCM WAV (from {sr}Hz -> {target_sr}Hz)")
+            print(f"[Background] Standardized audio to 16kHz 16-bit Mono PCM WAV (from {sr}Hz -> {target_sr}Hz)")
         except Exception as resample_err:
-            print(f"[Background] Warning during 44.1kHz audio resampling: {resample_err}")
+            print(f"[Background] Warning during audio normalization: {resample_err}")
 
         # 1. Upload the standardized 44.1kHz audio file to AWS S3
         print(f"\n[Background] Uploading to AWS S3 for audio_id: {audio_id}...")

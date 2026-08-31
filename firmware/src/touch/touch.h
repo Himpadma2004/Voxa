@@ -25,7 +25,7 @@ private:
             320,
             &Wire,
             17, // TP_RST (CST328 hardware reset pin)
-            16  // TP_INT (CST328 hardware interrupt pin)
+            -1  // TP_INT (Set to -1 to avoid conflict with GPIO 16)
         );
 };
 

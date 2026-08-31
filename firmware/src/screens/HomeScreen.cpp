@@ -53,7 +53,6 @@ namespace VOXA
 
     void HomeScreen::begin()
     {
-        microphoneService.begin();
     }
 
     void HomeScreen::renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX)

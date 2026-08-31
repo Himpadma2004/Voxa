@@ -1,5 +1,6 @@
 #include "HistoryService.h"
 #include "StorageService.h"
+#include "DataService.h"
 
 #include <algorithm>
 #include <chrono>
@@ -18,7 +19,12 @@ namespace VOXA
     {
         auto entries = m_storage->loadAllHistory();
         std::sort(entries.begin(), entries.end(),
-                  [](const HistoryEntry& a, const HistoryEntry& b) { return a.id < b.id; });
+                  [](const HistoryEntry& a, const HistoryEntry& b) {
+                      time_t tA = DataService::parseTimestampToEpoch(a.timestamp);
+                      time_t tB = DataService::parseTimestampToEpoch(b.timestamp);
+                      if (tA != tB) return tA > tB;
+                      return a.id < b.id;
+                  });
         return entries;
     }
 

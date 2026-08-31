@@ -131,9 +131,6 @@ void BootScreen::show()
     }
     canvas.fillScreen(TFT_BLACK);
 
-    // Trigger boot screen chime audio
-    VOXA::AudioManager::instance().playBootChimeAsync();
-
     uint32_t startMs = millis();
 
     constexpr float durationSecs = 1.8f; // Fast, responsive boot animation

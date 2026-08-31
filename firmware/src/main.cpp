@@ -217,34 +217,12 @@ void setup()
   Serial.begin(115200);
   delay(500);
 
-  // ── Deep Sleep Wakeup Check (Hold Power Button to Power ON) ───────────
+  // ── Wakeup & Power Stability Configuration ──────────────────────────
+  pinMode(GPIO_NUM_1, INPUT_PULLUP);
   esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
   if (wakeupCause == ESP_SLEEP_WAKEUP_EXT0 || wakeupCause == ESP_SLEEP_WAKEUP_GPIO)
   {
     Serial.println("[Power] Woken from Deep Sleep via Power Button (GPIO 1)");
-    pinMode(GPIO_NUM_1, INPUT_PULLUP);
-
-    // Require holding button for at least ~350ms to turn on (prevents pocket/bump turn-ons)
-    uint32_t pressStart = millis();
-    bool holdConfirmed = true;
-    while (millis() - pressStart < 350)
-    {
-      if (digitalRead(GPIO_NUM_1) == HIGH)
-      {
-        holdConfirmed = false;
-        break;
-      }
-      delay(15);
-    }
-
-    if (!holdConfirmed)
-    {
-      Serial.println("[Power] Power button released too quickly (<350ms). Returning to Deep Sleep.");
-      esp_sleep_enable_ext0_wakeup(GPIO_NUM_1, 0);
-      esp_deep_sleep_start();
-    }
-
-    Serial.println("[Power] Power button hold confirmed (>350ms). Powering ON VOXA!");
   }
 
   // ── Battery Power Stability: Disable Brownout Detector ─────────────────
@@ -269,10 +247,17 @@ void setup()
   Serial.println("[Startup] Display");
   Display::begin();
   touch.begin();
-  Serial.println("[Startup] Display ready");
+  PowerManager::instance().begin(0); // 0 = Auto-sleep disabled (keeps display ON permanently)
+  Serial.println("[Startup] Display & PowerManager ready");
 
   // Show boot screen immediately to give visual feedback
   boot.show();
+
+  Serial.println("[Startup] AudioManager (MAX98357A I2S Mono Speaker System)");
+  AudioManager::instance().begin();
+  AudioManager::instance().playBootMelody();
+  AudioManager::instance().playBackgroundMusicLoopAsync();
+  Serial.println("[Startup] AudioManager ready & background music loop active");
 
   Serial.println("[Startup] Storage Subsystem (SPIFFS — cloud-primary mode)");
   delay(100);
@@ -458,6 +443,7 @@ void setup()
 
     if (wifiManager.isConnected())
     {
+      AudioManager::instance().playConnectedChime();
       // Show Connected feedback
       uint16_t w = Display::width();
       uint16_t h = Display::height();
@@ -490,20 +476,12 @@ void setup()
 
   Serial.println("[Startup] ReminderManager");
   ReminderManager::instance().begin();
-  ReminderManager::instance().runTestScenarios();
+  // ReminderManager::instance().runTestScenarios(); // Disabled mock boot alarm
   Serial.println("[Startup] ReminderManager ready");
-
-  Serial.println("[Startup] AudioManager (MAX98357A I2S Mono Speaker System)");
-  AudioManager::instance().begin();
-  Serial.println("[Startup] AudioManager ready");
 
   Serial.println("[Startup] ButtonService (Physical Long-Press Record Button on GPIO 1)");
   buttonService.begin(PHYSICAL_BUTTON_PIN);
   Serial.println("[Startup] ButtonService ready");
-
-  Serial.println("[Startup] PowerManager (Smartphone-style Sleep/Wake, Auto-Sleep Timeout: 30s)");
-  PowerManager::instance().begin(30000);
-  Serial.println("[Startup] PowerManager ready");
 
   Serial.println("Boot complete. Starting main screen loop...");
   xTaskCreatePinnedToCore(backgroundUploadTask, "BgUpload", 8192, nullptr, 1, nullptr, 0);
@@ -512,6 +490,16 @@ void setup()
 
 void loop()
 {
+  // Touch-to-Wake: Tapping the screen while sleeping immediately restores backlight
+  if (PowerManager::instance().isSleeping())
+  {
+    uint16_t tx = 0, ty = 0;
+    if (touch.getPoint(tx, ty))
+    {
+      PowerManager::instance().wakeup();
+    }
+  }
+
   PowerManager::instance().tick();
 
   if (ButtonService::isDirectRecordRequested())

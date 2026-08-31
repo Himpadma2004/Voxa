@@ -20,7 +20,7 @@ public:
 
             cfg.spi_mode = 0;
 
-            cfg.freq_write = 40000000;
+            cfg.freq_write = 27000000;
 
             cfg.freq_read = 16000000;
 

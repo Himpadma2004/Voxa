@@ -9,15 +9,15 @@
 
 // I2S Pin definitions for MAX98357A Mono Amplifier
 #ifndef AUDIO_I2S_BCLK_PIN
-#define AUDIO_I2S_BCLK_PIN 40 // Bit Clock (BCLK) -> GPIO 40
+#define AUDIO_I2S_BCLK_PIN 15 // Bit Clock (BCLK) -> GPIO 15
 #endif
 
 #ifndef AUDIO_I2S_LRC_PIN
-#define AUDIO_I2S_LRC_PIN 38 // Word Select / Left-Right Clock (LRC/WS) -> GPIO 38
+#define AUDIO_I2S_LRC_PIN 16 // Word Select / Left-Right Clock (LRC/WS) -> GPIO 16
 #endif
 
 #ifndef AUDIO_I2S_DOUT_PIN
-#define AUDIO_I2S_DOUT_PIN 39 // Serial Data (DIN) -> GPIO 39
+#define AUDIO_I2S_DOUT_PIN 7 // Serial Data (DIN) -> GPIO 7
 #endif
 
 #ifndef AUDIO_I2S_PORT
@@ -25,7 +25,7 @@
 #endif
 
 #ifndef AUDIO_SAMPLE_RATE
-#define AUDIO_SAMPLE_RATE 44100 // 44.1 kHz Studio Sample Rate
+#define AUDIO_SAMPLE_RATE 16000 // 16 kHz Smooth Sample Rate
 #endif
 
 namespace VOXA
@@ -47,19 +47,27 @@ namespace VOXA
         bool playUrlAsync(const std::string &url);
         bool playWavAsync(const std::string &path) { return playUrlAsync(path); }
         bool playTapSoundAsync() { return playTone(1800, 25); }
-        bool playBootChimeAsync() { return begin(); }
+        bool playBootChimeAsync() { return playBootMelody(); }
+        bool playBootMelody();
+        bool playConnectedChime();
 
-        // Reminder audio triggers
+        // Background & Reminder audio triggers
+        bool playBackgroundMusicLoopAsync();
+        void stopBackgroundMusic();
         bool playReminderMusicAsync();
         void stopReminderMusic();
+        // Forensic isolation test
+        bool runI2SSyntheticDiagnosticTest();
 
         // Volume control (0 - 100)
-        void setVolume(uint8_t volume);
+        void setVolume(uint8_t volume, bool saveToNvs = false);
         uint8_t getVolume() const { return m_volume; }
 
         // State accessors
-        bool isPlaying() const { return m_isPlaying; }
+        bool isPlaying() const { return m_isPlaying || m_voiceStreamPlaying; }
+        bool isVoiceStreamPlaying() const { return m_voiceStreamPlaying; }
         bool isReminderPlaying() const { return m_reminderPlaying; }
+        bool isBackgroundPlaying() const { return m_backgroundPlaying; }
 
     private:
         AudioManager();
@@ -72,10 +80,14 @@ namespace VOXA
 
         bool m_initialized{false};
         volatile bool m_isPlaying{false};
+        volatile bool m_voiceStreamPlaying{false};
         volatile bool m_reminderPlaying{false};
+        volatile bool m_backgroundPlaying{false};
         uint8_t m_volume{100}; // Full volume
 
+        SemaphoreHandle_t m_i2sMutex{nullptr};
         TaskHandle_t m_playbackTaskHandle{nullptr};
         TaskHandle_t m_reminderTaskHandle{nullptr};
+        TaskHandle_t m_bgTaskHandle{nullptr};
     };
 } // namespace VOXA
