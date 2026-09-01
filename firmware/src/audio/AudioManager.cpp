@@ -748,7 +748,7 @@ namespace VOXA
             xSemaphoreGive(m_i2sMutex);
         }
 
-        constexpr size_t READ_SAMPLES = 512;
+        constexpr size_t READ_SAMPLES = 1024;
         static int16_t s_rawBuffer[READ_SAMPLES];
         static int16_t s_stereoBuffer[READ_SAMPLES * 2];
 
@@ -761,16 +761,16 @@ namespace VOXA
         uint32_t playbackStartMs = millis();
         float scale = m_volume / 100.0f;
 
-        // 5.0x Vocal Gain Boost with Smooth Soft-Saturation Knee (loud speech without clipping distortion)
+        // Enhanced 7.0x Vocal Gain Boost with Smooth Soft-Saturation Knee (crystal clear, loud, zero clipping)
         auto applyVocalGain = [scale](int16_t sample) -> int16_t {
-            float amplified = (float)sample * scale * 5.0f;
-            if (amplified > 22000.0f)
+            float amplified = (float)sample * scale * 7.0f;
+            if (amplified > 24000.0f)
             {
-                amplified = 22000.0f + (amplified - 22000.0f) / (1.0f + (amplified - 22000.0f) / 10767.0f);
+                amplified = 24000.0f + (amplified - 24000.0f) / (1.0f + (amplified - 24000.0f) / 8767.0f);
             }
-            else if (amplified < -22000.0f)
+            else if (amplified < -24000.0f)
             {
-                amplified = -22000.0f + (amplified + 22000.0f) / (1.0f - (amplified + 22000.0f) / 10768.0f);
+                amplified = -24000.0f + (amplified + 24000.0f) / (1.0f - (amplified + 24000.0f) / 8768.0f);
             }
             if (amplified > 32767.0f) amplified = 32767.0f;
             if (amplified < -32768.0f) amplified = -32768.0f;

@@ -126,7 +126,7 @@ def startup_event():
 
 def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
     try:
-        # 0. Standardize and normalize recorded audio to 16kHz 16-bit Mono PCM WAV (matches ESP32 mic and Whisper AI)
+        # 0. Standardize and normalize recorded audio to 16kHz 16-bit Mono PCM WAV with studio vocal enhancement
         try:
             import soundfile as sf
             import scipy.signal
@@ -134,31 +134,68 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
 
             audio_data, sr = sf.read(temp_filepath)
             if audio_data.ndim > 1:
-                audio_data = audio_data.mean(axis=1) # Mono
+                audio_data = audio_data.mean(axis=1) # Convert to Mono
+
             target_sr = 16000
             if sr != target_sr:
                 num_samples = int(len(audio_data) * target_sr / sr)
                 audio_data = scipy.signal.resample(audio_data, num_samples)
-            peak = np.max(np.abs(audio_data))
-            if peak > 0:
-                audio_data = (audio_data / peak) * 0.95
-            int16_data = (audio_data * 32767).astype(np.int16)
+
+            # 1. High-Pass Filter (Butterworth, fc=80Hz) to remove DC bias and mic handling rumble
+            b, a = scipy.signal.butter(2, 80.0 / (target_sr / 2.0), btype='highpass')
+            audio_data = scipy.signal.lfilter(b, a, audio_data)
+
+            # 2. Smooth Spectral Noise Reduction (preserves initial consonants and word onsets)
+            try:
+                import noisereduce as nr
+                audio_data = nr.reduce_noise(
+                    y=audio_data,
+                    sr=target_sr,
+                    prop_decrease=0.65,
+                    stationary=True,
+                    time_mask_smooth_ms=64
+                )
+            except Exception as nr_err:
+                print(f"[Warning] Noise reduction note: {nr_err}")
+
+            # 3. Voice Activity & Loudness Normalization (robust against single-click spikes)
+            robust_peak = float(np.percentile(np.abs(audio_data), 99.2))
+            if robust_peak > 0.0005:
+                # Target peak normalized for loud, clean speech
+                target_gain = 0.90 / robust_peak
+                audio_data = audio_data * target_gain
+                # Smooth soft-saturation limiter
+                audio_data = np.tanh(audio_data) * 0.96
+
+            # 4. Fade in / fade out 10ms to eliminate clicks at start/end
+            fade_len = int(target_sr * 0.01)
+            if len(audio_data) > 2 * fade_len:
+                fade_in = np.linspace(0.0, 1.0, fade_len)
+                fade_out = np.linspace(1.0, 0.0, fade_len)
+                audio_data[:fade_len] *= fade_in
+                audio_data[-fade_len:] *= fade_out
+
+            duration_seconds = max(1, int(round(len(audio_data) / float(target_sr))))
+
+            int16_data = (audio_data * 32767).clip(-32768, 32767).astype(np.int16)
             sf.write(temp_filepath, int16_data, target_sr, subtype="PCM_16", format="WAV")
         except Exception as resample_err:
             print(f"[Warning] Audio normalization note: {resample_err}")
+            duration_seconds = 5
 
         # 1. Upload the standardized 16kHz audio file to AWS S3
         upload_result = upload_file(temp_filepath)
         s3_key = upload_result["s3_key"]
         audio_url = upload_result["audio_url"]
 
-        # Update initial metadata document with S3 key and URL
+        # Update initial metadata document with S3 key, URL, and exact duration
         from database.mongodb import collection
         collection.update_one(
             {"audio_id": audio_id},
             {"$set": {
                 "s3_key": s3_key,
                 "audio_url": audio_url,
+                "duration_seconds": duration_seconds,
                 "status": "uploaded"
             }}
         )

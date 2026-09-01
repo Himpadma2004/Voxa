@@ -85,7 +85,7 @@ namespace VOXA
             .mode               = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
             .sample_rate        = 16000,
             .bits_per_sample    = I2S_BITS_PER_SAMPLE_32BIT,
-            .channel_format     = I2S_CHANNEL_FMT_ONLY_LEFT,
+            .channel_format     = I2S_CHANNEL_FMT_RIGHT_LEFT,
             .communication_format = I2S_COMM_FORMAT_STAND_I2S,
             .intr_alloc_flags   = ESP_INTR_FLAG_LEVEL1,
             .dma_buf_count      = 16,
@@ -343,16 +343,21 @@ namespace VOXA
                                   (unsigned)bytesRead, (unsigned)totalBytesRead,
                                   (unsigned)m_bufferOffset);
 
-                int sampleCount = bytesRead / sizeof(int32_t);
-                for (int i = 0; i < sampleCount; i++)
+                int totalSlots = bytesRead / sizeof(int32_t);
+                int stereoPairs = totalSlots / 2;
+                for (int i = 0; i < stereoPairs; i++)
                 {
-                    int32_t sample = rawBuffer[i] >> 14;  // Optimal 24-to-16-bit shift with clear vocal volume
+                    int32_t leftSample  = rawBuffer[i * 2];
+                    int32_t rightSample = rawBuffer[i * 2 + 1];
+                    // Extract the genuine mic signal (avoids alternating tri-state bus noise)
+                    int32_t rawVal = (std::abs(leftSample) >= std::abs(rightSample)) ? leftSample : rightSample;
+                    int32_t sample = rawVal >> 14;  // Clean 24-to-16-bit vocal conversion
                     if (sample >  32767) sample =  32767;
                     if (sample < -32768) sample = -32768;
                     pcmBuffer[i] = (int16_t)sample;
                 }
 
-                size_t chunkBytes = sampleCount * sizeof(int16_t);
+                size_t chunkBytes = stereoPairs * sizeof(int16_t);
                 if (m_bufferOffset + chunkBytes <= m_allocatedBufferSize)
                 {
                     memcpy(m_psramBuffer + m_bufferOffset, pcmBuffer, chunkBytes);

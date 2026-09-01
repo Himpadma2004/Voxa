@@ -170,16 +170,18 @@ namespace VOXA
 
     bool ReminderManager::dismissReminder(uint32_t id)
     {
-        for (auto& r : m_reminders)
+        for (auto it = m_reminders.begin(); it != m_reminders.end(); ++it)
         {
-            if (r.id == id)
+            if (it->id == id)
             {
-                r.status = ReminderStatus::COMPLETED;
-                r.completedAt = getCurrentTime();
-                r.completed = true;
+                Reminder copy = *it;
+                copy.status = ReminderStatus::COMPLETED;
+                copy.completedAt = getCurrentTime();
+                copy.completed = true;
+                notifyBackendStateChange(copy);
+                Serial.printf("[ReminderManager] State Change: Reminder dismissed and purged (ID %u, Title: '%s')\n", copy.id, copy.title.c_str());
+                m_reminders.erase(it);
                 saveReminders();
-                Serial.printf("[ReminderManager] State Change: Reminder dismissed (ID %u, Title: '%s', Dismissed at %ld)\n", r.id, r.title.c_str(), (long)r.completedAt);
-                notifyBackendStateChange(r);
                 return true;
             }
         }

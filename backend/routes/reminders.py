@@ -91,6 +91,13 @@ def read_all_reminders(
                 r["status"] = "missed"
                 r["notice"] = "This reminder was missed by you."
 
+        # Exclude completed/dismissed reminders
+        reminders = [
+            r for r in reminders
+            if str(r.get("status", "")).lower() not in ("completed", "cleared", "dismissed")
+            and not (r.get("completed") is True)
+        ]
+
         def _reminder_sort_key(r):
             from routes.notes import parse_to_datetime
             val = r.get("reminder_time") or r.get("dateTime") or r.get("created_at") or r.get("timestamp")
@@ -176,14 +183,16 @@ def get_active_reminders(request: Request):
 @router.delete("/{reminder_id}")
 def dismiss_reminder(reminder_id: str):
     try:
-        res = reminders_collection.update_one(
-            {"$or": [{"reminder_id": reminder_id}, {"_id": reminder_id}]},
-            {"$set": {"status": "completed", "completed_at": datetime.utcnow()}}
-        )
-        if res.modified_count > 0 or res.matched_count > 0:
-            print("[Scheduler] Reminder cleared/dismissed", flush=True)
-            return {"success": True}
-        return {"success": False, "error": "Reminder not found"}
+        from bson import ObjectId
+        query = {"$or": [{"reminder_id": reminder_id}, {"audio_id": reminder_id}]}
+        try:
+            query["$or"].append({"_id": ObjectId(reminder_id)})
+        except Exception:
+            pass
+
+        res = reminders_collection.delete_many(query)
+        print(f"[Scheduler] Reminder dismissed and permanently removed (deleted: {res.deleted_count})", flush=True)
+        return {"success": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 

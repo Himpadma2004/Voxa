@@ -194,12 +194,15 @@ def _build_recording_items(notes):
         audio_id_str = _safe_str(note.get("audio_id") or note.get("_id"))
         file_path = f"/api/audio/{audio_id_str}"
         status = note.get("status", "")
+        duration_sec = note.get("duration_seconds") or note.get("duration") or 0
+        if not duration_sec and note.get("file_size"):
+            duration_sec = max(1, int(round(note.get("file_size", 0) / 32000.0)))
 
         items.append({
             "id": len(items) + 1,
             "title": title,
             "filePath": file_path,
-            "durationSeconds": 0,
+            "durationSeconds": int(duration_sec),
             "timestamp": created_at if status != "processing" else "Pending",
             "audio_id": audio_id_str,
             "status": status,
