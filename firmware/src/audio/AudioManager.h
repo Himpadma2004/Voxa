@@ -69,6 +69,8 @@ namespace VOXA
         bool isReminderPlaying() const { return m_reminderPlaying; }
         bool isBackgroundPlaying() const { return m_backgroundPlaying; }
 
+        void uninstallI2SDriver();
+
     private:
         AudioManager();
         ~AudioManager();
@@ -76,7 +78,6 @@ namespace VOXA
         AudioManager &operator=(const AudioManager &) = delete;
 
         bool initI2SDriver();
-        void uninstallI2SDriver();
 
         bool m_initialized{false};
         volatile bool m_isPlaying{false};

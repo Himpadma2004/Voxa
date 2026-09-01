@@ -311,6 +311,9 @@ def read_all_notes(
             }
         })
     except Exception as e:
+        import traceback
+        print(f"❌ [Notes Endpoint Error] category={category}: {e}")
+        traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": str(e)}

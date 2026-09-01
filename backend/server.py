@@ -36,10 +36,24 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    print(f"[HTTP] {request.method} {request.url.path} from {request.client.host}")
+    # Only log meaningful API requests (silence noisy static/polling if needed)
+    path = request.url.path
     response = await call_next(request)
-    print(f"[HTTP] Response: {response.status_code}")
+    if response.status_code >= 400:
+        print(f"[HTTP {response.status_code}] {request.method} {path} from {request.client.host if request.client else 'unknown'}")
+    elif path.startswith("/api/voice") or path.startswith("/api/audio"):
+        print(f"[HTTP] {request.method} {path} -> {response.status_code}")
     return response
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"\n❌ [Server Error 500] {request.method} {request.url.path}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"success": False, "error": str(exc)}
+    )
 
 # Include modular routes/endpoints
 from routes import notes, reminders, search, summary, music
@@ -130,16 +144,13 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
                 audio_data = (audio_data / peak) * 0.95
             int16_data = (audio_data * 32767).astype(np.int16)
             sf.write(temp_filepath, int16_data, target_sr, subtype="PCM_16", format="WAV")
-            print(f"[Background] Standardized audio to 16kHz 16-bit Mono PCM WAV (from {sr}Hz -> {target_sr}Hz)")
         except Exception as resample_err:
-            print(f"[Background] Warning during audio normalization: {resample_err}")
+            print(f"[Warning] Audio normalization note: {resample_err}")
 
-        # 1. Upload the standardized 44.1kHz audio file to AWS S3
-        print(f"\n[Background] Uploading to AWS S3 for audio_id: {audio_id}...")
+        # 1. Upload the standardized 16kHz audio file to AWS S3
         upload_result = upload_file(temp_filepath)
         s3_key = upload_result["s3_key"]
         audio_url = upload_result["audio_url"]
-        print(f"[Background] Uploaded to S3. Key: {s3_key}")
 
         # Update initial metadata document with S3 key and URL
         from database.mongodb import collection
@@ -153,52 +164,47 @@ def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
         )
 
         # 2. Transcribe audio via transcription service (downloads from S3 & runs Whisper)
-        print("[Background] Transcribing audio...")
+        print(f"\n========================================================")
+        print(f"🎙️ [AUDIO RECEIVED] audio_id: {audio_id}")
         transcript = process_audio(audio_id, s3_key)
-        print(f"[Background] Transcription completed: \"{transcript}\"")
+        print(f"📝 [TRANSCRIPT] \"{transcript}\"")
 
         if not transcript or not transcript.strip():
-            print("[Background] Transcript is empty (no speech detected). Updating MongoDB with empty transcript notice.")
-            structured_data = {
-                "category": "Empty",
-                "summary": "Empty transcript — please record again.",
-                "tasks": [],
-                "reminders": [],
-                "ideas": [],
-                "questions": [],
-                "thoughts": [],
-                "notes": [],
-                "priority": "Low"
-            }
-            update_llm_result(audio_id, structured_data, ACTIVE_MODEL)
-            print(f"[Background] Pipeline finished for audio_id: {audio_id} (empty transcript).")
+            print(f"⚠️ [EMPTY TRANSCRIPT] No speech detected. Automatically discarding empty recording.")
+            print(f"========================================================\n")
+            from database.mongodb import collection
+            collection.delete_one({"audio_id": audio_id})
             return
 
         # 3. LLM Analysis and parsing
-        print("[Background] Processing transcript with LLM...")
         structured_data = process_transcript(transcript, ACTIVE_MODEL)
+        print(f"🤖 [ANALYSIS] Category: {structured_data.get('category')} | Summary: {structured_data.get('summary')}")
+        print(f"========================================================\n")
 
         # 4. Save final LLM details to MongoDB
         update_llm_result(audio_id, structured_data, ACTIVE_MODEL)
-        print("[Background] Updated MongoDB with LLM structured result")
 
         # 5. Extract and save reminders
-        print("[Background] Processing reminders...")
         process_reminders(audio_id, transcript, structured_data)
 
         # 6. Formulate and store memory in ChromaDB
-        print("[Background] Storing memory to vector database...")
         memory_text = build_memory_text(transcript, structured_data)
         add_memory(
             audio_id,
             memory_text,
             {"category": structured_data.get("category", "Other")}
         )
-        print(f"[Background] Pipeline completed successfully for audio_id: {audio_id}!")
 
     except Exception as e:
-        print(f"[Background] ERROR: failed to process audio pipeline for {audio_id}: {e}")
+        print(f"❌ [PIPELINE ERROR] {audio_id}: {e}")
         from database.mongodb import collection
+        collection.update_one(
+            {"audio_id": audio_id},
+            {"$set": {
+                "status": "error",
+                "error": str(e)
+            }}
+        )
         collection.update_one(
             {"audio_id": audio_id},
             {"$set": {
@@ -319,17 +325,6 @@ async def upload_voice_raw(
     request: Request,
     background_tasks: BackgroundTasks
 ):
-    print("=== upload_voice_raw ENTERED ===")
-    print("=" * 60)
-    print("UPLOAD RAW REQUEST RECEIVED")
-    print("Method:", request.method)
-    print("Client:", request.client)
-    print("Headers:")
-    for header, value in request.headers.items():
-        print(f"  {header}: {value}")
-    print("=" * 60)
-    sys.stdout.flush()
-
     rec_time = extract_record_time(request)
 
     # Ensure recordings temp directory exists outside watched paths to avoid Uvicorn reload loops
@@ -339,11 +334,10 @@ async def upload_voice_raw(
     temp_filepath = os.path.join(temp_dir, temp_filename)
 
     try:
-        # Read the entire raw WAV body at once (fully async, no per-chunk thread overhead)
-        # This avoids TCP receive-buffer stalls caused by spawning a new thread per chunk
+        # Read the entire raw WAV body at once
         raw_body = await request.body()
         file_size = len(raw_body)
-        print(f"[Server] Received raw body: {file_size} bytes")
+        print(f"[Upload] Received raw audio stream ({file_size} bytes)")
 
         if file_size == 0:
             return JSONResponse(
@@ -351,14 +345,13 @@ async def upload_voice_raw(
                 content={"success": False, "error": "Empty request body"}
             )
 
-        # Write the entire body to disk in one blocking call (offloaded to thread pool)
+        # Write body to disk
         def write_file():
             with open(temp_filepath, "wb") as f:
                 f.write(raw_body)
         await run_in_threadpool(write_file)
-        print(f"[Server] Saved raw uploaded file to temporary path: {temp_filepath}")
 
-        # Store initial metadata with "processing" status and accurate recording timestamp in MongoDB
+        # Store initial metadata in MongoDB
         audio_id = str(uuid.uuid4())
         document = {
             "audio_id": audio_id,
@@ -367,11 +360,9 @@ async def upload_voice_raw(
             "created_at": rec_time
         }
         await run_in_threadpool(save_audio_metadata, document)
-        print(f"[Server] Saved initial metadata in MongoDB. Audio ID: {audio_id}, Recorded At: {rec_time}")
 
-        # Queue the heavy work in FastAPI background tasks
+        # Queue processing pipeline in FastAPI background tasks
         background_tasks.add_task(run_upload_pipeline, audio_id, temp_filepath, temp_filename)
-        print(f"[Server] Queued processing pipeline for audio_id: {audio_id}")
 
         # Respond immediately to client
         return JSONResponse(content={
@@ -382,7 +373,7 @@ async def upload_voice_raw(
         })
 
     except Exception as e:
-        print(f"[Server] ERROR: failed to handle raw upload request: {e}")
+        print(f"❌ [Upload Error] {e}")
         if os.path.exists(temp_filepath):
             try:
                 os.remove(temp_filepath)
@@ -400,6 +391,6 @@ async def upload_voice_raw(
 
 if __name__ == "__main__":
     import uvicorn
-    # Start uvicorn server on port 8000
-    print("[Server] Starting VOXA FastAPI server...")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, log_level="trace")
+    # Start uvicorn server on port 8000 with clean, quiet logging
+    print("\n🚀 [VOXA Server] Running on http://0.0.0.0:8000")
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, log_level="warning")

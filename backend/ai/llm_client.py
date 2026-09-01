@@ -18,27 +18,23 @@ def analyze_transcript(
         "\n🧠 Sending transcript to LLM..."
     )
 
+    from datetime import datetime
+    now_str = datetime.now().strftime('%A, %B %d, %Y, %I:%M %p')
+    system_prompt = f"{VOXA_SYSTEM_PROMPT}\n\n[Current Reference Date & Time: {now_str}]"
+
     payload = {
-
         "model": model_name,
-
         "messages": [
-
             {
                 "role": "system",
-                "content":
-                    VOXA_SYSTEM_PROMPT
+                "content": system_prompt
             },
-
             {
                 "role": "user",
-                "content":
-                    transcript
+                "content": transcript
             }
         ],
-
         "temperature": 0,
-
         "max_tokens": 300
     }
 

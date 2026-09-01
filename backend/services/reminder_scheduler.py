@@ -24,10 +24,9 @@ def set_esp32_ip(ip):
             print(f"[Scheduler] Registered ESP32 IP address: {ip}", flush=True)
 
 def scheduler_loop():
-    print("[Scheduler] Started", flush=True)
+    print("[Scheduler] Background reminder engine started.", flush=True)
     while True:
         try:
-            print("[Scheduler] Next scan...", flush=True)
             now = datetime.utcnow()
             # 60 second window: PENDING reminders where reminderTime <= now + 60s
             window = now + timedelta(seconds=60)

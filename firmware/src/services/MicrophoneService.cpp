@@ -131,14 +131,9 @@ namespace VOXA
         uint32_t nowMs = millis();
         Serial.printf("[MicrophoneService] startRecording() called by: %s @ %u ms\n", caller, nowMs);
 
-        // Pause/stop background melody so mic recording is clean and without audio bleed
+        // Stop audio playback cleanly without un-installing drivers
+        AudioManager::instance().stop();
         AudioManager::instance().stopBackgroundMusic();
-
-        if (m_recording)
-        {
-            Serial.printf("[MicrophoneService] Already recording! Rejecting call from: %s\n", caller);
-            return false;
-        }
 
         if (!m_initialized && !begin())
         {

@@ -234,9 +234,10 @@ namespace VOXA
                             snprintf(titleBuf, sizeof(titleBuf), "Voice Note #%u", (unsigned)s_recSeq);
                             s_recUploadPath = titleBuf;
 
+                            AudioManager::instance().playTone(1200, 80);
+                            vTaskDelay(pdMS_TO_TICKS(90));
                             if (microphoneService.startRecording(s_recUploadPath, "RecordScreen::micButtonPressed"))
                             {
-                                AudioManager::instance().playTone(1200, 80);
                                 uiState = UIState::Recording;
                             }
                         }

@@ -39,7 +39,8 @@ def process_reminders(
         )
 
         reminder_datetime = extract_datetime(
-            reminder_time_text
+            reminder_time_text,
+            fallback_text=transcript
         )
 
         print(

@@ -1,7 +1,12 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from reminders.reminder_repository import load_all_reminders
+from database.mongodb import db, cleanup_old_reminders
+from services.reminder_scheduler import set_esp32_ip
+
+reminders_collection = db["reminders"]
 
 router = APIRouter(prefix="/api/reminders", tags=["Reminders"])
 
