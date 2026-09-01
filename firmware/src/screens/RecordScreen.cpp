@@ -153,10 +153,13 @@ namespace VOXA
                     recordingService.add(resultText, resultText, durS, "Uploaded");
                     Serial.printf("[RecordScreen] Cloud upload success: audio_id=%s\n", resultText.c_str());
 
-                    // Trigger cloud sync so the new note appears in all screens
-                    vTaskDelay(pdMS_TO_TICKS(1200));
-                    dataService.syncAll();
-                    Serial.println("[RecordScreen] DataSync triggered after upload.");
+                    // Asynchronously trigger cloud sync without blocking the UI thread
+                    xTaskCreate([](void*) {
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        dataService.syncAll();
+                        vTaskDelete(nullptr);
+                    }, "sync_task", 4096, nullptr, 1, nullptr);
+                    Serial.println("[RecordScreen] Async DataSync scheduled.");
                 }
                 else
                 {
@@ -176,10 +179,10 @@ namespace VOXA
                 uiState = UIState::Idle;
             }
 
-            // Auto-stop recording after 30 seconds
-            if (uiState == UIState::Recording && microphoneService.getDurationMs() >= 30000)
+            // Auto-stop recording after 60 seconds
+            if (uiState == UIState::Recording && microphoneService.getDurationMs() >= 60000)
             {
-                Serial.println("[RecordScreen] Auto-stop: 30s limit reached.");
+                Serial.println("[RecordScreen] Auto-stop: 60s limit reached.");
                 uiState = UIState::Uploading;
                 s_recUploadDone  = false;
                 s_recUploadOk    = false;
@@ -187,17 +190,17 @@ namespace VOXA
                 memset(s_recUploadError, 0, sizeof(s_recUploadError));
 
                 // stopRecording() blocks briefly then posts WAV to cloud
-                bool stopOk = microphoneService.stopRecording("RecordScreen::autoStop", "30s_timeout");
+                bool stopOk = microphoneService.stopRecording("RecordScreen::autoStop", "60s_timeout");
                 s_recUploadOk = stopOk;
                 strncpy(s_recUploadText, microphoneService.getLastAudioId().c_str(), 255);
                 s_recUploadDone = true;
             }
 
-            // 1. Process Touch
+            // 1. Process Touch (Immediate zero-latency response)
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
 
-            if (touched && entryFrame >= 10)
+            if (touched)
             {
                 m_lastDragX = tx;
                 m_lastDragY = ty;
@@ -208,25 +211,21 @@ namespace VOXA
                     dragStartY = ty;
                     swipeBackCandidate = (tx < 50);
 
-                    // Back button bounds
-                    if (std::sqrt((tx - 20.0f) * (tx - 20.0f) + (ty - 45.0f) * (ty - 45.0f)) <= 18.0f)
+                    // Back button bounds (top-left)
+                    if (std::sqrt((tx - 20.0f) * (tx - 20.0f) + (ty - 45.0f) * (ty - 45.0f)) <= 24.0f)
                     {
                         m_isBackPressed = true;
                     }
 
-                    // Center mic/stop button bounds (expanded hit radius when recording to cover pulsing red ring)
+                    // Center mic/stop button coordinates (aligned with rendered mic at 0.48f)
                     float micCx = w * 0.5f;
-                    float micCy = h * 0.52f;
-                    float touchRadius = (uiState == UIState::Recording) ? 70.0f : 50.0f;
+                    float micCy = h * 0.48f;
                     float dist = std::sqrt((tx - micCx) * (tx - micCx) + (ty - micCy) * (ty - micCy));
 
-                    if (dist <= touchRadius)
+                    if (!m_isBackPressed)
                     {
-                        Serial.printf("[RecordScreen] Mic/Stop button touched at tx=%u, ty=%u (dist=%.1f, uiState=%d)\n",
-                                      tx, ty, dist, (int)uiState);
-
                         // Action depends on current state
-                        if (uiState == UIState::Idle)
+                        if (uiState == UIState::Idle && dist <= 60.0f)
                         {
                             // Use a timestamped title — no SPIFFS path needed
                             static uint32_t s_recSeq = 0;
@@ -243,12 +242,13 @@ namespace VOXA
                         }
                         else if (uiState == UIState::Recording)
                         {
-                            const uint32_t MIN_RECORDING_MS = 300;
+                            // Any tap on screen while recording stops recording and starts upload
+                            const uint32_t MIN_RECORDING_MS = 250;
                             if (microphoneService.getDurationMs() >= MIN_RECORDING_MS)
                             {
-                                Serial.println("[RecordScreen] Stop button pressed -> Executing stopRecording()");
+                                Serial.println("[RecordScreen] Screen tap -> Executing stopRecording()");
                                 AudioManager::instance().playTone(800, 80);
-                                bool stopOk = microphoneService.stopRecording("RecordScreen::micButtonToggle", "user_button_tap");
+                                bool stopOk = microphoneService.stopRecording("RecordScreen::micButtonToggle", "user_screen_tap");
 
                                 if (stopOk)
                                 {
@@ -270,14 +270,9 @@ namespace VOXA
                                 }
                             }
                         }
-                        else if (uiState == UIState::Error)
+                        else if (uiState == UIState::Error || uiState == UIState::Result)
                         {
-                            // Error state: just go back to Idle (upload is inline, no retry queue)
-                            uiState = UIState::Idle;
-                        }
-                        else if (uiState == UIState::Result)
-                        {
-                            // Dismiss result
+                            // Dismiss result / error back to idle
                             uiState = UIState::Idle;
                         }
                     }

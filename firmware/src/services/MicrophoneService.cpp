@@ -1,6 +1,7 @@
 #include "MicrophoneService.h"
 #include "ApiClient.h"
 #include "TimeService.h"
+#include "../audio/AudioManager.h"
 #include <driver/i2s.h>
 #include <algorithm>
 #include <cstring>
@@ -98,7 +99,7 @@ namespace VOXA
             .bck_io_num   = 4,   // BCLK → GPIO4
             .ws_io_num    = 5,   // LRCK → GPIO5
             .data_out_num = -1,
-            .data_in_num  = 8    // DATA → GPIO8 (Dedicated input, no conflict with Speaker on GPIO7)
+            .data_in_num  = 7    // DATA (SD) → GPIO7 (Microphone Serial Data In)
         };
 
         esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
@@ -129,6 +130,9 @@ namespace VOXA
     {
         uint32_t nowMs = millis();
         Serial.printf("[MicrophoneService] startRecording() called by: %s @ %u ms\n", caller, nowMs);
+
+        // Pause/stop background melody so mic recording is clean and without audio bleed
+        AudioManager::instance().stopBackgroundMusic();
 
         if (m_recording)
         {

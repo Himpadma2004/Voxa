@@ -130,8 +130,8 @@ namespace VOXA
             uint32_t totalDuration = now - m_pressStartTime;
             Serial.printf("[ButtonService] Button Released after %u ms\n", totalDuration);
 
-            // If recording was triggered or is currently recording, releasing the button STOPS it immediately!
-            if (m_recordTriggerFired || microphoneService.isRecording())
+            // If recording was triggered by holding the hardware button, releasing the button STOPS it
+            if (m_recordTriggerFired)
             {
                 m_pendingStopTrigger = true;
                 m_pendingRecordTrigger = false;
