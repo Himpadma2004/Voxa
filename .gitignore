@@ -5,5 +5,8 @@ __pycache__/
 
 recordings/
 chroma_db/
+backend/assets/music/*.wav
+backend/assets/music/temp_*
 
+.pio/
 .vscode/

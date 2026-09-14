@@ -14,6 +14,11 @@ namespace VoxaTheme
     // Theme Mode Accessors
     ThemeMode getThemeMode();
     void setThemeMode(ThemeMode mode);
+    bool isDarkMode();
+
+    // Dynamic Island Palette (Always high-contrast Apple capsule)
+    uint16_t getDynamicIslandBg();
+    uint16_t getDynamicIslandFg();
 
     // Dynamic Color Palette Lookups
     uint16_t getBackground();
@@ -26,6 +31,17 @@ namespace VoxaTheme
     uint16_t getTextPrimary();
     uint16_t getTextSecondary();
     uint16_t getDivider();
+
+    // iOS 26 Liquid Glass Palette Lookups
+    uint16_t getGlassSurface();
+    uint16_t getGlassHighlight();
+    uint16_t getGlassBorder();
+    uint16_t getSystemBlue();
+    uint16_t getSystemGreen();
+    uint16_t getSystemRed();
+    uint16_t getSystemIndigo();
+    uint16_t getSystemPurple();
+    uint16_t getSystemAmber();
 
     // ----------------------------
     // Shared Layout Metrics (Keep as constexpr compile-time constants)

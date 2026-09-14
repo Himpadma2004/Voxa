@@ -10,7 +10,7 @@ bool Display::begin()
 
     lcd.init();
     setBrightness(130); // ~50% brightness to lower power demand on VCC rail
-    lcd.setRotation(1);
+    lcd.setRotation(0); // Upright Portrait orientation (240x320 native)
     lcd.fillScreen(TFT_BLACK);
 
     Serial.println("[Display] Ready (Power-Efficient Backlight Active)");

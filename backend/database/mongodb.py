@@ -27,32 +27,20 @@ MONGO_COLLECTION = os.getenv("MONGO_COLLECTION")
 try:
     client = MongoClient(
         MONGO_URI,
-        tlsCAFile=certifi.where(),
-        serverSelectionTimeoutMS=2500,
-        connectTimeoutMS=2500,
-        socketTimeoutMS=2500
+        tls=True,
+        tlsAllowInvalidCertificates=True,
+        serverSelectionTimeoutMS=2000,
+        connectTimeoutMS=2000,
+        socketTimeoutMS=2000
     )
     client.admin.command("ping")
-    print("MongoDB Connected")
-except Exception as ssl_err:
-    print(f"Standard TLS connection failed ({ssl_err}). Retrying with SSL fallback options...")
+    print("[Database] MongoDB Connected")
+except Exception as e:
+    print(f"[Database] MongoDB offline/resilient mode ({e})")
     try:
-        client = MongoClient(
-            MONGO_URI,
-            tls=True,
-            tlsAllowInvalidCertificates=True,
-            serverSelectionTimeoutMS=2500,
-            connectTimeoutMS=2500,
-            socketTimeoutMS=2500
-        )
-        client.admin.command("ping")
-        print("MongoDB Connected (with SSL fallback)")
-    except Exception as e:
-        print("MongoDB Connection Warning (offline/resilient mode):", e)
-        try:
-            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=1000, connectTimeoutMS=1000)
-        except Exception:
-            client = MongoClient(serverSelectionTimeoutMS=1000)
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=1000, connectTimeoutMS=1000, tls=True, tlsAllowInvalidCertificates=True)
+    except Exception:
+        client = MongoClient(serverSelectionTimeoutMS=1000)
 
 
 db = client[MONGO_DB]

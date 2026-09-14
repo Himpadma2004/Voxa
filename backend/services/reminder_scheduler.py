@@ -80,7 +80,7 @@ def scheduler_loop():
                 if esp_ip:
                     print(f"[Scheduler] Sending reminder to ESP32", flush=True)
                     payload = {
-                        "id": reminder.get("reminder_id"),
+                        "id": reminder.get("reminder_id") or str(reminder.get("_id")),
                         "title": reminder.get("title", ""),
                         "description": reminder.get("description", "") or reminder.get("comments", "") or "",
                         "reminderTime": int(reminder.get("reminder_time").timestamp()) if reminder.get("reminder_time") else int(time.time())

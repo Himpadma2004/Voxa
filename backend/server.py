@@ -112,16 +112,20 @@ def read_root():
 
 @app.on_event("startup")
 def startup_event():
-    try:
-        from services.reminder_scheduler import start_scheduler
-        start_scheduler()
-    except Exception as e:
-        print(f"[Startup] Warning starting reminder scheduler: {e}")
-    try:
-        from database.mongodb import migrate_all_existing_data
-        migrate_all_existing_data()
-    except Exception as e:
-        print(f"[Startup] Warning migrating data: {e}")
+    import threading
+    def background_startup():
+        try:
+            from services.reminder_scheduler import start_scheduler
+            start_scheduler()
+        except Exception as e:
+            print(f"[Startup] Reminder scheduler note: {e}")
+        try:
+            from database.mongodb import migrate_all_existing_data
+            migrate_all_existing_data()
+        except Exception as e:
+            print(f"[Startup] Migration note: {e}")
+
+    threading.Thread(target=background_startup, daemon=True).start()
 
 
 def run_upload_pipeline(audio_id: str, temp_filepath: str, temp_filename: str):
@@ -428,6 +432,5 @@ async def upload_voice_raw(
 
 if __name__ == "__main__":
     import uvicorn
-    # Start uvicorn server on port 8000 with clean, quiet logging
-    print("\n🚀 [VOXA Server] Running on http://0.0.0.0:8000")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, log_level="warning")
+    print("\n[VOXA Server] Starting on http://0.0.0.0:8000 ...")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

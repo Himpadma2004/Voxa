@@ -10,11 +10,14 @@ namespace VOXA
 
     namespace
     {
-        /// Cubic ease-out: fast start, decelerates to a stop
-        float easeOutCubic(float t)
+        /// iOS 26 fluid spring curve: rapid launch, buttery smooth deceleration
+        float easeIOSSpring(float t)
         {
+            if (t <= 0.0f) return 0.0f;
+            if (t >= 1.0f) return 1.0f;
             float f = 1.0f - t;
-            return 1.0f - (f * f * f);
+            // Quartic deceleration curve matches Apple CoreAnimation CAMediaTimingFunction
+            return 1.0f - (f * f * f * f);
         }
     }
 
@@ -68,7 +71,7 @@ namespace VOXA
         
         // Progress from 0.0 to 1.0
         float rawT = (float)frame / (float)maxFrames;
-        float t = easeOutCubic(rawT);
+        float t = easeIOSSpring(rawT);
 
         Display::lcd.startWrite();
         uint16_t bg = VoxaTheme::getBackground();

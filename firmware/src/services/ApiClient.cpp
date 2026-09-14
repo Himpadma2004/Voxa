@@ -103,7 +103,7 @@ namespace VOXA
     {
         Preferences prefs;
         prefs.begin("voxa-api", true);
-        String url = prefs.getString("url", "http://192.168.1.7:8000");
+        String url = prefs.getString("url", "http://192.168.0.148:8000");
         prefs.end();
         std::string cleanedUrl = url.c_str();
         if (!cleanedUrl.empty() && cleanedUrl.back() == '/')

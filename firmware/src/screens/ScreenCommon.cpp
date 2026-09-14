@@ -28,114 +28,200 @@ namespace VOXA::ScreenCommon
         // Intercept rendering to display active reminder popups
         ReminderManager::instance().checkAndShowPopup(canvas);
 
-        // 1. Draw minimal obsidian pitch black background
+        // 1. Deep OLED Obsidian Black Background
         canvas.fillScreen(VoxaTheme::getBackground());
 
-        // 2. Subtle warm orange ambient aura top-right (blended with background)
-        float tr_cx = w * 0.88f;
-        float tr_cy = h * 0.12f;
-        uint16_t primaryOrange = VoxaTheme::getPrimary();
-        uint8_t oR = (primaryOrange >> 11) << 3;
-        uint8_t oG = ((primaryOrange >> 5) & 0x3F) << 2;
-        uint8_t oB = (primaryOrange & 0x1F) << 3;
-
-        uint16_t bg = VoxaTheme::getBackground();
-        uint8_t bgR = (bg >> 11) << 3;
-        uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
-        uint8_t bgB = (bg & 0x1F) << 3;
-
-        for (int r = 5; r >= 1; --r)
+        // 2. Dual-tone Ambient Liquid Glass Glow (iOS 26 Refraction Aura) - Dark Mode Only
+        if (VoxaTheme::isDarkMode())
         {
-            float radius = 20.0f + r * 10.0f;
-            float alpha = (6.0f - r) * 0.02f;
-            
-            uint8_t blend_r = (uint8_t)((1.0f - alpha) * bgR + alpha * oR);
-            uint8_t blend_g = (uint8_t)((1.0f - alpha) * bgG + alpha * oG);
-            uint8_t blend_b = (uint8_t)((1.0f - alpha) * bgB + alpha * oB);
-            
-            canvas.fillCircle((int)tr_cx, (int)tr_cy, (int)radius, canvas.color565(blend_r, blend_g, blend_b));
+            // Top-Right: Warm Amber / Flame Glow
+            float tr_cx = w * 0.90f;
+            float tr_cy = h * 0.08f;
+            uint16_t amber = VoxaTheme::getPrimary();
+            uint8_t aR = (amber >> 11) << 3;
+            uint8_t aG = ((amber >> 5) & 0x3F) << 2;
+            uint8_t aB = (amber & 0x1F) << 3;
+
+            for (int r = 4; r >= 1; --r)
+            {
+                float radius = 16.0f + r * 12.0f;
+                float alpha = (5.0f - r) * 0.018f;
+                canvas.fillCircle((int)tr_cx, (int)tr_cy, (int)radius, 
+                    canvas.color565((uint8_t)(alpha * aR), (uint8_t)(alpha * aG), (uint8_t)(alpha * aB)));
+            }
+
+            // Top-Left: Subtle iOS Electric Cyan / Indigo Ambient Shimmer
+            float tl_cx = w * 0.10f;
+            float tl_cy = h * 0.06f;
+            uint16_t cyan = VoxaTheme::getSystemBlue();
+            uint8_t cR = (cyan >> 11) << 3;
+            uint8_t cG = ((cyan >> 5) & 0x3F) << 2;
+            uint8_t cB = (cyan & 0x1F) << 3;
+            for (int r = 3; r >= 1; --r)
+            {
+                float radius = 12.0f + r * 10.0f;
+                float alpha = (4.0f - r) * 0.015f;
+                canvas.fillCircle((int)tl_cx, (int)tl_cy, (int)radius,
+                    canvas.color565((uint8_t)(alpha * cR), (uint8_t)(alpha * cG), (uint8_t)(alpha * cB)));
+            }
         }
 
-        // 3. Compact status bar at the top
-        canvas.setFont(&fonts::FreeSans9pt7b);
+        // 3. iOS 26 Dynamic Island (Centered Floating High-Contrast Capsule)
+        int islandW = 158;
+        int islandH = 22;
+        int islandX = (w - islandW) / 2;
+        int islandY = 3;
+        int islandR = 11;
+
+        bool isRecording = VOXA::microphoneService.isRecording();
+
+        // Island Capsule Fill (Always sleek obsidian capsule)
+        uint16_t islandFill = isRecording ? canvas.color565(32, 12, 16) : VoxaTheme::getDynamicIslandBg();
+        uint16_t islandBorder = isRecording 
+            ? (((millis() / 400) % 2 == 0) ? VoxaTheme::getSystemRed() : VoxaTheme::getPrimary()) 
+            : (VoxaTheme::isDarkMode() ? VoxaTheme::getGlassBorder() : canvas.color565(30, 32, 40));
+
+        canvas.fillRoundRect(islandX, islandY, islandW, islandH, islandR, islandFill);
+        canvas.drawRoundRect(islandX, islandY, islandW, islandH, islandR, islandBorder);
+
+        // Specular Optical Highlight along Island Top Edge
+        canvas.drawFastHLine(islandX + islandR + 2, islandY + 1, islandW - (islandR * 2 + 4), 
+            VoxaTheme::isDarkMode() ? VoxaTheme::getGlassHighlight() : canvas.color565(55, 60, 75));
+
+        // Island Contents:
+        int curX = islandX + 10;
+
+        // Recording Live Indicator Dot
+        if (isRecording)
+        {
+            uint16_t dotCol = ((millis() / 350) % 2 == 0) ? VoxaTheme::getSystemRed() : canvas.color565(160, 20, 20);
+            canvas.fillCircle(curX + 4, islandY + islandH / 2, 4, dotCol);
+            curX += 13;
+        }
+
+        // Clock String in Clean SF Typography (Always Crisp White Inside Dynamic Island)
+        canvas.setFont(&fonts::FreeSansBold9pt7b);
         canvas.setTextSize(1);
-        canvas.setTextColor(VoxaTheme::getTextPrimary());
-        
-        canvas.setTextDatum(textdatum_t::top_left);
-        canvas.drawString("VOXA", 10, 4);
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(VoxaTheme::getDynamicIslandFg(), islandFill);
+        canvas.drawString(getCurrentTimeStr().c_str(), curX, islandY + islandH / 2 + 1);
 
-        if (VOXA::microphoneService.isRecording())
-        {
-            uint16_t dotColor = ((millis() / 500) % 2 == 0) ? canvas.color565(255, 60, 0) : canvas.color565(120, 20, 0);
-            canvas.fillCircle(65, 11, 4, dotColor);
-        }
-
-        canvas.setTextDatum(textdatum_t::top_center);
-        canvas.drawString(getCurrentTimeStr().c_str(), w * 0.5f, 4);
-
-        // Interactive Wi-Fi Icon & Non-Overlapping Battery Info
+        // Wi-Fi Icon
         bool isWifiConnected = VOXA::wifiManager.isConnected();
-        uint16_t wifiColor = isWifiConnected ? VoxaTheme::getTextPrimary() : VoxaTheme::getDivider();
-        drawIcon(canvas, isWifiConnected ? Icon::Wifi : Icon::WiFiOff, w - 74, 4, 12, wifiColor);
-        
-        int batPct = VOXA::BatteryManager::instance().getPercentage();
-        if (batPct <= 0 || batPct > 100) batPct = 92;
-        std::string batStr = std::to_string(batPct) + "%";
+        uint16_t wifiColor = isWifiConnected ? VoxaTheme::getSystemBlue() : VoxaTheme::getTextSecondary();
+        int wifiX = islandX + islandW - 46;
+        drawIcon(canvas, isWifiConnected ? Icon::Wifi : Icon::WiFiOff, wifiX, islandY + 5, 12, wifiColor);
 
-        canvas.setFont(&fonts::Font0);
-        canvas.setTextSize(1);
-        canvas.setTextDatum(textdatum_t::top_right);
-        canvas.drawString(batStr.c_str(), w - 24, 7);
-        
-        uint16_t batColor = VOXA::BatteryManager::instance().isCharging() ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary();
-        drawIcon(canvas, Icon::Battery, w - 18, 4, 14, batColor);
+        // Battery Capsule (Authentic iOS Mini Capsule)
+        int batX = islandX + islandW - 28;
+        int batY = islandY + 6;
+        int batW = 20;
+        int batH = 10;
+
+        int batPct = VOXA::BatteryManager::instance().getPercentage();
+        if (batPct <= 0 || batPct > 100) batPct = 94;
+        bool isCharging = VOXA::BatteryManager::instance().isCharging();
+
+        // Capsule Shell (Crisp White inside Dynamic Island)
+        canvas.drawRoundRect(batX, batY, batW, batH, 2, VoxaTheme::getDynamicIslandFg());
+        canvas.fillRect(batX + batW, batY + 2, 2, batH - 4, VoxaTheme::getDynamicIslandFg());
+
+        // Fill Level Bar
+        int maxFillW = batW - 4;
+        int fillW = std::max(2, (int)(maxFillW * (batPct / 100.0f)));
+        uint16_t batFillCol = isCharging ? VoxaTheme::getSystemAmber() 
+            : (batPct < 20 ? VoxaTheme::getSystemRed() : VoxaTheme::getSystemGreen());
+        canvas.fillRoundRect(batX + 2, batY + 2, fillW, batH - 4, 1, batFillCol);
     }
 
     void renderPageDots(LovyanGFX& canvas, int activeIndex, int count, uint16_t w, uint16_t h)
     {
         float dotY = h - 12.0f;
-        float spacing = 12.0f;
+        float spacing = 14.0f;
         float centerX = w * 0.5f;
-            float startX = centerX - ((count - 1) * spacing) * 0.5f;
-            
-            for (int i = 0; i < count; ++i)
-            {
-                bool active = (i == activeIndex);
-                uint16_t color = active ? VoxaTheme::getPrimary() : VoxaTheme::getDivider();
-                int dotW = active ? 10 : 4;
-                int dotH = 4;
-                canvas.fillRoundRect((int)(startX + i * spacing - dotW * 0.5f), (int)(dotY - dotH * 0.5f), dotW, dotH, 2, color);
-            }
-        }
+        float startX = centerX - ((count - 1) * spacing) * 0.5f;
 
-        void renderCircularButton(LovyanGFX& canvas, float centerX, float centerY, Icon icon, 
-                                  uint16_t fill, uint16_t iconColor, uint16_t w, uint16_t h)
+        for (int i = 0; i < count; ++i)
         {
-            float radius = 12.0f;
-            canvas.fillCircle((int)centerX, (int)centerY, (int)radius, fill);
-            canvas.drawCircle((int)centerX, (int)centerY, (int)radius, VoxaTheme::getDivider());
-            drawIcon(canvas, icon, centerX - 5.0f, centerY - 5.0f, 10.0f, iconColor);
+            bool active = (i == activeIndex);
+            uint16_t color = active ? VoxaTheme::getPrimary() : VoxaTheme::getGlassBorder();
+            int dotW = active ? 16 : 6;
+            int dotH = 5;
+            canvas.fillRoundRect((int)(startX + i * spacing - dotW * 0.5f), (int)(dotY - dotH * 0.5f), dotW, dotH, 2, color);
+            if (active)
+            {
+                // Subtle glow on active pill
+                canvas.drawRoundRect((int)(startX + i * spacing - dotW * 0.5f), (int)(dotY - dotH * 0.5f), dotW, dotH, 2, VoxaTheme::getPrimaryLight());
+            }
         }
+    }
 
-        void renderHeader(LovyanGFX& canvas, const std::string& title, bool showBack, 
-                          bool showRightAction, Icon rightIcon, uint16_t w, uint16_t h)
+    void renderCircularButton(LovyanGFX& canvas, float centerX, float centerY, Icon icon, 
+                              uint16_t fill, uint16_t iconColor, uint16_t w, uint16_t h)
+    {
+        float radius = 15.0f;
+        int cx = (int)centerX;
+        int cy = (int)centerY;
+        int r = (int)radius;
+
+        // Frosted Glass Circle Body
+        canvas.fillCircle(cx, cy, r, fill);
+        canvas.drawCircle(cx, cy, r, VoxaTheme::getGlassBorder());
+
+        // Optical Glass Reflection Rim
+        canvas.drawCircle(cx, cy - 1, r - 2, VoxaTheme::getGlassHighlight());
+
+        // Centered Geometric Icon
+        drawIcon(canvas, icon, centerX - 6.0f, centerY - 6.0f, 12.0f, iconColor);
+    }
+
+    void renderHeader(LovyanGFX& canvas, const std::string& title, bool showBack, 
+                      bool showRightAction, Icon rightIcon, uint16_t w, uint16_t h)
+    {
+        if (showBack)
         {
-            if (showBack)
-            {
-                renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, VoxaTheme::getSurface(), VoxaTheme::getTextPrimary(), w, h);
-            }
-
-            canvas.setFont(&fonts::FreeSansBold12pt7b);
-            canvas.setTextSize(1);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.setTextColor(VoxaTheme::getTextPrimary());
-            canvas.drawString(title.c_str(), w * 0.5f, 45.0f);
-
-            if (showRightAction)
-            {
-                renderCircularButton(canvas, w - 20.0f, 45.0f, rightIcon, VoxaTheme::getSurface(), VoxaTheme::getTextPrimary(), w, h);
-            }
+            renderCircularButton(canvas, 22.0f, 46.0f, Icon::Back, VoxaTheme::getGlassSurface(), VoxaTheme::getTextPrimary(), w, h);
         }
+
+        canvas.setFont(&fonts::FreeSansBold12pt7b);
+        canvas.setTextSize(1);
+        canvas.setTextDatum(textdatum_t::middle_center);
+        canvas.setTextColor(VoxaTheme::getTextPrimary());
+        canvas.drawString(title.c_str(), w * 0.5f, 46.0f);
+
+        if (showRightAction)
+        {
+            renderCircularButton(canvas, w - 22.0f, 46.0f, rightIcon, VoxaTheme::getGlassSurface(), VoxaTheme::getTextPrimary(), w, h);
+        }
+    }
+
+    void drawGlassCard(LovyanGFX& canvas, float x, float y, float w, float h, float radius, 
+                       bool isPressed, uint16_t accentColor)
+    {
+        int ix = (int)x;
+        int iy = (int)y;
+        int iw = (int)w;
+        int ih = (int)h;
+        int ir = (int)radius;
+
+        uint16_t fillCol = isPressed 
+            ? (accentColor != 0 ? accentColor : VoxaTheme::getPrimary()) 
+            : VoxaTheme::getGlassSurface();
+        uint16_t borderCol = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getGlassBorder();
+        uint16_t shineCol = isPressed ? 0xFFFF : VoxaTheme::getGlassHighlight();
+
+        // 1. Frosted Glass Body
+        canvas.fillRoundRect(ix, iy, iw, ih, ir, fillCol);
+
+        // 2. Translucent Glass Border
+        canvas.drawRoundRect(ix, iy, iw, ih, ir, borderCol);
+
+        // 3. Specular Optical Highlight along Top Edge (iOS 26 Refraction Line)
+        if (!isPressed && iw > ir * 2 + 4)
+        {
+            canvas.drawFastHLine(ix + ir + 2, iy + 1, iw - (ir * 2 + 4), shineCol);
+        }
+    }
 
         void drawIcon(LovyanGFX& canvas, Icon icon, float x, float y, float size, uint16_t color)
         {

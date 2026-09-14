@@ -207,17 +207,17 @@ namespace VOXA
             ScreenCommon::renderSurface(canvas, w, h);
             ScreenCommon::renderHeader(canvas, "Tasks", true, true, Icon::Plus, w, h);
 
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, backFill, backColor, w, h);
+            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+            uint16_t backColor = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, 22.0f, 46.0f, Icon::Back, backFill, backColor, w, h);
 
-            uint16_t addFill = m_isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t addColor = m_isAddPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, Icon::Plus, addFill, addColor, w, h);
+            uint16_t addFill = m_isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+            uint16_t addColor = m_isAddPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, w - 22.0f, 46.0f, Icon::Plus, addFill, addColor, w, h);
 
-            uint16_t searchFill = m_isSearchPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t searchColor = m_isSearchPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, w - 55.0f, 45.0f, Icon::Search, searchFill, searchColor, w, h);
+            uint16_t searchFill = m_isSearchPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+            uint16_t searchColor = m_isSearchPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, w - 58.0f, 46.0f, Icon::Search, searchFill, searchColor, w, h);
 
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;
@@ -226,40 +226,49 @@ namespace VOXA
 
             for (std::size_t i = 0; i < items.size(); ++i)
             {
-                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
+                float itemY = 72.0f + i * 52.0f - m_scrollY;
+                if (itemY + 46.0f < 70.0f || itemY > (h - 18.0f))
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
-                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
-                uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
 
-                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
-                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
+                // iOS 26 Glassmorphic Card Container
+                ScreenCommon::drawGlassCard(canvas, leftX, itemY, cardW, 46.0f, 12.0f, isPressed, VoxaTheme::getSystemGreen());
 
-                float cy = itemY + 22.0f;
+                uint16_t labelColor = isPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+                uint16_t subColor = isPressed ? 0xFFFF : VoxaTheme::getTextSecondary();
+
+                float cy = itemY + 23.0f;
                 float iconCx = leftX + 22.0f;
 
-                uint16_t iconColor = items[i].isDone ? 0x07E0 : 0xFA20;
-                canvas.fillCircle((int)iconCx, (int)cy, 12, iconColor);
-                ScreenCommon::drawIcon(canvas, Icon::Note, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+                // iOS Checkbox Indicator
+                uint16_t iconColor = items[i].isDone ? VoxaTheme::getSystemGreen() : VoxaTheme::getGlassBorder();
+                canvas.fillCircle((int)iconCx, (int)cy, 11, items[i].isDone ? VoxaTheme::getSystemGreen() : canvas.color565(18, 20, 28));
+                canvas.drawCircle((int)iconCx, (int)cy, 11, iconColor);
+                if (items[i].isDone)
+                {
+                    ScreenCommon::drawIcon(canvas, Icon::Spark, iconCx - 6.0f, cy - 6.0f, 12.0f, 0xFFFF);
+                }
+                else
+                {
+                    ScreenCommon::drawIcon(canvas, Icon::Note, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getPrimary());
+                }
 
                 canvas.setFont(&fonts::FreeSans9pt7b);
                 canvas.setTextDatum(textdatum_t::middle_left);
                 canvas.setTextColor(labelColor);
 
                 std::string tTitle = items[i].title;
-                if (tTitle.length() > 22) tTitle = tTitle.substr(0, 19) + "...";
-                canvas.drawString(tTitle.c_str(), leftX + 42.0f, cy - 8.0f);
+                if (tTitle.length() > 20) tTitle = tTitle.substr(0, 18) + "...";
+                canvas.drawString(tTitle.c_str(), leftX + 40.0f, cy - 8.0f);
 
+                canvas.setFont(&fonts::Font0);
                 canvas.setTextColor(subColor);
-                std::string subStr = items[i].timestamp.empty() ? "Task Item" : items[i].timestamp;
-                canvas.drawString(subStr.c_str(), leftX + 42.0f, cy + 8.0f);
+                std::string subStr = items[i].timestamp.empty() ? "Task" : items[i].timestamp;
+                canvas.drawString(subStr.c_str(), leftX + 40.0f, cy + 9.0f);
 
-                float chevX = leftX + cardW - 16.0f;
-                ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+                float chevX = leftX + cardW - 20.0f;
+                ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 6.0f, cy - 8.0f, 16.0f, subColor);
             }
 
             canvas.clearClipRect();

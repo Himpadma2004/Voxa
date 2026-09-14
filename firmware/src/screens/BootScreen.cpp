@@ -92,26 +92,27 @@ void BootScreen::drawWaves(LGFX_Sprite& canvas, float elapsed, uint16_t w, uint1
 
 void BootScreen::drawProgressBar(LGFX_Sprite& canvas, float progress, uint16_t w, uint16_t h)
 {
-    float barW = w * 0.5f;
-    float barH = 6.0f;
-    float barX = w * 0.25f;
+    float barW = w * 0.55f;
+    float barH = 8.0f;
+    float barX = (w - barW) * 0.5f;
     float barY = h * 0.72f;
 
-    uint16_t trackColor = canvas.color565(35, 35, 45);
-    uint16_t fillColor = VoxaTheme::getPrimary(); // Electric Orange
+    // 1. Frosted Glass Capsule Track
+    canvas.fillRoundRect((int)barX, (int)barY, (int)barW, (int)barH, 4, canvas.color565(18, 20, 28));
+    canvas.drawRoundRect((int)barX, (int)barY, (int)barW, (int)barH, 4, VoxaTheme::getGlassBorder());
+    canvas.drawFastHLine((int)barX + 4, (int)barY + 1, (int)barW - 8, VoxaTheme::getGlassHighlight());
 
-    // Draw track
-    canvas.fillRoundRect((int)barX, (int)barY, (int)barW, (int)barH, (int)(barH * 0.5f), trackColor);
-
-    // Draw filled portion
+    // 2. Filled Glowing Active Capsule
     float fillW = barW * progress;
     if (fillW >= barH)
     {
-        canvas.fillRoundRect((int)barX, (int)barY, (int)fillW, (int)barH, (int)(barH * 0.5f), fillColor);
+        canvas.fillRoundRect((int)barX, (int)barY, (int)fillW, (int)barH, 4, VoxaTheme::getPrimary());
+        // Leading edge specular gleam
+        canvas.drawFastHLine((int)barX + 2, (int)barY + 1, (int)fillW - 4, 0xFFFF);
     }
     else if (fillW > 0)
     {
-        canvas.fillRoundRect((int)barX, (int)barY, (int)barH, (int)barH, (int)(barH * 0.5f), fillColor);
+        canvas.fillRoundRect((int)barX, (int)barY, (int)barH, (int)barH, 4, VoxaTheme::getPrimary());
     }
 }
 

@@ -21,7 +21,7 @@ bool Touch::begin()
     Wire.setClock(400000);
     Wire.setTimeOut(100);
 
-    touch.setRotation(1);
+    touch.setRotation(0);
 
     Serial.println("[Touch] Ready");
 

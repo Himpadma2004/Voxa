@@ -535,7 +535,17 @@ namespace VOXA
 
         if (!WiFi.isConnected())
         {
-            return false;
+            Serial.println("[AudioManager] Waiting up to 3s for WiFi connection...");
+            uint32_t wStart = millis();
+            while (!WiFi.isConnected() && millis() - wStart < 3000)
+            {
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
+            if (!WiFi.isConnected())
+            {
+                Serial.println("[AudioManager] WiFi not connected! Stream aborted.");
+                return false;
+            }
         }
 
         Serial.printf("[AudioManager] Streaming audio from: %s\n", url.c_str());
@@ -902,7 +912,7 @@ namespace VOXA
                 vTaskDelete(NULL);
             },
             "AudioStreamTask",
-            8192,
+            16384,
             static_cast<void *>(pUrl),
             1,
             &m_playbackTaskHandle,

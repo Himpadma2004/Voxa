@@ -346,14 +346,14 @@ namespace VOXA
             ScreenCommon::renderSurface(canvas, w, h);
             ScreenCommon::renderHeader(canvas, isSelectMode ? "Select Items" : "Reminders", true, true, isSelectMode ? Icon::Plus : Icon::Plus, w, h);
 
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
+            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+            uint16_t backColor = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, 22.0f, 46.0f, Icon::Back, 
                                               backFill, backColor, w, h);
 
-            uint16_t addFill = m_isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t addColor = m_isAddPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, isSelectMode ? Icon::Plus : Icon::Plus, 
+            uint16_t addFill = m_isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+            uint16_t addColor = m_isAddPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+            ScreenCommon::renderCircularButton(canvas, w - 22.0f, 46.0f, isSelectMode ? Icon::Plus : Icon::Plus, 
                                               addFill, addColor, w, h);
 
             float leftX = w * 0.04f;
@@ -379,32 +379,32 @@ namespace VOXA
                 bool isPressed = (m_pressedItemIndex == (int)i);
                 bool isItemChecked = isSelectMode && i < selectedItems.size() && selectedItems[i];
 
-                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : (isItemChecked ? VoxaTheme::getPrimary() : VoxaTheme::getDivider());
-                uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getPrimaryLight();
+                // iOS 26 Frosted Glass Card Container
+                ScreenCommon::drawGlassCard(canvas, leftX, itemY, cardW, 48.0f, 12.0f, isPressed, VoxaTheme::getSystemAmber());
 
-                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 48, 8, cardBg);
-                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 48, 8, cardBorder);
+                uint16_t labelColor = isPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+                uint16_t subColor = isPressed ? 0xFFFF : VoxaTheme::getPrimaryLight();
 
                 float cy = itemY + 24.0f;
                 float iconCx = leftX + 22.0f;
-                float textOffset = 42.0f;
+                float textOffset = 44.0f;
 
                 if (isSelectMode)
                 {
                     // Draw selection checkbox circle
-                    canvas.drawCircle((int)iconCx, (int)cy, 8, isItemChecked ? VoxaTheme::getPrimary() : VoxaTheme::getDivider());
+                    canvas.drawCircle((int)iconCx, (int)cy, 10, isItemChecked ? VoxaTheme::getPrimary() : VoxaTheme::getGlassBorder());
                     if (isItemChecked)
                     {
-                        canvas.fillCircle((int)iconCx, (int)cy, 5, VoxaTheme::getPrimary());
+                        canvas.fillCircle((int)iconCx, (int)cy, 6, VoxaTheme::getPrimary());
                     }
                     textOffset = 38.0f;
                 }
                 else
                 {
-                    canvas.fillCircle((int)iconCx, (int)cy, 12, 0x79CF);
-                    ScreenCommon::drawIcon(canvas, Icon::Bell, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+                    // iOS Squircle Icon Badge
+                    canvas.fillRoundRect((int)iconCx - 14, (int)cy - 14, 28, 28, 7, VoxaTheme::getSystemAmber());
+                    canvas.drawFastHLine((int)iconCx - 10, (int)cy - 13, 20, 0xFFFF);
+                    ScreenCommon::drawIcon(canvas, Icon::Bell, iconCx - 8.0f, cy - 8.0f, 16.0f, 0xFFFF);
                 }
 
                 canvas.setFont(&fonts::FreeSans9pt7b);
@@ -412,12 +412,13 @@ namespace VOXA
                 canvas.setTextColor(labelColor);
 
                 std::string drawTitle = reminders[i].title;
-                if (drawTitle.length() > 15) drawTitle = drawTitle.substr(0, 13) + "...";
+                if (drawTitle.length() > 16) drawTitle = drawTitle.substr(0, 14) + "...";
 
-                canvas.drawString(drawTitle.c_str(), leftX + textOffset, cy - 10.0f);
+                canvas.drawString(drawTitle.c_str(), leftX + textOffset, cy - 9.0f);
 
                 std::string timerStr = DataService::formatCountdownTimer(reminders[i].dateTime);
 
+                canvas.setFont(&fonts::Font0);
                 canvas.setTextColor(subColor);
                 canvas.drawString(timerStr.c_str(), leftX + textOffset, cy + 9.0f);
 
@@ -425,12 +426,12 @@ namespace VOXA
                 if (reminders[i].pinned)
                 {
                     float pinX = leftX + cardW - 28.0f;
-                    ScreenCommon::drawIcon(canvas, Icon::Star, pinX - 5.0f, cy - 5.0f, 10.0f, 0xFD20);
+                    ScreenCommon::drawIcon(canvas, Icon::Star, pinX - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getSystemAmber());
                 }
                 else if (!isSelectMode)
                 {
-                    float chevX = leftX + cardW - 16.0f;
-                    ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+                    float chevX = leftX + cardW - 18.0f;
+                    ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 6.0f, cy - 8.0f, 16.0f, VoxaTheme::getTextSecondary());
                 }
             }
 

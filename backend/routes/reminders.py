@@ -189,9 +189,11 @@ def dismiss_reminder(reminder_id: str):
             query["$or"].append({"_id": ObjectId(reminder_id)})
         except Exception:
             pass
+        query["$or"].append({"_id": reminder_id})
+        query["$or"].append({"title": reminder_id})
 
         res = reminders_collection.delete_many(query)
-        print(f"[Scheduler] Reminder dismissed and permanently removed (deleted: {res.deleted_count})", flush=True)
+        print(f"[Scheduler] Reminder {reminder_id} dismissed and permanently removed (deleted: {res.deleted_count})", flush=True)
         return {"success": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})

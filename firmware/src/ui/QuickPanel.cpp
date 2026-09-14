@@ -175,11 +175,12 @@ namespace VOXA
                 }
             }
 
-            // Sliders Touch Region
-            float brightY = currentPanelY + 116.0f;
-            float volY    = currentPanelY + 154.0f;
-            float sliderX = 46.0f;
-            float sliderW = w - 100.0f; // Leaves room for percentage badge on the right
+            // Sliders Touch Region (iOS Fat Capsule Sliders)
+            float sliderX = 14.0f;
+            float sliderW = w - 28.0f;
+            float brightY = currentPanelY + 114.0f;
+            float volY    = currentPanelY + 152.0f;
+            float sliderH = 28.0f;
 
             if (m_activeSlider == 0) // Currently dragging Brightness slider
             {
@@ -195,17 +196,17 @@ namespace VOXA
             }
             else if (m_pressedBtn == -1) // If no toggle button is touched, check slider hitboxes
             {
-                if (ty >= brightY - 12.0f && ty <= brightY + 28.0f)
+                if (ty >= brightY - 6.0f && ty <= brightY + sliderH + 6.0f)
                 {
                     m_activeSlider = 0;
                     float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
                     uint8_t newBright = static_cast<uint8_t>(pct * 255.0f);
                     Display::setBrightness(std::max((uint8_t)15, newBright));
                 }
-                else if (ty >= volY - 14.0f && ty <= volY + 30.0f)
+                else if (ty >= volY - 6.0f && ty <= volY + sliderH + 6.0f)
                 {
-                    // Tapping directly on the Volume Icon on the left (< sliderX - 4) toggles Mute/Unmute
-                    if (tx < sliderX - 4.0f)
+                    // Tapping directly on the Volume Icon on the left (< sliderX + 32) toggles Mute/Unmute
+                    if (tx < sliderX + 32.0f)
                     {
                         uint8_t curVol = AudioManager::instance().getVolume();
                         if (curVol > 0)
@@ -240,140 +241,156 @@ namespace VOXA
             }
         }
 
-        // 4. PANEL RENDER OVERLAY (Glassmorphism Dark Sheet)
-        // Draw card background sheet
-        target.fillRoundRect(6, (int)currentPanelY, w - 12, (int)panelH, 16, VoxaTheme::getSurface());
-        target.drawRoundRect(6, (int)currentPanelY, w - 12, (int)panelH, 16, VoxaTheme::getPrimary());
+        // 4. PANEL RENDER OVERLAY (iOS 26 Liquid Glass Control Center)
+        // Frosted Glass Sheet with Optical Reflection Top Edge
+        ScreenCommon::drawGlassCard(target, 4, currentPanelY, w - 8, panelH, 20, false, 0);
 
-        // Header Title & Status
+        // Header: iOS Floating Pill Badge & Title
         target.setFont(&fonts::FreeSansBold9pt7b);
+        target.setTextSize(1);
         target.setTextColor(VoxaTheme::getTextPrimary());
         target.setTextDatum(textdatum_t::top_left);
         target.drawString("Control Center", 16, (int)(currentPanelY + 14.0f));
 
-        // Close Pull Handle Bar at bottom of card
-        float handleX = w * 0.5f - 20.0f;
+        // Close Pull Handle Bar (iOS Grabber Capsule)
+        float handleX = w * 0.5f - 18.0f;
         float handleY = currentPanelY + panelH - 10.0f;
-        target.fillRoundRect((int)handleX, (int)handleY, 40, 4, 2, VoxaTheme::getDivider());
+        target.fillRoundRect((int)handleX, (int)handleY, 36, 4, 2, VoxaTheme::getGlassHighlight());
 
-        // ── 4 QUICK TOGGLE BUTTONS (Wi-Fi, Bluetooth, Night Mode, Rotate) ────
+        // ── 4 QUICK TOGGLE BUTTONS (Wi-Fi, Bluetooth, Night Shift, Rotate) ────
         float marginX = 14.0f;
         float gapX = 6.0f;
         float btnW = (w - (2.0f * marginX) - (3.0f * gapX)) / 4.0f;
         float btnH = 58.0f;
         float toggleY = currentPanelY + 44.0f;
 
-        // 1. Wi-Fi Toggle
+        // 1. Wi-Fi Toggle (iOS System Blue when active)
         bool wifiOn = m_wifiEnabled;
-        uint16_t wifiBg = wifiOn ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-        uint16_t wifiFg = wifiOn ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+        uint16_t wifiBg = wifiOn ? VoxaTheme::getSystemBlue() : VoxaTheme::getGlassSurface();
+        uint16_t wifiFg = wifiOn ? 0xFFFF : VoxaTheme::getTextPrimary();
         float b0X = marginX;
-        target.fillRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 10, wifiBg);
-        target.drawRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 10, VoxaTheme::getDivider());
+        target.fillRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 14, wifiBg);
+        target.drawRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 14, wifiOn ? VoxaTheme::getSystemBlue() : VoxaTheme::getGlassBorder());
+        if (!wifiOn)
+        {
+            target.drawFastHLine((int)b0X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
+        }
         ScreenCommon::drawIcon(target, wifiOn ? Icon::Wifi : Icon::WiFiOff, b0X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, wifiFg);
         target.setFont(&fonts::Font0);
         target.setTextDatum(textdatum_t::top_center);
         target.setTextColor(wifiFg);
         target.drawString(wifiOn ? "Wi-Fi" : "Off", b0X + btnW * 0.5f, toggleY + 40.0f);
 
-        // 2. Bluetooth Toggle
-        uint16_t btBg = m_bluetoothEnabled ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-        uint16_t btFg = m_bluetoothEnabled ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+        // 2. Bluetooth Toggle (iOS System Indigo when active)
+        uint16_t btBg = m_bluetoothEnabled ? VoxaTheme::getSystemIndigo() : VoxaTheme::getGlassSurface();
+        uint16_t btFg = m_bluetoothEnabled ? 0xFFFF : VoxaTheme::getTextPrimary();
         float b1X = marginX + btnW + gapX;
-        target.fillRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 10, btBg);
-        target.drawRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 10, VoxaTheme::getDivider());
+        target.fillRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 14, btBg);
+        target.drawRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 14, m_bluetoothEnabled ? VoxaTheme::getSystemIndigo() : VoxaTheme::getGlassBorder());
+        if (!m_bluetoothEnabled)
+        {
+            target.drawFastHLine((int)b1X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
+        }
         ScreenCommon::drawIcon(target, Icon::Bluetooth, b1X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, btFg);
         target.setTextColor(btFg);
         target.drawString(m_bluetoothEnabled ? "BT On" : "BT Off", b1X + btnW * 0.5f, toggleY + 40.0f);
 
-        // 3. Night Mode Toggle
-        uint16_t nightBg = m_nightMode ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-        uint16_t nightFg = m_nightMode ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+        // 3. Night Mode / Night Shift Toggle (iOS System Amber when active)
+        uint16_t nightBg = m_nightMode ? VoxaTheme::getSystemAmber() : VoxaTheme::getGlassSurface();
+        uint16_t nightFg = m_nightMode ? 0xFFFF : VoxaTheme::getTextPrimary();
         float b2X = marginX + (btnW + gapX) * 2.0f;
-        target.fillRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 10, nightBg);
-        target.drawRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 10, VoxaTheme::getDivider());
+        target.fillRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 14, nightBg);
+        target.drawRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 14, m_nightMode ? VoxaTheme::getSystemAmber() : VoxaTheme::getGlassBorder());
+        if (!m_nightMode)
+        {
+            target.drawFastHLine((int)b2X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
+        }
         ScreenCommon::drawIcon(target, m_nightMode ? Icon::Moon : Icon::Sun, b2X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, nightFg);
         target.setTextColor(nightFg);
         target.drawString(m_nightMode ? "Night" : "Day", b2X + btnW * 0.5f, toggleY + 40.0f);
 
-        // 4. Rotate Screen Toggle
+        // 4. Rotate Screen Toggle (iOS System Flame when active)
         bool isPortrait = (Display::getRotation() == 0 || Display::getRotation() == 2);
-        uint16_t rotBg = isPortrait ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-        uint16_t rotFg = isPortrait ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+        uint16_t rotBg = isPortrait ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+        uint16_t rotFg = isPortrait ? 0xFFFF : VoxaTheme::getTextPrimary();
         float b3X = marginX + (btnW + gapX) * 3.0f;
-        target.fillRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 10, rotBg);
-        target.drawRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 10, VoxaTheme::getDivider());
+        target.fillRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 14, rotBg);
+        target.drawRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 14, isPortrait ? VoxaTheme::getPrimary() : VoxaTheme::getGlassBorder());
+        if (!isPortrait)
+        {
+            target.drawFastHLine((int)b3X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
+        }
         ScreenCommon::drawIcon(target, Icon::Rotate, b3X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, rotFg);
         target.setTextColor(rotFg);
         target.drawString(isPortrait ? "Port." : "Land.", b3X + btnW * 0.5f, toggleY + 40.0f);
 
 
-        // ── BRIGHTNESS SLIDER ────────────────────────────────────────────────
-        float brightY = currentPanelY + 116.0f;
-        float sliderX = 46.0f;
-        float sliderW = w - 100.0f;
-        float sliderH = 14.0f;
+        // ── BRIGHTNESS SLIDER (iOS Thick Capsule Pill) ───────────────────────
+        float sliderX = 14.0f;
+        float sliderW = w - 28.0f;
+        float sliderH = 28.0f;
+        float brightY = currentPanelY + 114.0f;
 
-        ScreenCommon::drawIcon(target, Icon::Sun, 16, brightY, 20.0f, VoxaTheme::getPrimary());
-        
-        target.fillRoundRect((int)sliderX, (int)brightY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getBackground());
         uint8_t curBright = Display::getBrightness();
         float brightPct = curBright / 255.0f;
-        int bFillW = (int)(sliderW * brightPct);
-        if (bFillW > 0)
-        {
-            target.fillRoundRect((int)sliderX, (int)brightY + 3, bFillW, (int)sliderH, 7, VoxaTheme::getPrimary());
-        }
-        target.drawRoundRect((int)sliderX, (int)brightY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getDivider());
+        int bFillW = std::max(14, (int)(sliderW * brightPct));
 
-        // Brightness Knob
-        int bKnobX = (int)(sliderX + sliderW * brightPct);
-        target.fillCircle(bKnobX, (int)brightY + 10, 8, VoxaTheme::getTextPrimary());
-        target.drawCircle(bKnobX, (int)brightY + 10, 8, VoxaTheme::getPrimary());
+        // Pill Capsule Track (Color-Adaptive)
+        uint16_t trackBg = VoxaTheme::isDarkMode() ? target.color565(14, 16, 24) : target.color565(225, 230, 238);
+        target.fillRoundRect((int)sliderX, (int)brightY, (int)sliderW, (int)sliderH, 14, trackBg);
+        // Filled Active Pill
+        target.fillRoundRect((int)sliderX, (int)brightY, bFillW, (int)sliderH, 14, VoxaTheme::getSystemAmber());
+        // Capsule Border & Specular Highlight
+        target.drawRoundRect((int)sliderX, (int)brightY, (int)sliderW, (int)sliderH, 14, VoxaTheme::getGlassBorder());
+        target.drawFastHLine((int)sliderX + 14, (int)brightY + 1, (int)sliderW - 28, VoxaTheme::getGlassHighlight());
 
-        // Brightness % Text
+        // Nested Sun Icon inside Capsule Pill on the left
+        uint16_t sunCol = (bFillW > 36) ? 0xFFFF : (VoxaTheme::isDarkMode() ? VoxaTheme::getSystemAmber() : VoxaTheme::getTextPrimary());
+        ScreenCommon::drawIcon(target, Icon::Sun, sliderX + 8.0f, brightY + 4.0f, 20.0f, sunCol);
+
+        // Percentage Text on Right
         target.setFont(&fonts::Font0);
         target.setTextDatum(textdatum_t::middle_right);
-        target.setTextColor(VoxaTheme::getTextPrimary());
+        uint16_t bTextCol = (bFillW > sliderW - 35) ? 0xFFFF : VoxaTheme::getTextPrimary();
+        target.setTextColor(bTextCol);
         char bStr[8];
         snprintf(bStr, sizeof(bStr), "%d%%", (int)(brightPct * 100.0f + 0.5f));
-        target.drawString(bStr, w - 14, (int)brightY + 10);
+        target.drawString(bStr, sliderX + sliderW - 10.0f, brightY + 14.0f);
 
-        // ── VOLUME SLIDER ────────────────────────────────────────────────────
-        float volY = currentPanelY + 154.0f;
+        // ── VOLUME SLIDER (iOS Thick Capsule Pill) ───────────────────────────
+        float volY = currentPanelY + 152.0f;
         uint8_t curVol = AudioManager::instance().getVolume();
         float volPct = curVol / 100.0f;
-        uint16_t volIconColor = (curVol == 0) ? VoxaTheme::getTextSecondary() : VoxaTheme::getPrimary();
+        int vFillW = (curVol == 0) ? 0 : std::max(14, (int)(sliderW * volPct));
 
-        ScreenCommon::drawIcon(target, Icon::Volume, 16, volY, 20.0f, volIconColor);
-        
-        // Slider track
-        target.fillRoundRect((int)sliderX, (int)volY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getBackground());
-        int vFillW = (int)(sliderW * volPct);
+        // Pill Capsule Track (Color-Adaptive)
+        target.fillRoundRect((int)sliderX, (int)volY, (int)sliderW, (int)sliderH, 14, trackBg);
         if (vFillW > 0)
         {
-            target.fillRoundRect((int)sliderX, (int)volY + 3, vFillW, (int)sliderH, 7, (curVol == 0) ? VoxaTheme::getDivider() : VoxaTheme::getPrimary());
+            target.fillRoundRect((int)sliderX, (int)volY, vFillW, (int)sliderH, 14, VoxaTheme::getPrimary());
         }
-        target.drawRoundRect((int)sliderX, (int)volY + 3, (int)sliderW, (int)sliderH, 7, VoxaTheme::getDivider());
+        // Capsule Border & Specular Highlight
+        target.drawRoundRect((int)sliderX, (int)volY, (int)sliderW, (int)sliderH, 14, VoxaTheme::getGlassBorder());
+        target.drawFastHLine((int)sliderX + 14, (int)volY + 1, (int)sliderW - 28, VoxaTheme::getGlassHighlight());
 
-        // Volume Knob
-        int vKnobX = (int)(sliderX + sliderW * volPct);
-        target.fillCircle(vKnobX, (int)volY + 10, 8, (curVol == 0) ? VoxaTheme::getDivider() : VoxaTheme::getTextPrimary());
-        target.drawCircle(vKnobX, (int)volY + 10, 8, (curVol == 0) ? VoxaTheme::getTextSecondary() : VoxaTheme::getPrimary());
+        // Nested Volume Icon inside Capsule Pill on the left
+        uint16_t volIconColor = (curVol == 0) ? VoxaTheme::getTextSecondary() : ((vFillW > 36) ? 0xFFFF : (VoxaTheme::isDarkMode() ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary()));
+        ScreenCommon::drawIcon(target, Icon::Volume, sliderX + 8.0f, volY + 4.0f, 20.0f, volIconColor);
 
-        // Volume % / MUTED badge
+        // Volume % / MUTE badge on Right
         target.setFont(&fonts::Font0);
         target.setTextDatum(textdatum_t::middle_right);
-        target.setTextColor((curVol == 0) ? VoxaTheme::getTextSecondary() : VoxaTheme::getTextPrimary());
+        uint16_t vTextCol = (curVol == 0) ? VoxaTheme::getTextSecondary() : ((vFillW > sliderW - 35) ? 0xFFFF : VoxaTheme::getTextPrimary());
+        target.setTextColor(vTextCol);
         if (curVol == 0)
         {
-            target.drawString("MUTE", w - 14, (int)volY + 10);
+            target.drawString("MUTED", sliderX + sliderW - 10.0f, volY + 14.0f);
         }
         else
         {
             char vStr[8];
             snprintf(vStr, sizeof(vStr), "%u%%", curVol);
-            target.drawString(vStr, w - 14, (int)volY + 10);
+            target.drawString(vStr, sliderX + sliderW - 10.0f, volY + 14.0f);
         }
 
         return navTarget;

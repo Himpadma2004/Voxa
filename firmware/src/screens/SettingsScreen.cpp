@@ -1,6 +1,7 @@
 #include "SettingsScreen.h"
 #include "../display/Display.h"
 #include "../ui/Theme.h"
+#include "../audio/AudioManager.h"
 #include "../services/SettingsService.h"
 #include "../services/WiFiManager.h"
 #include "../storage/SpiffsMutex.h"
@@ -45,9 +46,8 @@ namespace VOXA
         ScreenId targetScreen = ScreenId::Settings;
         uint32_t lastMs = millis();
 
-        float contentHeight = 9.0f * 50.0f + 10.0f;
- // 10 settings items
-        float visibleHeight = h - 70.0f - 18.0f;
+        float contentHeight = 72.0f + 10.0f * 52.0f + 30.0f;
+        float visibleHeight = h - 68.0f;
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         Settings settings = settingsService.getSettings();
@@ -86,15 +86,15 @@ namespace VOXA
                     }
 
                     // Card checks
-                    if (ty >= 70.0f && ty <= (h - 18.0f))
+                    if (ty >= 68.0f && ty <= (h - 6.0f))
                     {
                         float leftX = w * 0.04f;
                         float cardW = w * 0.92f;
                         for (int i = 0; i < 10; ++i)
                         {
-                            float itemY = 72.0f + i * 50.0f - m_scrollY;
+                            float itemY = 72.0f + i * 52.0f - m_scrollY;
                             if (tx >= leftX && tx <= (leftX + cardW) &&
-                                ty >= itemY && ty <= (itemY + 44.0f))
+                                ty >= itemY && ty <= (itemY + 48.0f))
                             {
                                 m_pressedItemIndex = i;
                             }
@@ -158,15 +158,25 @@ namespace VOXA
                             Settings currentSettings = settingsService.getSettings();
                             if (m_pressedItemIndex == 0)
                             {
+                                // Toggle Appearance (Dark Mode <-> Light Mode)
+                                VoxaTheme::ThemeMode nextTheme = (VoxaTheme::getThemeMode() == VoxaTheme::ThemeMode::Dark)
+                                    ? VoxaTheme::ThemeMode::Light : VoxaTheme::ThemeMode::Dark;
+                                VoxaTheme::setThemeMode(nextTheme);
+                                AudioManager::instance().playTapSoundAsync();
+                                Serial.printf("[Settings] Appearance switched to: %s\n", 
+                                              nextTheme == VoxaTheme::ThemeMode::Dark ? "Dark Mode" : "Light Mode");
+                            }
+                            else if (m_pressedItemIndex == 1)
+                            {
                                 // Open Wi-Fi Settings screen
                                 targetScreen = ScreenId::WiFiSettings;
                             }
-                            else if (m_pressedItemIndex == 1)
+                            else if (m_pressedItemIndex == 2)
                             {
                                 // Open Sync & Backup page
                                 targetScreen = ScreenId::SyncStatus;
                             }
-                            else if (m_pressedItemIndex == 2)
+                            else if (m_pressedItemIndex == 3)
                             {
                                 // Reboot to Setup Mode (same as Wi-Fi toggle when no credentials)
                                 Serial.println("[Settings] Entering Portal Setup Mode via reboot to configure API URL...");
@@ -174,23 +184,21 @@ namespace VOXA
                                 delay(500);
                                 ESP.restart();
                             }
-                            else if (m_pressedItemIndex == 6)
+                            else if (m_pressedItemIndex == 7)
                             {
                                 // Clean smartphone-style Restart
                                 PowerManager::instance().restartDevice();
                             }
-                            else if (m_pressedItemIndex == 7)
+                            else if (m_pressedItemIndex == 8)
                             {
                                 // Clean smartphone-style Power Off (Deep Sleep with GPIO1 button wake)
                                 PowerManager::instance().shutdownDevice();
                             }
-                            else if (m_pressedItemIndex == 8)
+                            else if (m_pressedItemIndex == 9)
                             {
                                 // Complete Factory Reset
                                 PowerManager::instance().factoryReset();
                             }
-
-
                         }
                     }
                     m_isBackPressed = false;
@@ -256,7 +264,9 @@ namespace VOXA
             std::string deviceInfo = settings.deviceName + " (v" + settings.firmwareVersion + ")";
             std::string backendUrl = VOXA::apiClient.getBaseUrl();
 
-            SettingRow rows[9] = {
+            std::string themeStatus = VoxaTheme::isDarkMode() ? "Dark Mode (Tap to Switch)" : "Light Mode (Tap to Switch)";
+            SettingRow rows[10] = {
+                { VoxaTheme::isDarkMode() ? Icon::Moon : Icon::Sun, "Appearance", themeStatus, VoxaTheme::getPrimary() },
                 { Icon::Wifi,       "Wi-Fi",          wifiStatus,  0x266C },
                 { Icon::Cloud,      "Sync & Backup",  syncStatus,  0x067F },
                 { Icon::Folder,     "Backend URL",    backendUrl,  0x1BE0 },
@@ -268,17 +278,15 @@ namespace VOXA
                 { Icon::Reset,      "Factory Reset",  "Clear all data", 0xD000 }
             };
 
-
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;
 
-            canvas.setClipRect(0, 70, w, h - 70 - 18);
+            canvas.setClipRect(0, 68, w, h - 68);
 
-            for (int i = 0; i < 9; ++i)
-
+            for (int i = 0; i < 10; ++i)
             {
-                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
+                float itemY = 72.0f + i * 52.0f - m_scrollY;
+                if (itemY + 46.0f < 68.0f || itemY > (h + 10.0f))
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == i);

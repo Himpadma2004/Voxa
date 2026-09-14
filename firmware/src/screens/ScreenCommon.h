@@ -25,7 +25,9 @@ namespace VOXA
         WiFiSettings,
         BluetoothSettings,
         TextInput,
-        Tasks
+        Tasks,
+        BluetoothMusic,
+        Music = BluetoothMusic
     };
 
 
@@ -85,6 +87,10 @@ namespace VOXA
         
         // Microphone geometric shape
         void drawMicShape(LovyanGFX& canvas, float cx, float cy, float size, uint16_t color, uint16_t bgColor);
+
+        // iOS 26 Glassmorphic Card Drawing with Specular Optical Reflection Edge
+        void drawGlassCard(LovyanGFX& canvas, float x, float y, float w, float h, float radius, 
+                           bool isPressed = false, uint16_t accentColor = 0);
     }
 }
 

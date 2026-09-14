@@ -24,8 +24,8 @@
 #include "screens/WiFiSettingsScreen.h"
 #include "screens/BluetoothSettingsScreen.h"
 #include "screens/TextInputScreen.h"
-
 #include "screens/TasksScreen.h"
+#include "screens/MusicPlayerScreen.h"
 #include "screens/Transition.h"
 #include "services/TimeService.h"
 #include "services/WiFiManager.h"
@@ -87,8 +87,8 @@ AudioPlayerScreen audioPlayerScreen;
 WiFiSettingsScreen wifiSettingsScreen;
 BluetoothSettingsScreen bluetoothSettingsScreen;
 TextInputScreen textInputScreen;
-
 TasksScreen tasksScreen;
+MusicPlayerScreen musicPlayerScreen;
 
 ScreenId activeScreen = ScreenId::Home;
 
@@ -574,6 +574,10 @@ void loop()
   case ScreenId::Tasks:
     Serial.println("Opening Tasks Screen...");
     nextScreen = tasksScreen.show(touch);
+    break;
+  case ScreenId::Music:
+    Serial.println("Opening Voxa Music Screen...");
+    nextScreen = musicPlayerScreen.show(touch);
     break;
   default:
     nextScreen = ScreenId::Home;

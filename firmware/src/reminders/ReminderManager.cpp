@@ -7,12 +7,48 @@
 #include "../services/WiFiManager.h"
 #include "../services/ApiClient.h"
 #include "../audio/AudioManager.h"
+#include "../services/DataService.h"
 #include <Arduino.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 extern Touch touch;
+
+namespace
+{
+    struct BackendNotifyParam
+    {
+        std::string url;
+        std::string body;
+        bool isJson;
+    };
+
+    void backendNotifyTaskFn(void* param)
+    {
+        auto* data = static_cast<BackendNotifyParam*>(param);
+        if (data)
+        {
+            HTTPClient http;
+            http.setTimeout(1500); // 1.5s max timeout — NEVER hangs or freezes UI!
+            http.begin(data->url.c_str());
+            if (data->isJson)
+            {
+                http.addHeader("Content-Type", "application/json");
+                http.POST(data->body.c_str());
+            }
+            else
+            {
+                http.POST("");
+            }
+            http.end();
+            delete data;
+        }
+        vTaskDelete(nullptr);
+    }
+}
 
 namespace VOXA
 {
@@ -168,6 +204,32 @@ namespace VOXA
         return false;
     }
 
+    bool ReminderManager::isDismissed(const std::string& backendId, const std::string& title, uint32_t id) const
+    {
+        if (!backendId.empty())
+        {
+            for (const auto& bId : m_dismissedBackendIds)
+            {
+                if (bId == backendId) return true;
+            }
+        }
+        if (!title.empty())
+        {
+            for (const auto& t : m_dismissedTitles)
+            {
+                if (t == title) return true;
+            }
+        }
+        if (id > 0)
+        {
+            for (uint32_t lId : m_dismissedLocalIds)
+            {
+                if (lId == id) return true;
+            }
+        }
+        return false;
+    }
+
     bool ReminderManager::dismissReminder(uint32_t id)
     {
         for (auto it = m_reminders.begin(); it != m_reminders.end(); ++it)
@@ -178,10 +240,30 @@ namespace VOXA
                 copy.status = ReminderStatus::COMPLETED;
                 copy.completedAt = getCurrentTime();
                 copy.completed = true;
-                notifyBackendStateChange(copy);
-                Serial.printf("[ReminderManager] State Change: Reminder dismissed and purged (ID %u, Title: '%s')\n", copy.id, copy.title.c_str());
+
+                // Track dismissal permanently so it never reappears on screen
+                m_dismissedLocalIds.push_back(copy.id);
+                if (!copy.backendId.empty())
+                {
+                    m_dismissedBackendIds.push_back(copy.backendId);
+                }
+                if (!copy.title.empty())
+                {
+                    m_dismissedTitles.push_back(copy.title);
+                }
+
+                Serial.printf("[ReminderManager] State Change: Reminder dismissed and permanently purged (ID %u, Title: '%s')\n", copy.id, copy.title.c_str());
                 m_reminders.erase(it);
                 saveReminders();
+
+                // Also purge from DataService in-RAM cache immediately
+                dataService.removeReminderLocal(copy.id);
+
+                // Stop audio immediately
+                AudioManager::instance().stopReminderMusic();
+
+                // Fire async background task with 0ms UI delay!
+                notifyBackendStateChange(copy);
                 return true;
             }
         }
@@ -209,7 +291,10 @@ namespace VOXA
         {
             if (r.status == ReminderStatus::ACTIVE)
             {
-                return true;
+                if (!isDismissed(r.backendId, r.title, r.id))
+                {
+                    return true;
+                }
             }
         }
         return false;
@@ -235,12 +320,17 @@ namespace VOXA
 
     void ReminderManager::showActiveReminderPopup(LovyanGFX& /*canvas*/)
     {
-        // We find the earliest active reminder to display first
+        // Find earliest active reminder that is NOT dismissed
         Reminder* activeRem = nullptr;
         for (auto& r : m_reminders)
         {
             if (r.status == ReminderStatus::ACTIVE)
             {
+                if (isDismissed(r.backendId, r.title, r.id))
+                {
+                    r.status = ReminderStatus::COMPLETED;
+                    continue;
+                }
                 if (!activeRem || r.reminderTime < activeRem->reminderTime)
                 {
                     activeRem = &r;
@@ -250,9 +340,12 @@ namespace VOXA
 
         if (!activeRem) return;
 
-        Serial.printf("[ReminderManager] State Change: Reminder activated (ID %u, Title: '%s')\n", activeRem->id, activeRem->title.c_str());
+        uint32_t activeRemId = activeRem->id;
+        Reminder activeRemCopy = *activeRem;
 
-        // Allocate local double buffer sprite to render on top of whatever screen we are on
+        Serial.printf("[ReminderManager] State Change: Reminder activated (ID %u, Title: '%s')\n", activeRemCopy.id, activeRemCopy.title.c_str());
+
+        // Allocate local double buffer sprite
         uint16_t w = Display::width();
         uint16_t h = Display::height();
         
@@ -266,16 +359,19 @@ namespace VOXA
         
         int pressedBtn = -1;
         bool wasTouched = false;
+        bool popupOpen = true;
 
-        float cardW = w * 0.88f;
-        float cardH = h * 0.74f;
+        // Dynamic iOS Card Dimensions — adapts to both Portrait (240x320) & Landscape (320x240)
+        bool isPortrait = (w < h);
+        float cardW = isPortrait ? (w * 0.92f) : (w * 0.90f);
+        float cardH = isPortrait ? 276.0f : 210.0f;
         float cardX = (w - cardW) * 0.5f;
         float cardY = (h - cardH) * 0.5f;
 
-        // Play the configured reminder music (reminder.mp3) while the alert popup is active
+        // Play reminder audio
         AudioManager::instance().playReminderMusicAsync();
 
-        while (activeRem->status == ReminderStatus::ACTIVE)
+        while (popupOpen)
         {
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
@@ -289,54 +385,98 @@ namespace VOXA
                     
                     if (menu == SubMenu::Main)
                     {
-                        // 3 Buttons vertically stacked on the card
-                        // Dismiss button: cardY + cardH - 120
-                        // Snooze button: cardY + cardH - 80
-                        // Reschedule button: cardY + cardH - 40
-                        float btnW = cardW * 0.82f;
-                        float btnH = 28.0f;
-                        float btnX = cardX + (cardW - btnW) * 0.5f;
-
-                        for (int i = 0; i < 3; ++i)
+                        if (isPortrait)
                         {
-                            float btnY = cardY + cardH - 110.0f + i * 34.0f;
-                            if (tx >= btnX && tx <= btnX + btnW && ty >= btnY && ty <= btnY + btnH)
+                            // 3 Vertical iOS Action Pills: Dismiss (0), Snooze (1), Reschedule (2)
+                            float btnW = cardW * 0.88f;
+                            float btnH = 34.0f;
+                            float btnX = cardX + (cardW - btnW) * 0.5f;
+                            float spacing = 42.0f;
+                            float startBtnY = cardY + 138.0f;
+
+                            for (int i = 0; i < 3; ++i)
                             {
-                                pressedBtn = i;
+                                float btnY = startBtnY + i * spacing;
+                                if (tx >= btnX && tx <= btnX + btnW && ty >= btnY - 4.0f && ty <= btnY + btnH + 4.0f)
+                                {
+                                    pressedBtn = i;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // 3 Horizontal iOS Action Pills: Dismiss (0), Snooze (1), Reschedule (2)
+                            float btnW = (cardW - 40.0f) / 3.0f;
+                            float btnH = 34.0f;
+                            float btnY = cardY + cardH - 46.0f;
+
+                            for (int i = 0; i < 3; ++i)
+                            {
+                                float btnX = cardX + 14.0f + i * (btnW + 6.0f);
+                                if (tx >= btnX && tx <= btnX + btnW && ty >= btnY - 4.0f && ty <= btnY + btnH + 4.0f)
+                                {
+                                    pressedBtn = i;
+                                }
                             }
                         }
                     }
                     else if (menu == SubMenu::Snooze)
                     {
-                        // Snooze Menu buttons
-                        float btnW = cardW * 0.82f;
-                        float btnH = 22.0f;
-                        float btnX = cardX + (cardW - btnW) * 0.5f;
-                        float startY = cardY + 40.0f;
-
-                        // 8 options including Back
-                        for (int i = 0; i < 8; ++i)
+                        // 5 Options: 5m (0), 15m (1), 1h (2), Tomorrow (3), Cancel (4)
+                        if (isPortrait)
                         {
-                            float btnY = startY + i * 24.0f;
-                            if (tx >= btnX && tx <= btnX + btnW && ty >= btnY && ty <= btnY + btnH)
+                            float btnW = cardW * 0.88f;
+                            float btnH = 30.0f;
+                            float btnX = cardX + (cardW - btnW) * 0.5f;
+                            float spacing = 38.0f;
+                            float startY = cardY + 52.0f;
+
+                            for (int i = 0; i < 5; ++i)
                             {
-                                pressedBtn = i;
+                                float btnY = startY + i * spacing;
+                                if (tx >= btnX && tx <= btnX + btnW && ty >= btnY - 4.0f && ty <= btnY + btnH + 4.0f)
+                                {
+                                    pressedBtn = i;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Landscape: 2x2 grid for times + full width Cancel
+                            float halfW = (cardW - 36.0f) * 0.5f;
+                            float btnH = 30.0f;
+                            float startY = cardY + 44.0f;
+
+                            for (int i = 0; i < 4; ++i)
+                            {
+                                float colX = (i % 2 == 0) ? (cardX + 14.0f) : (cardX + 22.0f + halfW);
+                                float rowY = startY + (i / 2) * 38.0f;
+                                if (tx >= colX && tx <= colX + halfW && ty >= rowY - 4.0f && ty <= rowY + btnH + 4.0f)
+                                {
+                                    pressedBtn = i;
+                                }
+                            }
+                            float cancelY = startY + 2 * 38.0f + 4.0f;
+                            float cancelW = cardW - 28.0f;
+                            if (tx >= cardX + 14.0f && tx <= cardX + 14.0f + cancelW && ty >= cancelY - 4.0f && ty <= cancelY + btnH + 4.0f)
+                            {
+                                pressedBtn = 4;
                             }
                         }
                     }
                     else if (menu == SubMenu::Reschedule)
                     {
-                        // Reschedule Menu buttons
-                        float btnW = cardW * 0.82f;
-                        float btnH = 22.0f;
+                        // 4 Options: Today +2h (0), Tomorrow +24h (1), Next Week +7d (2), Cancel (3)
+                        float btnW = cardW * 0.88f;
+                        float btnH = 30.0f;
                         float btnX = cardX + (cardW - btnW) * 0.5f;
-                        float startY = cardY + 42.0f;
+                        float spacing = isPortrait ? 40.0f : 32.0f;
+                        float startY = cardY + (isPortrait ? 58.0f : 42.0f);
 
-                        // 7 options including Back
-                        for (int i = 0; i < 7; ++i)
+                        for (int i = 0; i < 4; ++i)
                         {
-                            float btnY = startY + i * 24.0f;
-                            if (tx >= btnX && tx <= btnX + btnW && ty >= btnY && ty <= btnY + btnH)
+                            float btnY = startY + i * spacing;
+                            if (tx >= btnX && tx <= btnX + btnW && ty >= btnY - 4.0f && ty <= btnY + btnH + 4.0f)
                             {
                                 pressedBtn = i;
                             }
@@ -356,9 +496,11 @@ namespace VOXA
                     {
                         if (menu == SubMenu::Main)
                         {
-                            if (act == 0) // Dismiss
+                            if (act == 0) // Dismiss — INSTANT CLOSING & PURGING
                             {
-                                dismissReminder(activeRem->id);
+                                dismissReminder(activeRemId);
+                                popupOpen = false;
+                                break;
                             }
                             else if (act == 1) // Snooze
                             {
@@ -371,21 +513,17 @@ namespace VOXA
                         }
                         else if (menu == SubMenu::Snooze)
                         {
-                            // 0: 5 min, 1: 10 min, 2: 15 min, 3: 30 min, 4: 1 hour, 5: Tomorrow, 6: Custom (+2h), 7: Back
-                            if (act == 7) // Back
+                            if (act == 4) // Cancel
                             {
                                 menu = SubMenu::Main;
                             }
                             else
                             {
                                 uint32_t mins = 5;
-                                if (act == 1) mins = 10;
-                                else if (act == 2) mins = 15;
-                                else if (act == 3) mins = 30;
-                                else if (act == 4) mins = 60;
-                                else if (act == 5)
+                                if (act == 1) mins = 15;
+                                else if (act == 2) mins = 60;
+                                else if (act == 3)
                                 {
-                                    // Tomorrow morning at 9:00 AM
                                     time_t current = getCurrentTime();
                                     struct tm t;
                                     localtime_r(&current, &t);
@@ -395,24 +533,14 @@ namespace VOXA
                                     time_t tomorrow9 = mktime(&t) + 24 * 3600;
                                     mins = (tomorrow9 > current) ? (tomorrow9 - current) / 60 : 1440;
                                 }
-                                else if (act == 6) mins = 120; // +2 hours
-                                
-                                // Test mode durations override
-                                if (m_testMode)
-                                {
-                                    if (act == 0) snoozeReminder(activeRem->id, 1); // 1 min snooze
-                                    else snoozeReminder(activeRem->id, 2); // 2 mins snooze
-                                }
-                                else
-                                {
-                                    snoozeReminder(activeRem->id, mins);
-                                }
+                                snoozeReminder(activeRemId, mins);
+                                popupOpen = false;
+                                break;
                             }
                         }
                         else if (menu == SubMenu::Reschedule)
                         {
-                            // 0: Today (+2h), 1: Tomorrow (+24h), 2: Next week (+7d), 3: Specific (+10m), 4: Specific (+30m), 5: Specific (+1h), 6: Back
-                            if (act == 6) // Back
+                            if (act == 3) // Cancel
                             {
                                 menu = SubMenu::Main;
                             }
@@ -422,42 +550,43 @@ namespace VOXA
                                 if (act == 0) target += 2 * 3600;
                                 else if (act == 1) target += 24 * 3600;
                                 else if (act == 2) target += 7 * 24 * 3600;
-                                else if (act == 3) target += 10 * 60;
-                                else if (act == 4) target += 30 * 60;
-                                else if (act == 5) target += 3600;
 
-                                rescheduleReminder(activeRem->id, target);
+                                rescheduleReminder(activeRemId, target);
+                                popupOpen = false;
+                                break;
                             }
                         }
                     }
                 }
             }
 
-            // Draw darkened background behind modal
-            popupSprite.fillRect(0, 0, w, h, popupSprite.color565(12, 10, 20));
+            // Dark frosted backdrop
+            popupSprite.fillRect(0, 0, w, h, popupSprite.color565(6, 7, 12));
 
-            // Draw premium modal container card
-            popupSprite.fillRoundRect((int)cardX, (int)cardY, (int)cardW, (int)cardH, 16, VoxaTheme::getSurface());
-            popupSprite.drawRoundRect((int)cardX, (int)cardY, (int)cardW, (int)cardH, 16, VoxaTheme::getPrimaryLight());
+            // Ambient refraction aura
+            popupSprite.fillCircle((int)(cardX + cardW * 0.5f), (int)cardY, 60, popupSprite.color565(36, 18, 8));
+
+            // Draw iOS 26 Liquid Glass Card
+            ScreenCommon::drawGlassCard(popupSprite, cardX, cardY, cardW, cardH, 20.0f, false, 0);
 
             if (menu == SubMenu::Main)
             {
-                drawAlertPopup(popupSprite, *activeRem, pressedBtn, cardX, cardY, cardW, cardH);
+                drawAlertPopup(popupSprite, activeRemCopy, pressedBtn, cardX, cardY, cardW, cardH);
             }
             else if (menu == SubMenu::Snooze)
             {
-                drawSnoozeMenu(popupSprite, *activeRem, pressedBtn, cardX, cardY, cardW, cardH);
+                drawSnoozeMenu(popupSprite, activeRemCopy, pressedBtn, cardX, cardY, cardW, cardH);
             }
             else if (menu == SubMenu::Reschedule)
             {
-                drawRescheduleMenu(popupSprite, *activeRem, pressedBtn, cardX, cardY, cardW, cardH);
+                drawRescheduleMenu(popupSprite, activeRemCopy, pressedBtn, cardX, cardY, cardW, cardH);
             }
 
             popupSprite.pushSprite(0, 0);
             delay(16); // ~60fps
         }
 
-        // Stop reminder music when dismissed, snoozed, or rescheduled
+        // Always stop reminder audio when modal exits
         AudioManager::instance().stopReminderMusic();
 
         popupSprite.deleteSprite();
@@ -466,184 +595,271 @@ namespace VOXA
     void ReminderManager::drawAlertPopup(LovyanGFX& canvas, const Reminder& r, int pressedBtn, float cardX, float cardY, float cardW, float cardH)
     {
         float cx = cardX + cardW * 0.5f;
-        
-        // 1. Draw Alert Bell Icon
-        canvas.fillCircle((int)cx, (int)(cardY + 36.0f), 16, 0xFD20); // Amber alert circle
-        ScreenCommon::drawIcon(canvas, Icon::Bell, cx - 8.0f, cardY + 36.0f - 8.0f, 16.0f, VoxaTheme::getBackground());
+        bool isPortrait = (canvas.width() < canvas.height());
 
-        // 2. Draw Title
+        // 1. iOS Glowing Alarm Bell Squircle (34x34px, radius 10px)
+        float bellY = cardY + (isPortrait ? 20.0f : 14.0f);
+        canvas.fillRoundRect((int)(cx - 17.0f), (int)bellY, 34, 34, 10, VoxaTheme::getSystemAmber());
+        canvas.drawRoundRect((int)(cx - 17.0f), (int)bellY, 34, 34, 10, VoxaTheme::getGlassHighlight());
+        canvas.drawFastHLine((int)(cx - 11.0f), (int)bellY + 1, 22, 0xFFFF);
+        ScreenCommon::drawIcon(canvas, Icon::Bell, cx - 9.0f, bellY + 8.0f, 18.0f, 0xFFFF);
+
+        // 2. Title in Bold Apple Typography
         canvas.setFont(&fonts::FreeSansBold12pt7b);
         canvas.setTextDatum(textdatum_t::middle_center);
-        canvas.setTextColor(TFT_WHITE);
+        canvas.setTextColor(VoxaTheme::getTextPrimary());
         std::string drawTitle = r.title;
-        if (drawTitle.length() > 16) drawTitle = drawTitle.substr(0, 14) + "...";
-        canvas.drawString(drawTitle.c_str(), cx, cardY + 68.0f);
+        if (drawTitle.length() > 18) drawTitle = drawTitle.substr(0, 16) + "...";
+        float titleY = bellY + (isPortrait ? 44.0f : 36.0f);
+        canvas.drawString(drawTitle.c_str(), cx, titleY);
 
-        // 3. Draw Subtitle (Description / comments)
+        // 3. Subtitle / Description
         canvas.setFont(&fonts::FreeSans9pt7b);
         canvas.setTextColor(VoxaTheme::getTextSecondary());
         std::string desc = r.description.empty() ? r.comments : r.description;
-        if (desc.empty()) desc = "No details";
-        if (desc.length() > 22) desc = desc.substr(0, 19) + "...";
-        canvas.drawString(desc.c_str(), cx, cardY + 90.0f);
+        if (desc.empty()) desc = "Reminder Alert";
+        if (desc.length() > 24) desc = desc.substr(0, 21) + "...";
+        float descY = titleY + (isPortrait ? 20.0f : 16.0f);
+        canvas.drawString(desc.c_str(), cx, descY);
 
-        // 4. Draw Time Difference
+        // 4. iOS Due Status Capsule Badge
         time_t now = getCurrentTime();
-        char diffBuf[64];
+        char diffBuf[48];
+        bool isOverdue = false;
         if (r.reminderTime > now)
         {
             long futSec = (long)(r.reminderTime - now);
-            if (futSec < 60)
-            {
-                snprintf(diffBuf, sizeof(diffBuf), "Due now");
-            }
-            else if (futSec < 3600)
-            {
-                snprintf(diffBuf, sizeof(diffBuf), "Due in %ldm", futSec / 60);
-            }
-            else
-            {
-                long hrs = futSec / 3600;
-                long mins = (futSec % 3600) / 60;
-                snprintf(diffBuf, sizeof(diffBuf), "Due in %ldh %ldm", hrs, mins);
-            }
+            if (futSec < 60) snprintf(diffBuf, sizeof(diffBuf), "Due now");
+            else snprintf(diffBuf, sizeof(diffBuf), "Due in %ldm", futSec / 60);
         }
         else
         {
             long pastSec = (long)(now - r.reminderTime);
-            if (pastSec < 60)
+            if (pastSec < 60) snprintf(diffBuf, sizeof(diffBuf), "Due now");
+            else { snprintf(diffBuf, sizeof(diffBuf), "Overdue (%ldm)", pastSec / 60); isOverdue = true; }
+        }
+
+        float badgeY = descY + (isPortrait ? 20.0f : 16.0f);
+        int textW = canvas.textWidth(diffBuf);
+        int badgeW = textW + 24;
+        uint16_t badgeCol = isOverdue ? VoxaTheme::getSystemRed() : VoxaTheme::getSystemAmber();
+        canvas.fillRoundRect((int)(cx - badgeW * 0.5f), (int)(badgeY - 8.0f), badgeW, 16, 8, canvas.color565(20, 12, 16));
+        canvas.drawRoundRect((int)(cx - badgeW * 0.5f), (int)(badgeY - 8.0f), badgeW, 16, 8, badgeCol);
+        canvas.fillCircle((int)(cx - badgeW * 0.5f + 8.0f), (int)badgeY, 3, badgeCol);
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString(diffBuf, cx + 5.0f, badgeY);
+
+        // 5. iOS 26 Action Buttons: Dismiss (Crimson), Snooze (Blue), Reschedule (Frosted Glass)
+        const char* labels[3] = {"Dismiss", "Snooze", "Reschedule"};
+        uint16_t bgColors[3] = {VoxaTheme::getSystemRed(), VoxaTheme::getSystemBlue(), VoxaTheme::getGlassSurface()};
+        uint16_t textColors[3] = {0xFFFF, 0xFFFF, VoxaTheme::getTextPrimary()};
+
+        if (isPortrait)
+        {
+            // 3 Vertical Action Pills
+            float btnW = cardW * 0.88f;
+            float btnH = 34.0f;
+            float btnX = cardX + (cardW - btnW) * 0.5f;
+            float spacing = 42.0f;
+            float startBtnY = cardY + 138.0f;
+
+            for (int i = 0; i < 3; ++i)
             {
-                snprintf(diffBuf, sizeof(diffBuf), "Due now");
-            }
-            else if (pastSec < 3600)
-            {
-                snprintf(diffBuf, sizeof(diffBuf), "Overdue by %ldm", pastSec / 60);
-            }
-            else
-            {
-                long hrs = pastSec / 3600;
-                long mins = (pastSec % 3600) / 60;
-                snprintf(diffBuf, sizeof(diffBuf), "Overdue by %ldh %ldm", hrs, mins);
+                float btnY = startBtnY + i * spacing;
+                bool isPressed = (pressedBtn == i);
+                uint16_t fill = isPressed ? 0xFFFF : bgColors[i];
+                uint16_t textCol = isPressed ? VoxaTheme::getBackground() : textColors[i];
+
+                canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 17, fill);
+                canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 17, isPressed ? 0xFFFF : VoxaTheme::getGlassBorder());
+                if (!isPressed)
+                {
+                    canvas.drawFastHLine((int)btnX + 17, (int)btnY + 1, (int)btnW - 34, VoxaTheme::getGlassHighlight());
+                }
+
+                canvas.setFont(&fonts::FreeSansBold9pt7b);
+                canvas.setTextColor(textCol);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.drawString(labels[i], cx, btnY + btnH * 0.5f);
             }
         }
-        canvas.setTextColor(VoxaTheme::getWarning());
-        canvas.drawString(diffBuf, cx, cardY + 110.0f);
-
-        // 5. Draw 3 stacked buttons: Dismiss, Snooze, Reschedule
-        float btnW = cardW * 0.82f;
-        float btnH = 28.0f;
-        float btnX = cardX + (cardW - btnW) * 0.5f;
-
-        const char* labels[3] = {"Dismiss", "Snooze", "Reschedule"};
-        uint16_t colors[3] = {0x3E8F, 0x2A9A, 0x8410}; // Green, Blue, Dark Gray
-
-        for (int i = 0; i < 3; ++i)
+        else
         {
-            float btnY = cardY + cardH - 110.0f + i * 34.0f;
-            bool isPressed = (pressedBtn == i);
-            uint16_t btnBg = isPressed ? VoxaTheme::getPrimary() : colors[i];
-            uint16_t btnTextCol = isPressed ? VoxaTheme::getBackground() : TFT_WHITE;
+            // 3 Horizontal Action Pills
+            float btnW = (cardW - 40.0f) / 3.0f;
+            float btnH = 34.0f;
+            float btnY = cardY + cardH - 46.0f;
 
-            canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 6, btnBg);
-            canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 6, VoxaTheme::getDivider());
-            canvas.setTextColor(btnTextCol);
-            canvas.setFont(&fonts::FreeSans9pt7b);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString(labels[i], btnX + btnW * 0.5f, btnY + btnH * 0.5f);
+            for (int i = 0; i < 3; ++i)
+            {
+                float btnX = cardX + 14.0f + i * (btnW + 6.0f);
+                bool isPressed = (pressedBtn == i);
+                uint16_t fill = isPressed ? 0xFFFF : bgColors[i];
+                uint16_t textCol = isPressed ? VoxaTheme::getBackground() : textColors[i];
+
+                canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 17, fill);
+                canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 17, isPressed ? 0xFFFF : VoxaTheme::getGlassBorder());
+                if (!isPressed)
+                {
+                    canvas.drawFastHLine((int)btnX + 12, (int)btnY + 1, (int)btnW - 24, VoxaTheme::getGlassHighlight());
+                }
+
+                canvas.setFont(&fonts::FreeSansBold9pt7b);
+                canvas.setTextColor(textCol);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.drawString(labels[i], btnX + btnW * 0.5f, btnY + btnH * 0.5f);
+            }
         }
     }
 
     void ReminderManager::drawSnoozeMenu(LovyanGFX& canvas, const Reminder& /*r*/, int pressedBtn, float cardX, float cardY, float cardW, float cardH)
     {
         float cx = cardX + cardW * 0.5f;
+        bool isPortrait = (canvas.width() < canvas.height());
+
         canvas.setFont(&fonts::FreeSansBold9pt7b);
         canvas.setTextDatum(textdatum_t::top_center);
-        canvas.setTextColor(TFT_WHITE);
-        canvas.drawString("Snooze Options", cx, cardY + 10.0f);
+        canvas.setTextColor(VoxaTheme::getTextPrimary());
+        float titleY = cardY + (isPortrait ? 18.0f : 12.0f);
+        canvas.drawString("Snooze Options", cx, titleY);
+        canvas.drawFastHLine((int)cardX + 24, (int)titleY + 20, (int)cardW - 48, VoxaTheme::getGlassBorder());
 
-        // 8 buttons: 5m, 10m, 15m, 30m, 1h, Tomorrow morning, Custom, Back
-        float btnW = cardW * 0.82f;
-        float btnH = 22.0f;
-        float btnX = cardX + (cardW - btnW) * 0.5f;
-        float startY = cardY + 40.0f;
-
-        const char* labels[8] = {
+        const char* labels[5] = {
             "5 Minutes",
-            "10 Minutes",
             "15 Minutes",
-            "30 Minutes",
             "1 Hour",
-            "Tomorrow Morning (9am)",
-            "Custom (+2 Hours)",
-            "<- Back"
+            "Tomorrow Morning (9 AM)",
+            "Cancel"
         };
 
-        const char* testLabels[8] = {
-            "30 Seconds",
-            "1 Minute",
-            "2 Minutes",
-            "5 Minutes",
-            "10 Minutes",
-            "1 Hour",
-            "Custom (+2 Hours)",
-            "<- Back"
-        };
-
-        for (int i = 0; i < 8; ++i)
+        if (isPortrait)
         {
-            float btnY = startY + i * 24.0f;
-            bool isPressed = (pressedBtn == i);
-            uint16_t btnBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t textCol = isPressed ? VoxaTheme::getBackground() : (i == 7 ? VoxaTheme::getPrimaryLight() : VoxaTheme::getTextPrimary());
+            float btnW = cardW * 0.88f;
+            float btnH = 30.0f;
+            float btnX = cardX + (cardW - btnW) * 0.5f;
+            float spacing = 38.0f;
+            float startY = cardY + 52.0f;
 
-            canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 4, btnBg);
-            canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 4, VoxaTheme::getDivider());
-            
+            for (int i = 0; i < 5; ++i)
+            {
+                float btnY = startY + i * spacing;
+                bool isPressed = (pressedBtn == i);
+                bool isCancel = (i == 4);
+
+                uint16_t fill = isPressed 
+                    ? (isCancel ? 0xFFFF : VoxaTheme::getPrimary()) 
+                    : (isCancel ? (VoxaTheme::isDarkMode() ? canvas.color565(20, 22, 32) : 0xFFFF) : VoxaTheme::getGlassSurface());
+                uint16_t textCol = isPressed 
+                    ? VoxaTheme::getBackground() 
+                    : (isCancel ? VoxaTheme::getTextSecondary() : VoxaTheme::getTextPrimary());
+
+                canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 15, fill);
+                canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 15, isCancel ? VoxaTheme::getDivider() : VoxaTheme::getGlassBorder());
+                if (!isPressed)
+                {
+                    canvas.drawFastHLine((int)btnX + 15, (int)btnY + 1, (int)btnW - 30, VoxaTheme::getGlassHighlight());
+                }
+
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(textCol);
+                canvas.drawString(labels[i], cx, btnY + btnH * 0.5f);
+            }
+        }
+        else
+        {
+            float halfW = (cardW - 36.0f) * 0.5f;
+            float btnH = 30.0f;
+            float startY = cardY + 44.0f;
+
+            for (int i = 0; i < 4; ++i)
+            {
+                float colX = (i % 2 == 0) ? (cardX + 14.0f) : (cardX + 22.0f + halfW);
+                float rowY = startY + (i / 2) * 38.0f;
+                bool isPressed = (pressedBtn == i);
+
+                uint16_t fill = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+                uint16_t textCol = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+
+                canvas.fillRoundRect((int)colX, (int)rowY, (int)halfW, (int)btnH, 15, fill);
+                canvas.drawRoundRect((int)colX, (int)rowY, (int)halfW, (int)btnH, 15, VoxaTheme::getGlassBorder());
+                if (!isPressed)
+                {
+                    canvas.drawFastHLine((int)colX + 15, (int)rowY + 1, (int)halfW - 30, VoxaTheme::getGlassHighlight());
+                }
+
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                canvas.setTextDatum(textdatum_t::middle_center);
+                canvas.setTextColor(textCol);
+                canvas.drawString(labels[i], colX + halfW * 0.5f, rowY + btnH * 0.5f);
+            }
+
+            // Cancel button
+            float cancelY = startY + 2 * 38.0f + 4.0f;
+            float cancelW = cardW - 28.0f;
+            bool isPressed = (pressedBtn == 4);
+            uint16_t fill = isPressed ? 0xFFFF : (VoxaTheme::isDarkMode() ? canvas.color565(20, 22, 32) : 0xFFFF);
+            uint16_t textCol = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
+
+            canvas.fillRoundRect((int)(cardX + 14.0f), (int)cancelY, (int)cancelW, (int)btnH, 15, fill);
+            canvas.drawRoundRect((int)(cardX + 14.0f), (int)cancelY, (int)cancelW, (int)btnH, 15, VoxaTheme::getDivider());
             canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setTextColor(textCol);
-            canvas.drawString(m_testMode ? testLabels[i] : labels[i], btnX + btnW * 0.5f, btnY + btnH * 0.5f);
+            canvas.drawString("Cancel", cx, cancelY + btnH * 0.5f);
         }
     }
 
     void ReminderManager::drawRescheduleMenu(LovyanGFX& canvas, const Reminder& /*r*/, int pressedBtn, float cardX, float cardY, float cardW, float cardH)
     {
         float cx = cardX + cardW * 0.5f;
+        bool isPortrait = (canvas.width() < canvas.height());
+
         canvas.setFont(&fonts::FreeSansBold9pt7b);
         canvas.setTextDatum(textdatum_t::top_center);
-        canvas.setTextColor(TFT_WHITE);
-        canvas.drawString("Reschedule Options", cx, cardY + 12.0f);
+        canvas.setTextColor(VoxaTheme::getTextPrimary());
+        float titleY = cardY + (isPortrait ? 18.0f : 12.0f);
+        canvas.drawString("Reschedule Options", cx, titleY);
+        canvas.drawFastHLine((int)cardX + 24, (int)titleY + 20, (int)cardW - 48, VoxaTheme::getGlassBorder());
 
-        // 7 buttons: Today, Tomorrow, Next Week, Specific (+10m), Specific (+30m), Specific (+1h), Back
-        float btnW = cardW * 0.82f;
-        float btnH = 22.0f;
-        float btnX = cardX + (cardW - btnW) * 0.5f;
-        float startY = cardY + 42.0f;
-
-        const char* labels[7] = {
-            "Later Today (+2 Hours)",
+        const char* labels[4] = {
+            "Today (+2 Hours)",
             "Tomorrow (+24 Hours)",
             "Next Week (+7 Days)",
-            "Specific (+10 Minutes)",
-            "Specific (+30 Minutes)",
-            "Specific (+1 Hour)",
-            "<- Back"
+            "Cancel"
         };
 
-        for (int i = 0; i < 7; ++i)
-        {
-            float btnY = startY + i * 24.0f;
-            bool isPressed = (pressedBtn == i);
-            uint16_t btnBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t textCol = isPressed ? VoxaTheme::getBackground() : (i == 6 ? VoxaTheme::getPrimaryLight() : VoxaTheme::getTextPrimary());
+        float btnW = cardW * 0.88f;
+        float btnH = 30.0f;
+        float btnX = cardX + (cardW - btnW) * 0.5f;
+        float spacing = isPortrait ? 40.0f : 32.0f;
+        float startY = cardY + (isPortrait ? 58.0f : 42.0f);
 
-            canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 4, btnBg);
-            canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 4, VoxaTheme::getDivider());
-            
+        for (int i = 0; i < 4; ++i)
+        {
+            float btnY = startY + i * spacing;
+            bool isPressed = (pressedBtn == i);
+            bool isCancel = (i == 3);
+
+            uint16_t fill = isPressed 
+                ? (isCancel ? 0xFFFF : VoxaTheme::getPrimary()) 
+                : (isCancel ? (VoxaTheme::isDarkMode() ? canvas.color565(20, 22, 32) : 0xFFFF) : VoxaTheme::getGlassSurface());
+            uint16_t textCol = isPressed 
+                ? VoxaTheme::getBackground() 
+                : (isCancel ? VoxaTheme::getTextSecondary() : VoxaTheme::getTextPrimary());
+
+            canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 15, fill);
+            canvas.drawRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 15, isCancel ? VoxaTheme::getDivider() : VoxaTheme::getGlassBorder());
+            if (!isPressed)
+            {
+                canvas.drawFastHLine((int)btnX + 15, (int)btnY + 1, (int)btnW - 30, VoxaTheme::getGlassHighlight());
+            }
+
             canvas.setFont(&fonts::FreeSans9pt7b);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setTextColor(textCol);
-            canvas.drawString(labels[i], btnX + btnW * 0.5f, btnY + btnH * 0.5f);
+            canvas.drawString(labels[i], cx, btnY + btnH * 0.5f);
         }
     }
 
@@ -849,6 +1065,12 @@ namespace VOXA
                     r.reminderTime = val["reminderTime"] | 0;
                     r.status = ReminderStatus::ACTIVE;
                     r.createdAt = getCurrentTime();
+
+                    // Drop if already dismissed locally
+                    if (isDismissed(r.backendId, r.title, 0))
+                    {
+                        continue;
+                    }
                     
                     bool found = false;
                     for (auto& item : m_reminders)
@@ -879,38 +1101,44 @@ namespace VOXA
 
     void ReminderManager::notifyBackendStateChange(const Reminder& r)
     {
-        if (r.backendId.empty() || !wifiManager.isConnected()) return;
+        if (!wifiManager.isConnected()) return;
         
-        HTTPClient http;
-        std::string url = apiClient.getBaseUrl() + "/api/reminders/" + r.backendId;
+        std::string idOrTitle = !r.backendId.empty() ? r.backendId : r.title;
+        if (idOrTitle.empty()) return;
+
+        auto* param = new BackendNotifyParam();
+        param->url = apiClient.getBaseUrl() + "/api/reminders/" + idOrTitle;
+        param->isJson = false;
+
         if (r.status == ReminderStatus::COMPLETED)
         {
-            url += "/dismiss";
-            http.begin(url.c_str());
-            http.POST("");
+            param->url += "/dismiss";
         }
         else if (r.status == ReminderStatus::SNOOZED)
         {
-            url += "/snooze";
-            http.begin(url.c_str());
-            http.addHeader("Content-Type", "application/json");
+            param->url += "/snooze";
+            param->isJson = true;
             char body[64];
             time_t diffSec = r.snoozeUntil - getCurrentTime();
             int mins = diffSec > 0 ? (diffSec + 30) / 60 : 5;
             snprintf(body, sizeof(body), "{\"minutes\":%d}", mins);
-            http.POST(body);
+            param->body = body;
         }
         else if (r.status == ReminderStatus::PENDING)
         {
-            url += "/reschedule";
-            http.begin(url.c_str());
-            http.addHeader("Content-Type", "application/json");
+            param->url += "/reschedule";
+            param->isJson = true;
             char body[64];
             snprintf(body, sizeof(body), "{\"reminder_time\":%lld}", (long long)r.reminderTime);
-            http.POST(body);
+            param->body = body;
         }
-        http.end();
-        Serial.printf("[ReminderManager] Notified backend of reminder state change for ID %s\n", r.backendId.c_str());
+
+        BaseType_t res = xTaskCreate(backendNotifyTaskFn, "remNotifAsync", 4096, param, 1, nullptr);
+        if (res != pdPASS)
+        {
+            delete param;
+        }
+        Serial.printf("[ReminderManager] Dispatched async backend update for '%s'\n", idOrTitle.c_str());
     }
 
     void ReminderManager::handleNotification()
@@ -935,6 +1163,14 @@ namespace VOXA
         r.reminderTime = doc["reminderTime"] | 0;
         r.status = ReminderStatus::ACTIVE;
         r.createdAt = getCurrentTime();
+
+        // Drop immediately if already dismissed
+        if (isDismissed(r.backendId, r.title, 0))
+        {
+            Serial.printf("[ReminderManager] Ignored notification for already dismissed reminder: '%s'\n", r.title.c_str());
+            web->send(200, "application/json", "{\"success\":true,\"dismissed\":true}");
+            return;
+        }
         
         bool found = false;
         for (auto& item : m_reminders)

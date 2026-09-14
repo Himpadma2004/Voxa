@@ -237,8 +237,8 @@ namespace VOXA
             ScreenCommon::renderHeader(canvas, "Voice Library", true, false, Icon::Mic, w, h);
 
             // Render Back button
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
+            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
+            uint16_t backColor = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
             ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
                                               backFill, backColor, w, h);
 
@@ -265,39 +265,38 @@ namespace VOXA
                         continue;
 
                     bool isPressed = (m_pressedItemIndex == (int)i);
-                    uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                    uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
-                    uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
+                    ScreenCommon::drawGlassCard(canvas, leftX, itemY, cardW, 46.0f, 12.0f, isPressed, 0);
 
-                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
-                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
+                    uint16_t labelColor = isPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
+                    uint16_t subColor = isPressed ? 0xFFFF : VoxaTheme::getTextSecondary();
 
-                float cy = itemY + 22.0f;
-                float iconCx = leftX + 22.0f;
+                    float cy = itemY + 23.0f;
+                    float iconX = leftX + 8.0f;
+                    float iconY = itemY + 8.0f;
 
-                // Color based on status (Pending gets Amber/Yellow badge, Completed gets Green)
-                bool isPending = (recordings[i].timestamp == "Pending");
-                uint16_t statusBadgeColor = isPending ? 0xFBE0 : 0x2508; // Yellow vs Green
+                    // iOS Squircle Badge
+                    bool isPending = (recordings[i].timestamp == "Pending");
+                    uint16_t badgeBg = isPending ? VoxaTheme::getSystemAmber() : VoxaTheme::getSystemRed();
+                    canvas.fillRoundRect((int)iconX, (int)iconY, 30, 30, 8, badgeBg);
+                    canvas.drawFastHLine((int)iconX + 6, (int)iconY + 1, 18, 0xFFFF);
+                    ScreenCommon::drawIcon(canvas, Icon::Mic, iconX + 5.0f, iconY + 5.0f, 20.0f, 0xFFFF);
 
-                canvas.fillCircle((int)iconCx, (int)cy, 12, statusBadgeColor);
-                ScreenCommon::drawIcon(canvas, Icon::Mic, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+                    canvas.setFont(&fonts::FreeSansBold9pt7b);
+                    canvas.setTextDatum(textdatum_t::middle_left);
+                    canvas.setTextColor(labelColor);
+                    std::string titleStr = recordings[i].title;
+                    if (titleStr.length() > 14) titleStr = titleStr.substr(0, 12) + "...";
+                    canvas.drawString(titleStr.c_str(), leftX + 46.0f, cy - 8.0f);
 
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_left);
-                
-                canvas.setTextColor(labelColor);
-                std::string titleStr = recordings[i].title;
-                if (titleStr.length() > 14) titleStr = titleStr.substr(0, 12) + "...";
-                canvas.drawString(titleStr.c_str(), leftX + 42.0f, cy - 8.0f);
+                    canvas.setFont(&fonts::FreeSans9pt7b);
+                    canvas.setTextColor(subColor);
+                    std::string timeStr = isPending ? "Pending sync" : recordings[i].timestamp;
+                    if (timeStr.length() > 18) timeStr = timeStr.substr(0, 16) + "...";
+                    canvas.drawString(timeStr.c_str(), leftX + 46.0f, cy + 8.0f);
 
-                canvas.setTextColor(subColor);
-                std::string timeStr = isPending ? "Pending sync" : recordings[i].timestamp;
-                canvas.drawString(timeStr.c_str(), leftX + 42.0f, cy + 8.0f);
-
-                float chevX = leftX + cardW - 16.0f;
-                ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
-            }
+                    float chevX = leftX + cardW - 20.0f;
+                    ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 8.0f, 16.0f, subColor);
+                }
             }
 
             canvas.clearClipRect();

@@ -62,6 +62,12 @@ namespace VOXA
         void* m_httpServer { nullptr }; // Cast to WebServer* internally to keep header clean
         bool m_wasConnected { false };
 
+        // Permanent dismissed tracking (prevents reappearing on screen)
+        std::vector<std::string> m_dismissedBackendIds;
+        std::vector<std::string> m_dismissedTitles;
+        std::vector<uint32_t> m_dismissedLocalIds;
+        [[nodiscard]] bool isDismissed(const std::string& backendId, const std::string& title, uint32_t id) const;
+
         void loadReminders();
         void saveReminders();
         void showActiveReminderPopup(LovyanGFX& canvas);
