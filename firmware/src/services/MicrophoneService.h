@@ -39,10 +39,21 @@ namespace VOXA
         /// Returns true if the upload succeeded.
         bool stopRecording(const char* caller = "unknown", const char* reason = "normal_stop");
 
+        /// Pause current recording (does not upload or discard)
+        bool pauseRecording(const char* caller = "unknown");
+
+        /// Resume paused recording
+        bool resumeRecording(const char* caller = "unknown");
+
+        /// Cancel / Trash recording (discards audio buffer without uploading)
+        bool cancelRecording(const char* caller = "unknown");
+
         RecordingState getState()     const { return m_state; }
         bool           isRecording()  const { return m_state == RecordingState::Recording; }
+        bool           isPaused()     const { return m_paused; }
         bool           isBusy()       const { return m_state != RecordingState::Idle; }
         uint32_t       getDurationMs() const;
+        int            getInputLevelDb() const { return m_lastDb; }
 
         /// Returns the cloud audio_id returned by the backend after a successful upload.
         std::string getLastAudioId() const { return m_lastAudioId; }
@@ -58,12 +69,16 @@ namespace VOXA
 
         bool        m_initialized   { false };
         bool        m_recording     { false };
+        bool        m_paused        { false };
         bool        m_saving        { false };
         std::string m_recordingTitle;
         std::string m_recordedAt;
         std::string m_lastAudioId;
         uint32_t    m_startMs       { 0 };
         uint32_t    m_durationMs    { 0 };
+        uint32_t    m_accumulatedMs { 0 };
+        uint32_t    m_lastResumeMs  { 0 };
+        int         m_lastDb        { -14 };
 
         TaskHandle_t m_taskHandle        { nullptr };
         uint8_t*     m_psramBuffer       { nullptr };

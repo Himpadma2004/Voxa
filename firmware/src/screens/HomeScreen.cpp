@@ -11,7 +11,7 @@
 #include "../audio/AudioManager.h"
 #include "../services/ButtonService.h"
 #include "../services/PowerManager.h"
-
+#include "../services/BatteryManager.h"
 
 #include <array>
 #include <cmath>
@@ -20,32 +20,25 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-// ── Upload background task shared state ──────────────────────────────────────
-namespace
-{
-    volatile bool s_uploadDone  = false;
-    volatile bool s_uploadOk    = false;
-    char          s_uploadText [256] = {};
-    char          s_uploadError[128] = {};
-    std::string   s_uploadPath;
-
-    void uploadTaskFn(void* /*param*/)
-    {
-        VOXA::ApiResult res = VOXA::apiClient.uploadVoice(s_uploadPath);
-        s_uploadOk = res.success;
-        strncpy(s_uploadText,  res.text.c_str(),  255);
-        strncpy(s_uploadError, res.error.c_str(), 127);
-        s_uploadDone = true;
-        vTaskDelete(nullptr);
-    }
-}
-
 namespace VOXA
 {
     extern ReminderService reminderService;
     extern IdeaService ideaService;
     extern QuestionService questionService;
     extern RecordingService recordingService;
+    extern DataService dataService;
+
+    static std::string truncateFit(LovyanGFX& c, const std::string& text, int maxW)
+    {
+        if (text.empty()) return "";
+        if (c.textWidth(text.c_str()) <= maxW) return text;
+        std::string res = text;
+        while (!res.empty() && c.textWidth((res + "..").c_str()) > maxW)
+        {
+            res.pop_back();
+        }
+        return res + "..";
+    }
 
     HomeScreen::HomeScreen()
     {
@@ -55,37 +48,9 @@ namespace VOXA
     {
     }
 
-    void HomeScreen::renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX)
+    void HomeScreen::renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX,
+                                 int remCount, int ideaCount, int qCount, int taskCount, int memCount)
     {
-        float cx = w * 0.5f + offsetX;
-        bool dark = VoxaTheme::isDarkMode();
-
-        // 0. Quick Theme Indicator & Button (Top-Right Bezel)
-        uint16_t themeIcoColor = dark ? 0xFEE0 : 0xFD20;
-        ScreenCommon::drawIcon(canvas, dark ? Icon::Sun : Icon::Moon, w - 22.0f + offsetX, 6.0f, 15.0f, themeIcoColor);
-
-        // 1. VOXA Intelligence Frosted Glass Pill Badge (Centered)
-        float pillW = 126.0f;
-        float pillH = 20.0f;
-        float pillX = cx - pillW * 0.5f;
-        float pillY = 36.0f; // Sits with clean breathing room below Dynamic Island
-        uint16_t pillBg = dark ? canvas.color565(20, 22, 32) : 0xFFFF;
-        uint16_t pillBorder = dark ? VoxaTheme::getGlassBorder() : VoxaTheme::getDivider();
-        uint16_t pillHighlight = dark ? VoxaTheme::getGlassHighlight() : 0xFFFF;
-
-        canvas.fillRoundRect((int)pillX, (int)pillY, (int)pillW, (int)pillH, 10, pillBg);
-        canvas.drawRoundRect((int)pillX, (int)pillY, (int)pillW, (int)pillH, 10, pillBorder);
-        canvas.drawFastHLine((int)pillX + 10, (int)pillY + 1, (int)pillW - 20, pillHighlight);
-
-        // Center badge text
-        canvas.setFont(&fonts::Font0);
-        canvas.setTextSize(1);
-        canvas.setTextDatum(textdatum_t::middle_center);
-        canvas.setTextColor(VoxaTheme::getPrimary());
-        canvas.drawString("VOXA INTELLIGENCE", cx, pillY + pillH * 0.5f);
-
-        // 2. Greeting based on RTC time (Sleek Apple SF Typography - Centered)
-        std::string greeting = "Good Morning";
         std::time_t tNow = std::time(nullptr);
         std::tm local_tm;
 #if defined(_MSC_VER)
@@ -93,204 +58,441 @@ namespace VOXA
 #else
         localtime_r(&tNow, &local_tm);
 #endif
-        int hour = local_tm.tm_hour;
-        if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
-        else if (hour >= 17 && hour < 21) greeting = "Good Evening";
-        else if (hour >= 21 || hour < 5) greeting = "Good Night";
 
-        float greetY = 74.0f;
-        canvas.setFont(&fonts::FreeSansBold12pt7b);
-        canvas.setTextDatum(textdatum_t::middle_center);
-        canvas.setTextColor(VoxaTheme::getTextPrimary());
-        canvas.setTextSize(1);
-        canvas.drawString(greeting.c_str(), cx, greetY);
-
-        // Subtitle (Centered)
-        float subY = 96.0f;
-        canvas.setFont(&fonts::FreeSans9pt7b);
-        canvas.setTextDatum(textdatum_t::middle_center);
-        canvas.setTextColor(VoxaTheme::getTextSecondary());
-        canvas.setTextSize(1);
-        canvas.drawString("Ready when you are", cx, subY);
-
-        // 3. iOS 26 Siri Chromatic Fluid Glass Orb (Centered)
-        float micCx = cx;
-        float micCy = 172.0f;
-        float baseR = m_isMicPressed ? 30.0f : 34.0f;
-        float t = m_elapsed * 3.2f;
-
-        // Chromatic multi-tone breathing rings
-        float rCyan  = baseR + 13.0f + std::sin(t) * 3.5f;
-        float rPurp  = baseR + 8.5f  + std::cos(t * 1.3f) * 2.5f;
-        float rFlame = baseR + 4.0f  + std::sin(t * 1.8f) * 1.8f;
-
-        if (dark)
+        char timeBuf[16];
+        if (local_tm.tm_year > 100)
         {
-            // Dark Mode Luminous Rings
-            canvas.drawCircle((int)micCx, (int)micCy, (int)rCyan, canvas.color565(14, 55, 115));
-            canvas.drawCircle((int)micCx, (int)micCy, (int)(rCyan - 1.0f), canvas.color565(0, 80, 160));
-
-            canvas.drawCircle((int)micCx, (int)micCy, (int)rPurp, canvas.color565(95, 25, 115));
-            canvas.drawCircle((int)micCx, (int)micCy, (int)(rPurp - 1.0f), canvas.color565(135, 35, 145));
-
-            canvas.drawCircle((int)micCx, (int)micCy, (int)rFlame, canvas.color565(210, 85, 0));
-            canvas.drawCircle((int)micCx, (int)micCy, (int)(rFlame - 1.0f), canvas.color565(255, 120, 0));
+            snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", local_tm.tm_hour, local_tm.tm_min);
         }
         else
         {
-            // Light Mode Soft Pastel Rings (Never dirty or dark)
-            canvas.drawCircle((int)micCx, (int)micCy, (int)rCyan, canvas.color565(180, 220, 255));
-            canvas.drawCircle((int)micCx, (int)micCy, (int)(rCyan - 1.0f), canvas.color565(150, 205, 255));
-
-            canvas.drawCircle((int)micCx, (int)micCy, (int)rPurp, canvas.color565(230, 195, 250));
-            canvas.drawCircle((int)micCx, (int)micCy, (int)(rPurp - 1.0f), canvas.color565(215, 175, 245));
-
-            canvas.drawCircle((int)micCx, (int)micCy, (int)rFlame, canvas.color565(255, 215, 170));
-            canvas.drawCircle((int)micCx, (int)micCy, (int)(rFlame - 1.0f), canvas.color565(255, 195, 140));
+            snprintf(timeBuf, sizeof(timeBuf), "10:42");
         }
 
-        // Glass Sphere Core
-        uint16_t orbCore = m_isMicPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getPrimary();
-        canvas.fillCircle((int)micCx, (int)micCy, (int)baseR, orbCore);
-        canvas.drawCircle((int)micCx, (int)micCy, (int)baseR, 0xFFFF);
+        // 1. Top Status Bar: Time (Left), WiFi + Battery + Flash (Right)
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::top_left);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString(timeBuf, 14.0f + offsetX, 10.0f);
 
-        // Specular Optical Glass Highlight (White gloss crescent top-left)
-        canvas.fillCircle((int)(micCx - baseR * 0.35f), (int)(micCy - baseR * 0.35f), (int)(baseR * 0.32f), canvas.color565(255, 210, 170));
-        canvas.fillCircle((int)(micCx - baseR * 0.40f), (int)(micCy - baseR * 0.40f), (int)(baseR * 0.18f), 0xFFFF);
+        float statRight = w - 14.0f + offsetX;
 
-        // Mic icon glyph centered in pure white
-        ScreenCommon::drawMicShape(canvas, micCx, micCy, baseR * 1.5f, 0xFFFF, orbCore);
+        // WiFi Icon
+        int wx = (int)(statRight - 54.0f);
+        int wy = 12;
+        canvas.drawCircle(wx, wy + 5, 6, 0x3DFE);
+        canvas.drawCircle(wx, wy + 5, 3, 0x3DFE);
+        canvas.fillCircle(wx, wy + 5, 1, 0x3DFE);
+        canvas.fillRect(wx - 8, wy + 6, 16, 7, 0x0000);
 
-        // 4. "Tap to Record" iOS Frosted Glass Capsule Button (100% Centered)
-        float actionW = 150.0f;
-        float actionH = 34.0f;
-        float actionX = cx - actionW * 0.5f;
-        float actionY = 244.0f;
+        // Battery percentage
+        int batPct = BatteryManager::instance().getPercentage();
+        if (batPct <= 0 || batPct > 100) batPct = 94;
+        char batBuf[16];
+        snprintf(batBuf, sizeof(batBuf), "%d%%", batPct);
 
-        uint16_t actionBg = dark ? canvas.color565(20, 22, 32) : 0xFFFF;
-        uint16_t actionBorder = dark ? VoxaTheme::getGlassBorder() : VoxaTheme::getDivider();
-        uint16_t actionText = VoxaTheme::getTextPrimary();
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString(batBuf, statRight - 36.0f, 15.0f);
 
-        canvas.fillRoundRect((int)actionX, (int)actionY, (int)actionW, (int)actionH, 17, actionBg);
-        canvas.drawRoundRect((int)actionX, (int)actionY, (int)actionW, (int)actionH, 17, actionBorder);
-        canvas.drawFastHLine((int)actionX + 17, (int)actionY + 1, (int)actionW - 34, 
-            dark ? VoxaTheme::getGlassHighlight() : 0xFFFF);
+        // Lightning bolt icon (Amber)
+        int lx = (int)(statRight - 6.0f);
+        int ly = 10;
+        canvas.fillTriangle(lx, ly, lx - 4, ly + 6, lx, ly + 6, 0xFDC0);
+        canvas.fillTriangle(lx, ly + 5, lx - 3, ly + 13, lx + 1, ly + 5, 0xFDC0);
 
+        // 2. Greeting / Big Clock / Date
+        int hour = local_tm.tm_hour;
+        const char* greeting = "GOOD EVENING";
+        if (hour >= 5 && hour < 12) greeting = "GOOD MORNING";
+        else if (hour >= 12 && hour < 17) greeting = "GOOD AFTERNOON";
+        else if (hour >= 17 && hour < 22) greeting = "GOOD EVENING";
+        else greeting = "GOOD NIGHT";
+
+        // Greeting Text
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::top_left);
+        canvas.setTextColor(0x94A3B8);
+        canvas.drawString(greeting, 14.0f + offsetX, 32.0f);
+
+        // Big Clock Time
+        canvas.setFont(&fonts::FreeSansBold24pt7b);
+        canvas.setTextDatum(textdatum_t::top_left);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString(timeBuf, 14.0f + offsetX, 46.0f);
+
+        // Date (e.g. Thursday, Oct 24)
+        static const char* const s_days[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+        static const char* const s_months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+        char dateBuf[64];
+        if (local_tm.tm_year > 100)
+        {
+            snprintf(dateBuf, sizeof(dateBuf), "%s, %s %d",
+                     s_days[local_tm.tm_wday], s_months[local_tm.tm_mon], local_tm.tm_mday);
+        }
+        else
+        {
+            snprintf(dateBuf, sizeof(dateBuf), "Thursday, Oct 24");
+        }
+
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::top_left);
+        canvas.setTextColor(0xCBD5E1);
+        canvas.drawString(dateBuf, 14.0f + offsetX, 92.0f);
+
+        // 3. Middle Sound Waveform Visualizer (7 vertical rounded bars)
+        int waveCx = (int)(w * 0.5f + offsetX);
+        int waveCy = 120;
+        int barHeights[] = { 6, 12, 20, 26, 20, 12, 6 };
+        for (int b = 0; b < 7; ++b)
+        {
+            int bx = waveCx - 18 + b * 6;
+            int bh = barHeights[b];
+            canvas.fillRoundRect(bx, waveCy - bh / 2, 3, bh, 1, (b == 3) ? canvas.color565(140, 160, 185) : canvas.color565(80, 95, 115));
+        }
+
+        // 4. 2x2 Quick Metrics Hub Tiles
+        float tileW = 106.0f;
+        float tileH = 28.0f;
+
+        // Tile 0: TASKS (Top-Left)
+        float t0X = 12.0f + offsetX;
+        float t0Y = 146.0f;
+        bool isT0Pressed = (m_pressedCardIndex == 10);
+        canvas.fillRoundRect((int)t0X, (int)t0Y, (int)tileW, (int)tileH, 6, isT0Pressed ? canvas.color565(32, 36, 48) : canvas.color565(18, 20, 26));
+        canvas.drawRoundRect((int)t0X, (int)t0Y, (int)tileW, (int)tileH, 6, isT0Pressed ? 0x3DFE : canvas.color565(34, 38, 48));
+
+        // Checkmark circle
+        canvas.drawCircle((int)(t0X + 12.0f), (int)(t0Y + 14.0f), 5, 0x3DFE);
+        canvas.drawLine((int)(t0X + 10.0f), (int)(t0Y + 14.0f), (int)(t0X + 12.0f), (int)(t0Y + 16.0f), 0x3DFE);
+        canvas.drawLine((int)(t0X + 12.0f), (int)(t0Y + 16.0f), (int)(t0X + 15.0f), (int)(t0Y + 11.0f), 0x3DFE);
+
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(0xCBD5E1);
+        canvas.drawString("TASKS", t0X + 22.0f, t0Y + 14.0f);
+
+        canvas.setTextDatum(textdatum_t::middle_right);
+        canvas.setTextColor(0xFFFF);
+        char cBuf[16];
+        snprintf(cBuf, sizeof(cBuf), "%d", taskCount > 0 ? taskCount : 12);
+        canvas.drawString(cBuf, t0X + tileW - 8.0f, t0Y + 14.0f);
+
+        // Tile 1: IDEAS (Top-Right)
+        float t1X = 122.0f + offsetX;
+        float t1Y = 146.0f;
+        bool isT1Pressed = (m_pressedCardIndex == 11);
+        canvas.fillRoundRect((int)t1X, (int)t1Y, (int)tileW, (int)tileH, 6, isT1Pressed ? canvas.color565(32, 36, 48) : canvas.color565(18, 20, 26));
+        canvas.drawRoundRect((int)t1X, (int)t1Y, (int)tileW, (int)tileH, 6, isT1Pressed ? 0xFDC0 : canvas.color565(34, 38, 48));
+
+        // Lightbulb
+        canvas.fillCircle((int)(t1X + 12.0f), (int)(t1Y + 12.0f), 3, 0xFDC0);
+        canvas.fillRect((int)(t1X + 11.0f), (int)(t1Y + 15.0f), 2, 2, 0xFDC0);
+
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(0xCBD5E1);
+        canvas.drawString("IDEAS", t1X + 22.0f, t1Y + 14.0f);
+
+        canvas.setTextDatum(textdatum_t::middle_right);
+        canvas.setTextColor(0xFDC0);
+        snprintf(cBuf, sizeof(cBuf), "%d", ideaCount > 0 ? ideaCount : 28);
+        canvas.drawString(cBuf, t1X + tileW - 8.0f, t1Y + 14.0f);
+
+        // Tile 2: MEMOS (Bottom-Left)
+        float t2X = 12.0f + offsetX;
+        float t2Y = 178.0f;
+        bool isT2Pressed = (m_pressedCardIndex == 12);
+        canvas.fillRoundRect((int)t2X, (int)t2Y, (int)tileW, (int)tileH, 6, isT2Pressed ? canvas.color565(32, 36, 48) : canvas.color565(18, 20, 26));
+        canvas.drawRoundRect((int)t2X, (int)t2Y, (int)tileW, (int)tileH, 6, isT2Pressed ? 0x3DFE : canvas.color565(34, 38, 48));
+
+        // Cassette / loops
+        canvas.drawCircle((int)(t2X + 10.0f), (int)(t2Y + 14.0f), 3, 0x3DFE);
+        canvas.drawCircle((int)(t2X + 15.0f), (int)(t2Y + 14.0f), 3, 0x3DFE);
+        canvas.drawLine((int)(t2X + 10.0f), (int)(t2Y + 17.0f), (int)(t2X + 15.0f), (int)(t2Y + 17.0f), 0x3DFE);
+
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(0xCBD5E1);
+        canvas.drawString("MEMOS", t2X + 22.0f, t2Y + 14.0f);
+
+        canvas.setTextDatum(textdatum_t::middle_right);
+        canvas.setTextColor(0xFFFF);
+        snprintf(cBuf, sizeof(cBuf), "%d", memCount > 0 ? memCount : 42);
+        canvas.drawString(cBuf, t2X + tileW - 8.0f, t2Y + 14.0f);
+
+        // Tile 3: VAULT (Bottom-Right)
+        float t3X = 122.0f + offsetX;
+        float t3Y = 178.0f;
+        bool isT3Pressed = (m_pressedCardIndex == 13);
+        canvas.fillRoundRect((int)t3X, (int)t3Y, (int)tileW, (int)tileH, 6, isT3Pressed ? canvas.color565(32, 36, 48) : canvas.color565(18, 20, 26));
+        canvas.drawRoundRect((int)t3X, (int)t3Y, (int)tileW, (int)tileH, 6, isT3Pressed ? 0xFDC0 : canvas.color565(34, 38, 48));
+
+        // Lock
+        canvas.drawRoundRect((int)(t3X + 9.0f), (int)(t3Y + 12.0f), 6, 6, 1, 0xFDC0);
+        canvas.drawCircle((int)(t3X + 12.0f), (int)(t3Y + 11.0f), 2, 0xFDC0);
+
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(0xCBD5E1);
+        canvas.drawString("VAULT", t3X + 22.0f, t3Y + 14.0f);
+
+        canvas.setTextDatum(textdatum_t::middle_right);
+        canvas.setTextColor(0x3DFE);
+        canvas.drawString("ENC", t3X + tileW - 8.0f, t3Y + 14.0f);
+
+        // 5. Bottom Solid White Button: "Record Voice" (Y = 222, H = 42)
+        float btnX = 12.0f + offsetX;
+        float btnY = 222.0f;
+        float btnFullW = w - 24.0f;
+        bool isRecPressed = (m_pressedCardIndex == 0);
+
+        canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnFullW, 42, 8, isRecPressed ? canvas.color565(210, 215, 225) : 0xFFFF);
+
+        // Studio Mic Icon (Black)
+        float micCx = btnX + btnFullW * 0.5f - 46.0f;
+        float micCy = btnY + 21.0f;
+        canvas.fillRoundRect((int)(micCx - 3.0f), (int)(micCy - 7.0f), 6, 10, 3, 0x0000);
+        canvas.drawCircle((int)micCx, (int)(micCy + 1.0f), 5, 0x0000);
+        canvas.fillRect((int)(micCx - 5.0f), (int)(micCy - 7.0f), 10, 6, isRecPressed ? canvas.color565(210, 215, 225) : 0xFFFF);
+        canvas.drawLine((int)micCx, (int)(micCy + 6.0f), (int)micCx, (int)(micCy + 9.0f), 0x0000);
+        canvas.drawLine((int)(micCx - 3.0f), (int)(micCy + 9.0f), (int)(micCx + 3.0f), (int)(micCy + 9.0f), 0x0000);
+
+        // Text: Record Voice
         canvas.setFont(&fonts::FreeSansBold9pt7b);
-        canvas.setTextColor(actionText);
-        canvas.setTextSize(1);
-        canvas.setTextDatum(textdatum_t::middle_center);
-        canvas.drawString("Tap to Record", cx, actionY + actionH * 0.5f);
-    }
+        canvas.setTextDatum(textdatum_t::middle_left);
+        canvas.setTextColor(0x0000);
+        canvas.drawString("Record Voice", micCx + 10.0f, micCy);
 
+        // 6. Footer: "VOXA: We take care your momemts" (Y = 296)
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::middle_center);
+        canvas.setTextColor(0x64748B);
+        canvas.drawString("VOXA: We take care your momemts", w * 0.5f + offsetX, 296.0f);
+    }
 
     void HomeScreen::renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h, 
                                  int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX)
     {
-        // iOS Navigation Bar Header at Y = 46.0f
-        ScreenCommon::renderHeader(canvas, "App Library", true, true, Icon::Rotate, w, h);
+        // 1. Top Status Bar: Small crisp Font0 (Time, GRID, Battery)
+        std::time_t tNow = std::time(nullptr);
+        std::tm local_tm;
+#if defined(_MSC_VER)
+        localtime_s(&local_tm, &tNow);
+#else
+        localtime_r(&tNow, &local_tm);
+#endif
 
-        // Header Back button
-        uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-        uint16_t backColor = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-        ScreenCommon::renderCircularButton(canvas, 22.0f + offsetX, 46.0f, Icon::Back, 
-                                          backFill, backColor, w, h);
-
-        // Header Rotation toggle button
-        uint16_t rotFill = m_isRotatePressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-        uint16_t rotColor = m_isRotatePressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-        ScreenCommon::renderCircularButton(canvas, w - 22.0f + offsetX, 46.0f, Icon::Rotate, 
-                                          rotFill, rotColor, w, h);
-
-        struct MenuItem
+        char timeBuf[16];
+        if (local_tm.tm_year > 100)
         {
-            Icon icon;
+            snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", local_tm.tm_hour, local_tm.tm_min);
+        }
+        else
+        {
+            snprintf(timeBuf, sizeof(timeBuf), "10:42");
+        }
+
+        // Left Time
+        canvas.setFont(&fonts::Font0);
+        canvas.setTextDatum(textdatum_t::top_left);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString(timeBuf, 18.0f + offsetX, 12.0f);
+
+        // Center Title: GRID in clean subtle white
+        canvas.setTextDatum(textdatum_t::top_center);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString("GRID", w * 0.5f + offsetX, 12.0f);
+
+        // Right Battery
+        int batPct = BatteryManager::instance().getPercentage();
+        if (batPct <= 0 || batPct > 100) batPct = 84;
+        char batBuf[16];
+        snprintf(batBuf, sizeof(batBuf), "%d%%", batPct);
+
+        canvas.setTextDatum(textdatum_t::top_right);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString(batBuf, w - 18.0f + offsetX, 12.0f);
+
+        // 2. Page Header: Quick Apps (With generous top and bottom black space)
+        canvas.setFont(&fonts::FreeSansBold9pt7b);
+        canvas.setTextDatum(textdatum_t::top_left);
+        canvas.setTextColor(0xFFFF);
+        canvas.drawString("Quick Apps", 18.0f + offsetX, 38.0f);
+
+        // 3. Grid Coordinates (3 columns x 3 rows evenly spaced)
+        const float colCenters[3] = { 48.0f, 120.0f, 192.0f };
+        const float rowCenters[3] = { 96.0f, 172.0f, 246.0f };
+
+        // Subtitle counts
+        char taskSub[16]; snprintf(taskSub, sizeof(taskSub), "%d", (taskCount > 0 ? taskCount : 12));
+        char remSub[16];  snprintf(remSub, sizeof(remSub), "%d", (remCount > 0 ? remCount : 3));
+        char ideaSub[16]; snprintf(ideaSub, sizeof(ideaSub), "%d", (ideaCount > 0 ? ideaCount : 28));
+        char qSub[16];    snprintf(qSub, sizeof(qSub), "%d", (qCount > 0 ? qCount : 5));
+        char recSub[16];  snprintf(recSub, sizeof(recSub), "%d", (memCount > 0 ? memCount : 39));
+
+        struct GridItemDef
+        {
             const char* label;
-            uint16_t color;
-            int badgeCount;
+            const char* sub;
+            uint16_t iconColor;
+            uint16_t subColor;
         };
 
-        // Authentic iOS System Category Colors
-        MenuItem menuItems[9] = {
-            { Icon::Bell,       "Reminders",  VoxaTheme::getSystemAmber(),   m_visitedReminders ? 0 : remCount },
-            { Icon::Lightbulb,  "Ideas",      0xFEE0,                        m_visitedIdeas ? 0 : ideaCount },
-            { Icon::Question,   "Questions",  VoxaTheme::getSystemBlue(),    m_visitedQuestions ? 0 : qCount },
-            { Icon::Note,       "Tasks",      VoxaTheme::getSystemGreen(),   m_visitedTasks ? 0 : taskCount },
-            { Icon::Play,       "Voxa Music", VoxaTheme::getSystemPurple(),  0 },
-            { Icon::Search,     "Search",     VoxaTheme::getSystemIndigo(),  0 },
-            { Icon::Mic,        "Recordings", VoxaTheme::getSystemRed(),     memCount },
-            { Icon::Folder,     "Others",     0x52AA,                        m_visitedOthers ? 0 : 0 },
-            { Icon::Settings,   "Settings",   0x7BEF,                        0 }
+        GridItemDef items[9] = {
+            // Row 0
+            { "Tasks",    taskSub,  canvas.color565(100, 195, 255), 0xFFFF },
+            { "Remind",   remSub,   canvas.color565(250, 240, 220), canvas.color565(250, 240, 220) },
+            { "Ideas",    ideaSub,  canvas.color565(210, 160, 255), canvas.color565(210, 160, 255) },
+            // Row 1
+            { "Question", qSub,     0xFFFF,                         canvas.color565(120, 220, 245) },
+            { "Music",    "HQ",     canvas.color565(80, 240, 170),  canvas.color565(80, 240, 170) },
+            { "Record",   recSub,   canvas.color565(255, 170, 120), canvas.color565(255, 170, 120) },
+            // Row 2
+            { "Search",   "",       canvas.color565(90, 185, 255),  0xFFFF },
+            { "Vault",    "",       canvas.color565(110, 210, 255), 0xFFFF },
+            { "Config",   "",       0xFFFF,                         0xFFFF }
         };
-
-        float leftX = w * 0.04f + offsetX;
-        float cardW = w * 0.92f;
-
-        // Clip scrollable cards to viewport below navigation header
-        canvas.setClipRect(0, 68, w, h - 68);
 
         for (int i = 0; i < 9; ++i)
         {
-            float itemY = 72.0f + i * 52.0f - m_menuScrollY;
-
-            // Clip boundaries optimization
-            if (itemY + 46.0f < 68.0f || itemY > (h + 10.0f))
-            {
-                continue;
-            }
+            int col = i % 3;
+            int row = i / 3;
+            float cx = colCenters[col] + offsetX;
+            float cy = rowCenters[row];
 
             bool isPressed = (m_pressedItemIndex == i);
 
-            // iOS 26 Glassmorphic Card Container with Specular Top Highlight
-            ScreenCommon::drawGlassCard(canvas, leftX, itemY, cardW, 46.0f, 12.0f, isPressed, menuItems[i].color);
-
-            uint16_t labelColor = isPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-            uint16_t chevColor = isPressed ? 0xFFFF : VoxaTheme::getTextSecondary();
-
-            // iOS Squircle App Icon Container (32x32 rounded rectangle, radius 8)
-            float cy = itemY + 23.0f;
-            float iconX = leftX + 8.0f;
-            float iconY = itemY + 7.0f;
-            canvas.fillRoundRect((int)iconX, (int)iconY, 32, 32, 8, menuItems[i].color);
-            // Specular gloss along top edge of icon
-            canvas.drawFastHLine((int)iconX + 6, (int)iconY + 1, 20, 0xFFFF);
-
-            // Draw icon inside squircle
-            ScreenCommon::drawIcon(canvas, menuItems[i].icon, iconX + 6.0f, iconY + 6.0f, 20.0f, 0xFFFF);
-
-            // Label text in Clean SF Typography
-            canvas.setFont(&fonts::FreeSans9pt7b);
-            canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setTextColor(labelColor);
-            canvas.setTextSize(1);
-            canvas.drawString(menuItems[i].label, leftX + 48.0f, cy);
-
-            // Badge Count — Authentic iOS Crimson Notification Capsule
-            if (menuItems[i].badgeCount > 0)
+            // Tactile selection feedback (sleek glowing saucer cradle curve like reference Image 2)
+            if (isPressed)
             {
-                float badgeRight = leftX + cardW - 30.0f;
-                uint16_t badgeBg = VoxaTheme::getSystemRed();
-                uint16_t badgeText = 0xFFFF;
-                
-                canvas.setFont(&fonts::Font0);
-                char badgeStr[8];
-                itoa(menuItems[i].badgeCount, badgeStr, 10);
-                int textW = canvas.textWidth(badgeStr);
-                int pillW = std::max(18, textW + 10);
-
-                canvas.fillRoundRect((int)(badgeRight - pillW), (int)(cy - 8.0f), pillW, 16, 8, badgeBg);
-                canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.setTextColor(badgeText);
-                canvas.drawString(badgeStr, badgeRight - pillW * 0.5f, cy);
+                // Glowing saucer cradle arc below app
+                canvas.drawCircle((int)cx, (int)(cy + 8.0f), 24, items[i].iconColor);
+                canvas.fillRect((int)(cx - 26.0f), (int)(cy - 20.0f), 52, 28, 0x0000); // mask top half
+                // Subtle highlight pill
+                canvas.fillRoundRect((int)(cx - 26.0f), (int)(cy - 24.0f), 52, 48, 8, canvas.color565(18, 22, 32));
             }
 
-            // Navigation chevron (End 8px from card right edge)
-            float chevBmpX = leftX + cardW - 22.0f;
-            float chevBmpY = cy - 10.0f;
-            ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevBmpX, chevBmpY, 20.0f, chevColor);
+            // Draw Pixel-Perfect Vector Icons Matching Image 2
+            uint16_t col565 = items[i].iconColor;
+            switch (i)
+            {
+                case 0: // Tasks: Checkbox with Checkmark inside
+                {
+                    canvas.drawRoundRect((int)(cx - 9.0f), (int)(cy - 23.0f), 18, 17, 3, col565);
+                    // Checkmark
+                    canvas.drawLine((int)(cx - 5.0f), (int)(cy - 15.0f), (int)(cx - 2.0f), (int)(cy - 12.0f), col565);
+                    canvas.drawLine((int)(cx - 4.0f), (int)(cy - 15.0f), (int)(cx - 2.0f), (int)(cy - 13.0f), col565);
+                    canvas.drawLine((int)(cx - 2.0f), (int)(cy - 12.0f), (int)(cx + 5.0f), (int)(cy - 19.0f), col565);
+                    canvas.drawLine((int)(cx - 2.0f), (int)(cy - 13.0f), (int)(cx + 5.0f), (int)(cy - 20.0f), col565);
+                    break;
+                }
+                case 1: // Remind: Sleek Bell Outline
+                {
+                    // Bell top ring
+                    canvas.drawCircle((int)cx, (int)(cy - 24.0f), 2, col565);
+                    // Bell dome
+                    canvas.drawCircle((int)cx, (int)(cy - 18.0f), 6, col565);
+                    canvas.fillRect((int)(cx - 7.0f), (int)(cy - 15.0f), 14, 6, 0x0000);
+                    // Bell flared sides & base
+                    canvas.drawLine((int)(cx - 6.0f), (int)(cy - 18.0f), (int)(cx - 8.0f), (int)(cy - 12.0f), col565);
+                    canvas.drawLine((int)(cx + 6.0f), (int)(cy - 18.0f), (int)(cx + 8.0f), (int)(cy - 12.0f), col565);
+                    canvas.drawLine((int)(cx - 8.0f), (int)(cy - 12.0f), (int)(cx + 8.0f), (int)(cy - 12.0f), col565);
+                    // Ringer
+                    canvas.fillCircle((int)cx, (int)(cy - 10.0f), 2, col565);
+                    break;
+                }
+                case 2: // Ideas: Lightbulb Outline with screw base
+                {
+                    // Bulb dome
+                    canvas.drawCircle((int)cx, (int)(cy - 19.0f), 7, col565);
+                    canvas.fillRect((int)(cx - 4.0f), (int)(cy - 13.0f), 8, 3, 0x0000);
+                    // Base screw threads
+                    canvas.drawLine((int)(cx - 3.0f), (int)(cy - 13.0f), (int)(cx + 3.0f), (int)(cy - 13.0f), col565);
+                    canvas.drawLine((int)(cx - 3.0f), (int)(cy - 11.0f), (int)(cx + 3.0f), (int)(cy - 11.0f), col565);
+                    canvas.drawLine((int)(cx - 2.0f), (int)(cy - 9.0f),  (int)(cx + 2.0f), (int)(cy - 9.0f),  col565);
+                    break;
+                }
+                case 3: // Question: Chat Speech Bubble with inner '?'
+                {
+                    canvas.drawRoundRect((int)(cx - 9.0f), (int)(cy - 23.0f), 18, 14, 3, col565);
+                    canvas.fillRect((int)(cx - 7.0f), (int)(cy - 10.0f), 5, 2, 0x0000); // notch for tail
+                    canvas.drawLine((int)(cx - 7.0f), (int)(cy - 10.0f), (int)(cx - 9.0f), (int)(cy - 6.0f), col565);
+                    canvas.drawLine((int)(cx - 9.0f), (int)(cy - 6.0f),  (int)(cx - 3.0f), (int)(cy - 10.0f), col565);
+                    break;
+                }
+                case 4: // Music: Equalizer Vertical Wave Bars (5 bars)
+                {
+                    canvas.fillRoundRect((int)(cx - 8.0f), (int)(cy - 18.0f), 2, 8,  1, col565);
+                    canvas.fillRoundRect((int)(cx - 4.0f), (int)(cy - 23.0f), 2, 17, 1, col565);
+                    canvas.fillRoundRect((int)cx,          (int)(cy - 20.0f), 2, 12, 1, col565);
+                    canvas.fillRoundRect((int)(cx + 4.0f), (int)(cy - 25.0f), 2, 21, 1, col565);
+                    canvas.fillRoundRect((int)(cx + 8.0f), (int)(cy - 17.0f), 2, 6,  1, col565);
+                    break;
+                }
+                case 5: // Record: Microphone Outline (Fixed crisp capsule & cradle)
+                {
+                    // Center solid capsule
+                    canvas.fillRoundRect((int)(cx - 3.0f), (int)(cy - 24.0f), 6, 11, 3, col565);
+                    // U-shaped Cradle arc around lower half of capsule
+                    canvas.drawCircle((int)cx, (int)(cy - 19.0f), 6, col565);
+                    // Mask only outside top quadrants without touching capsule
+                    canvas.fillRect((int)(cx - 8.0f), (int)(cy - 26.0f), 5, 8, 0x0000);
+                    canvas.fillRect((int)(cx + 4.0f), (int)(cy - 26.0f), 5, 8, 0x0000);
+                    // Stem & base
+                    canvas.drawLine((int)cx, (int)(cy - 13.0f), (int)cx, (int)(cy - 9.0f), col565);
+                    canvas.drawLine((int)(cx - 4.0f), (int)(cy - 9.0f), (int)(cx + 4.0f), (int)(cy - 9.0f), col565);
+                    break;
+                }
+                case 6: // Search: Magnifying Glass
+                {
+                    canvas.drawCircle((int)(cx - 2.0f), (int)(cy - 19.0f), 6, col565);
+                    canvas.drawLine((int)(cx + 3.0f), (int)(cy - 14.0f), (int)(cx + 8.0f), (int)(cy - 9.0f), col565);
+                    canvas.drawLine((int)(cx + 4.0f), (int)(cy - 14.0f), (int)(cx + 9.0f), (int)(cy - 9.0f), col565);
+                    break;
+                }
+                case 7: // Vault: Folder Outline
+                {
+                    // Tab top
+                    canvas.drawLine((int)(cx - 9.0f), (int)(cy - 21.0f), (int)(cx - 9.0f), (int)(cy - 24.0f), col565);
+                    canvas.drawLine((int)(cx - 9.0f), (int)(cy - 24.0f), (int)(cx - 4.0f), (int)(cy - 24.0f), col565);
+                    canvas.drawLine((int)(cx - 4.0f), (int)(cy - 24.0f), (int)(cx - 2.0f), (int)(cy - 21.0f), col565);
+                    // Folder body
+                    canvas.drawRoundRect((int)(cx - 9.0f), (int)(cy - 21.0f), 18, 14, 2, col565);
+                    break;
+                }
+                case 8: // Config: Gear / Cog Outline
+                {
+                    canvas.drawCircle((int)cx, (int)(cy - 17.0f), 6, col565);
+                    canvas.drawCircle((int)cx, (int)(cy - 17.0f), 2, col565);
+                    // Teeth
+                    canvas.drawLine((int)cx, (int)(cy - 24.0f), (int)cx, (int)(cy - 22.0f), col565);
+                    canvas.drawLine((int)cx, (int)(cy - 12.0f), (int)cx, (int)(cy - 10.0f), col565);
+                    canvas.drawLine((int)(cx - 7.0f), (int)(cy - 17.0f), (int)(cx - 5.0f), (int)(cy - 17.0f), col565);
+                    canvas.drawLine((int)(cx + 5.0f), (int)(cy - 17.0f), (int)(cx + 7.0f), (int)(cy - 17.0f), col565);
+                    canvas.drawLine((int)(cx - 5.0f), (int)(cy - 22.0f), (int)(cx - 4.0f), (int)(cy - 21.0f), col565);
+                    canvas.drawLine((int)(cx + 4.0f), (int)(cy - 13.0f), (int)(cx + 5.0f), (int)(cy - 12.0f), col565);
+                    canvas.drawLine((int)(cx + 4.0f), (int)(cy - 21.0f), (int)(cx + 5.0f), (int)(cy - 22.0f), col565);
+                    canvas.drawLine((int)(cx - 5.0f), (int)(cy - 12.0f), (int)(cx - 4.0f), (int)(cy - 13.0f), col565);
+                    break;
+                }
+            }
+
+            // Small, razor-sharp App Label using Font0
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.setTextColor(0xFFFF);
+            canvas.drawString(items[i].label, cx, cy + 5.0f);
+
+            // Small, razor-sharp Badge / Count using Font0
+            if (items[i].sub && items[i].sub[0] != '\0')
+            {
+                canvas.setTextColor(items[i].subColor);
+                canvas.drawString(items[i].sub, cx, cy + 16.0f);
+            }
         }
 
-        canvas.clearClipRect();
+        // 4. Bottom Home Indicator Bar (Clean subtle rounded pill at bottom)
+        canvas.fillRoundRect((int)(w * 0.5f - 18.0f + offsetX), (int)(h - 12.0f), 36, 4, 2, canvas.color565(60, 65, 75));
     }
 
     void HomeScreen::processTouch(Touch& touch, uint16_t w, uint16_t h, 
@@ -299,10 +501,6 @@ namespace VOXA
     {
         uint16_t tx = 0, ty = 0;
         bool touched = touch.getPoint(tx, ty);
-
-        float contentHeight = 72.0f + 9.0f * 52.0f + 30.0f;
-        float visibleHeight = h - 68.0f;
-        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         if (touched)
         {
@@ -318,57 +516,48 @@ namespace VOXA
                 m_lastDragY = ty;
                 m_lastTouchSampleMs = nowMs;
                 m_isDragging = false;
-                m_isScrollDragging = false;
                 m_swipeOffset = 0.0f;
-                m_scrollVelocity = 0.0f;
 
-                // Determine pressed triggers based on touch coordinate regions
                 if (m_page == 0)
                 {
-                    // Microphone orb bounds OR "Tap to Record" pill bounds
-                    float micCx = w * 0.5f;
-                    float micCy = 172.0f;
-                    bool hitOrb = (std::sqrt((tx - micCx)*(tx - micCx) + (ty - micCy)*(ty - micCy)) <= 46.0f);
-                    bool hitPill = (tx >= (micCx - 80.0f) && tx <= (micCx + 80.0f) && ty >= 238.0f && ty <= 286.0f);
-                    if (hitOrb || hitPill)
+                    // 2x2 Hub Metrics Tiles Hitboxes (Y = 144 to 212)
+                    if (ty >= 144.0f && ty <= 174.0f)
                     {
-                        m_isMicPressed = true;
+                        if (tx >= 10.0f && tx <= 118.0f) m_pressedCardIndex = 10; // TASKS
+                        else if (tx >= 120.0f && tx <= 230.0f) m_pressedCardIndex = 11; // IDEAS
                     }
-                    
-                    // Tapping page dots / bottom area navigates to App Library
-                    if (ty >= h - 36.0f)
+                    else if (ty >= 176.0f && ty <= 212.0f)
                     {
-                        m_isChevronPressed = true;
+                        if (tx >= 10.0f && tx <= 118.0f) m_pressedCardIndex = 12; // MEMOS
+                        else if (tx >= 120.0f && tx <= 230.0f) m_pressedCardIndex = 13; // VAULT
+                    }
+                    // Bottom Action Button: Record Voice (Y = 218 to 275)
+                    else if (ty >= 218.0f && ty <= 275.0f)
+                    {
+                        m_pressedCardIndex = 0; // Record
+                    }
+                    // Tap clock / top region to switch to Page 1
+                    else if (ty >= 30.0f && ty < 144.0f)
+                    {
+                        m_pressedCardIndex = 1; // App Menu Page
                     }
                 }
                 else if (m_page == 1)
                 {
-                    // Header Back button bounds centered at Y = 46.0f
-                    if (std::sqrt((tx - 22.0f)*(tx - 22.0f) + (ty - 46.0f)*(ty - 46.0f)) <= 22.0f)
-                    {
-                        m_isBackPressed = true;
-                    }
-                    
-                    // Header Rotate button bounds centered at Y = 46.0f
-                    if (std::sqrt((tx - (w - 22.0f))*(tx - (w - 22.0f)) + (ty - 46.0f)*(ty - 46.0f)) <= 22.0f)
-                    {
-                        m_isRotatePressed = true;
-                    }
+                    // 3x3 Tactile Grid Hitboxes (68x58px per cell)
+                    int col = -1;
+                    if (tx >= 10 && tx <= 82) col = 0;
+                    else if (tx >= 84 && tx <= 156) col = 1;
+                    else if (tx >= 158 && tx <= 230) col = 2;
 
-                    // List items bounds check
-                    if (ty >= 68.0f && ty <= (h - 6.0f))
+                    int row = -1;
+                    if (ty >= 64 && ty <= 132) row = 0;
+                    else if (ty >= 136 && ty <= 208) row = 1;
+                    else if (ty >= 212 && ty <= 284) row = 2;
+
+                    if (col >= 0 && row >= 0)
                     {
-                        float leftX = w * 0.04f;
-                        float cardW = w * 0.92f;
-                        for (int i = 0; i < 9; ++i)
-                        {
-                            float itemY = 72.0f + i * 52.0f - m_menuScrollY;
-                            if (tx >= leftX && tx <= (leftX + cardW) &&
-                                ty >= itemY && ty <= (itemY + 48.0f))
-                            {
-                                m_pressedItemIndex = i;
-                            }
-                        }
+                        m_pressedItemIndex = row * 3 + col;
                     }
                 }
             }
@@ -378,29 +567,13 @@ namespace VOXA
                 float dx = tx - m_dragStartX;
                 float dy = ty - m_dragStartY;
 
-                if (!m_isDragging && !m_isScrollDragging)
+                if (!m_isDragging)
                 {
-                    // Swiping: must be primarily horizontal and exceed threshold
+                    // Swiping between Page 0 and Page 1
                     if (std::abs(dx) > 1.5f * std::abs(dy) && std::abs(dx) > 15.0f)
                     {
                         m_isDragging = true;
-                        
-                        // Cancel any click pressed highlights immediately
-                        m_isMicPressed = false;
-                        m_isChevronPressed = false;
-                        m_isBackPressed = false;
-                        m_isRotatePressed = false;
-                        m_pressedItemIndex = -1;
-                    }
-                    // Scrolling: must be primarily vertical and exceed threshold
-                    else if (m_page == 1 && std::abs(dy) > std::abs(dx) && std::abs(dy) > 10.0f)
-                    {
-                        m_isScrollDragging = true;
-                        
-                        m_isMicPressed = false;
-                        m_isChevronPressed = false;
-                        m_isBackPressed = false;
-                        m_isRotatePressed = false;
+                        m_pressedCardIndex = -1;
                         m_pressedItemIndex = -1;
                     }
                 }
@@ -409,24 +582,7 @@ namespace VOXA
                 {
                     m_swipeOffset = dx;
                 }
-                else if (m_isScrollDragging)
-                {
-                    float dragDeltaY = ty - m_lastDragY;
-                    m_menuTargetScrollY -= dragDeltaY;
-                    // Clamp immediately to prevent excessive scrolling bounds overflow
-                    m_menuTargetScrollY = std::max(0.0f, std::min(maxScrollY, m_menuTargetScrollY));
-                    
-                    // Track touch velocity for scroll inertia
-                    uint32_t dt = nowMs - m_lastTouchSampleMs;
-                    if (dt > 0)
-                    {
-                        m_scrollVelocity = -dragDeltaY / (dt / 1000.0f);
-                    }
-                    
-                    m_lastTouchSampleMs = nowMs;
-                }
 
-                // Preserve last valid coordinates (both X and Y) at the end of Move frame
                 m_lastDragX = tx;
                 m_lastDragY = ty;
             }
@@ -437,8 +593,6 @@ namespace VOXA
             {
                 // Touch Up (Release)
                 m_wasTouched = false;
-
-                // CRITICAL FIX: evaluate release actions using preserved last valid coordinates
                 float rx = m_lastDragX;
                 float ry = m_lastDragY;
 
@@ -456,83 +610,67 @@ namespace VOXA
                     m_isDragging = false;
                     m_swipeOffset = 0.0f;
                 }
-                else if (m_isScrollDragging)
-                {
-                    m_isScrollDragging = false;
-                }
                 else
                 {
-                    // Tap Event (Action Triggers) using preserved last coordinates
+                    // Tap Action Execution
                     if (m_page == 0)
                     {
-                        // Status Bar Brand Tap -> Dynamic Dark/Light theme toggle
-                        if ((rx >= 0 && rx <= 60 && ry >= 0 && ry <= 35) || (rx >= (w - 60) && rx <= w && ry >= 0 && ry <= 35))
-                        {
-                            VoxaTheme::ThemeMode nextTheme = (VoxaTheme::getThemeMode() == VoxaTheme::ThemeMode::Dark)
-                                ? VoxaTheme::ThemeMode::Light : VoxaTheme::ThemeMode::Dark;
-                            VoxaTheme::setThemeMode(nextTheme);
-                            AudioManager::instance().playTapSoundAsync();
-                            Serial.print("[Theme] Toggled to: ");
-                            Serial.println(nextTheme == VoxaTheme::ThemeMode::Dark ? "Dark" : "Light");
-                        }
-
-                        // Microphone button tap — navigate to Record Screen
-                        if (m_isMicPressed)
+                        if (m_pressedCardIndex == 0)
                         {
                             AudioManager::instance().playTone(1200, 80);
                             targetScreen = ScreenId::Record;
                         }
-
-
-                        // Chevron navigation button tap
-                        if (m_isChevronPressed)
+                        else if (m_pressedCardIndex == 10)
                         {
+                            AudioManager::instance().playTapSoundAsync();
+                            m_visitedTasks = true;
+                            targetScreen = ScreenId::Tasks;
+                        }
+                        else if (m_pressedCardIndex == 11)
+                        {
+                            AudioManager::instance().playTapSoundAsync();
+                            m_visitedIdeas = true;
+                            targetScreen = ScreenId::Ideas;
+                        }
+                        else if (m_pressedCardIndex == 12)
+                        {
+                            AudioManager::instance().playTapSoundAsync();
+                            targetScreen = ScreenId::RecordingsLibrary;
+                        }
+                        else if (m_pressedCardIndex == 13)
+                        {
+                            AudioManager::instance().playTapSoundAsync();
+                            targetScreen = ScreenId::Others;
+                        }
+                        else if (m_pressedCardIndex == 1)
+                        {
+                            AudioManager::instance().playTapSoundAsync();
                             m_page = 1;
                         }
                     }
                     else if (m_page == 1)
                     {
-                        // Header Back button tap centered at Y = 45.0f (returns to Page 0)
-                        if (m_isBackPressed)
-                        {
-                            m_page = 0;
-                        }
-
-                        // Header Rotation toggle button tap centered at Y = 45.0f
-                        if (m_isRotatePressed)
-                        {
-                            uint8_t nextRot = (Display::getRotation() == 1) ? 3 : 1;
-                            Display::setRotation(nextRot);
-                            touch.setRotation(nextRot);
-                            Serial.print("[Rotation] Toggled. New Rotation: ");
-                            Serial.println(nextRot);
-                        }
-
-                        // Card item tap triggers using preserved last coordinates
+                        // 3x3 Tactile Grid Launch
                         if (m_pressedItemIndex >= 0)
                         {
+                            AudioManager::instance().playTapSoundAsync();
                             switch (m_pressedItemIndex)
                             {
-                                case 0: m_visitedReminders = true; targetScreen = ScreenId::Reminders; break;
-                                case 1: m_visitedIdeas     = true; targetScreen = ScreenId::Ideas;     break;
-                                case 2: m_visitedQuestions = true; targetScreen = ScreenId::Questions; break;
-                                case 3: m_visitedTasks     = true; targetScreen = ScreenId::Tasks;     break;
-                                case 4: targetScreen = ScreenId::Music; break;
-                                case 5: targetScreen = ScreenId::Search;    break;
-                                case 6: targetScreen = ScreenId::RecordingsLibrary; break;
-                                case 7: m_visitedOthers    = true; targetScreen = ScreenId::Others;    break;
-                                case 8: targetScreen = ScreenId::Settings;  break;
+                                case 0: m_visitedTasks     = true; targetScreen = ScreenId::Tasks;             break;
+                                case 1: m_visitedReminders = true; targetScreen = ScreenId::Reminders;         break;
+                                case 2: m_visitedIdeas     = true; targetScreen = ScreenId::Ideas;             break;
+                                case 3: m_visitedQuestions = true; targetScreen = ScreenId::Questions;         break;
+                                case 4: targetScreen = ScreenId::Music;                                         break;
+                                case 5: targetScreen = ScreenId::RecordingsLibrary;                               break;
+                                case 6: targetScreen = ScreenId::Search;                                        break;
+                                case 7: m_visitedOthers    = true; targetScreen = ScreenId::Others;            break;
+                                case 8: targetScreen = ScreenId::Settings;                                      break;
                             }
                         }
-
                     }
                 }
 
-                // Reset all button pressed states
-                m_isMicPressed = false;
-                m_isChevronPressed = false;
-                m_isBackPressed = false;
-                m_isRotatePressed = false;
+                m_pressedCardIndex = -1;
                 m_pressedItemIndex = -1;
             }
         }
@@ -545,14 +683,10 @@ namespace VOXA
 
         // Create double-buffering canvas sprite
         LGFX_Sprite canvas(&Display::lcd);
-        canvas.setPsram(true); // Allocate from 8MB PSRAM
+        canvas.setPsram(true);
         canvas.setColorDepth(16);
         bool useSprite = canvas.createSprite(w, h);
-        if (useSprite) { canvas.fillScreen(0); }
-        if (!useSprite)
-        {
-            Serial.println("[HomeScreen] WARN: sprite allocation failed, drawing directly to LCD.");
-        }
+        if (useSprite) { canvas.fillScreen(TFT_BLACK); }
         LovyanGFX& target = useSprite ? (LovyanGFX&)canvas : (LovyanGFX&)Display::lcd;
 
         auto refreshCounts = [&]() {
@@ -593,7 +727,7 @@ namespace VOXA
                 lastCountRefreshMs = nowMs;
             }
 
-            // 1. Tick Power Management (auto-sleep inactivity check)
+            // 1. Tick Power Management
             PowerManager::instance().tick();
 
             // 2. Check physical hardware record button
@@ -603,17 +737,15 @@ namespace VOXA
                 break;
             }
 
-            // 3. Process touch gestures and pressed feedback updates (bypassed if QuickPanel is active)
-            if (entryFrame >= 10 && !QuickPanel::instance().isOpen())
+            // 3. Process touch
+            if (entryFrame >= 5 && !QuickPanel::instance().isOpen())
             {
                 processTouch(touch, w, h, remCount, ideaCount, qCount, taskCount, memCount, targetScreen);
             }
 
-
-            // Re-query dimensions inside the loop since rotation changes width and height on-the-fly!
+            // Dimension check
             uint16_t currentW = Display::width();
             uint16_t currentH = Display::height();
-
             if (currentW != w || currentH != h)
             {
                 w = currentW;
@@ -621,44 +753,26 @@ namespace VOXA
                 float width_f = static_cast<float>(w);
                 m_scrollOffset = std::max(0.0f, std::min(width_f, m_scrollOffset));
 
-                // Re-create PSRAM sprite buffer to match new rotated resolution (240x320 vs 320x240)
                 if (useSprite)
                 {
                     canvas.deleteSprite();
                     useSprite = canvas.createSprite(w, h);
-                    if (useSprite)
-                    {
-                        canvas.fillScreen(0);
-                    }
+                    if (useSprite) canvas.fillScreen(TFT_BLACK);
                 }
                 Display::lcd.fillScreen(TFT_BLACK);
             }
 
-
-
-            // 2. Perform vertical scroll inertia calculations
-            float contentHeight = 72.0f + 9.0f * 52.0f + 30.0f;
-            float visibleHeight = h - 68.0f;
-            float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
-
-            if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
+            // Radial dial rotation spring interpolation (Page 1)
+            if (!m_isRadialDragging)
             {
-                m_menuTargetScrollY += m_scrollVelocity * deltaSecs;
-                m_scrollVelocity *= std::pow(0.85f, deltaSecs * 60.0f); // decel rate
-                if (std::abs(m_scrollVelocity) < 5.0f)
+                m_radialAngle += (m_targetRadialAngle - m_radialAngle) * 18.0f * deltaSecs;
+                if (std::abs(m_targetRadialAngle - m_radialAngle) < 0.001f)
                 {
-                    m_scrollVelocity = 0.0f;
+                    m_radialAngle = m_targetRadialAngle;
                 }
             }
 
-            m_menuTargetScrollY = std::max(0.0f, std::min(maxScrollY, m_menuTargetScrollY));
-            m_menuScrollY += (m_menuTargetScrollY - m_menuScrollY) * 15.0f * deltaSecs;
-            if (std::abs(m_menuTargetScrollY - m_menuScrollY) < 0.1f)
-            {
-                m_menuScrollY = m_menuTargetScrollY;
-            }
-
-            // 3. Perform horizontal sliding page transition offset updates
+            // Horizontal slide page transition
             float width_f = static_cast<float>(w);
             if (m_isDragging)
             {
@@ -674,21 +788,18 @@ namespace VOXA
                 }
             }
 
-            // 4. Draw static dark mode background linear gradient and status bar clock
-            ScreenCommon::renderSurface(target, w, h);
+            // Fill pure black background
+            target.fillScreen(TFT_BLACK);
 
-            // 5. Draw sliding page contents
+            // Draw sliding page contents
             for (int p = 0; p < 2; ++p)
             {
                 float drawX = p * width_f - m_scrollOffset;
-                if (drawX <= -width_f || drawX >= width_f)
-                {
-                    continue;
-                }
+                if (drawX <= -width_f || drawX >= width_f) continue;
 
                 if (p == 0)
                 {
-                    renderPage0(target, w, h, drawX);
+                    renderPage0(target, w, h, drawX, remCount, ideaCount, qCount, taskCount, memCount);
                 }
                 else
                 {
@@ -696,26 +807,19 @@ namespace VOXA
                 }
             }
 
-            // 6. Draw page dot indicators (stays static at bottom center)
-            int dotActive = (int)round(m_scrollOffset / width_f);
-            dotActive = std::max(0, std::min(1, dotActive));
-            ScreenCommon::renderPageDots(target, dotActive, 2, w, h);
-
-            // 6b. Process & Render Quick Panel Overlay (Pull-Down Control Center)
+            // Quick Panel Overlay
             ScreenId qpNav = QuickPanel::instance().process(touch, target, w, h);
             if (qpNav != ScreenId::Home)
             {
                 targetScreen = qpNav;
             }
 
-
-            // 7. Push render buffer sprite to screen
-
+            // Push render buffer sprite to screen
             if (useSprite)
             {
-                if (entryFrame < 10)
+                if (entryFrame < 6)
                 {
-                    VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Home), entryFrame, 10);
+                    VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Home), entryFrame, 6);
                     entryFrame++;
                 }
                 else
@@ -724,7 +828,6 @@ namespace VOXA
                 }
             }
 
-            // Throttle to roughly 60 FPS
             uint32_t frameMs = millis() - nowMs;
             if (frameMs < 16)
             {
@@ -732,7 +835,6 @@ namespace VOXA
             }
         }
 
-        // Free sprite memory before navigating so the next screen can allocate its own.
         if (useSprite)
         {
             canvas.deleteSprite();

@@ -20,7 +20,8 @@ namespace VOXA
         ScreenId show(Touch& touch);
 
     private:
-        void renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX);
+        void renderPage0(LovyanGFX& canvas, uint16_t w, uint16_t h, float offsetX,
+                         int remCount, int ideaCount, int qCount, int taskCount, int memCount);
 
         void renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h,
                          int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX);
@@ -34,7 +35,7 @@ namespace VOXA
 
         // ── Animation ───────────────────────────────────────────────────
         float m_elapsed { 0.0f };
-        int   m_page    { 0 };    // 0 = Assistant Home, 1 = Menu list
+        int   m_page    { 0 };    // 0 = Dashboard Hub, 1 = Radial Menu
 
         // ── Swipe & horizontal page transition ───────────────────────────
         bool  m_isDragging   { false };
@@ -43,11 +44,12 @@ namespace VOXA
         float m_swipeOffset  { 0.0f };
         float m_scrollOffset { 0.0f };
 
-        // ── Menu vertical scroll ─────────────────────────────────────────
-        bool     m_isScrollDragging    { false };
-        float    m_menuScrollY         { 0.0f };
-        float    m_menuTargetScrollY   { 0.0f };
-        float    m_scrollVelocity      { 0.0f };
+        // ── One-Handed Radial Thumb Arc Menu ─────────────────────────────
+        bool     m_isRadialDragging    { false };
+        float    m_radialAngle         { 0.0f };
+        float    m_targetRadialAngle   { 0.0f };
+        float    m_radialVelocity      { 0.0f };
+        int      m_activeAppIndex      { 0 };
         float    m_lastDragX           { 0.0f };
         float    m_lastDragY           { 0.0f };
         uint32_t m_lastTouchSampleMs   { 0 };
@@ -61,13 +63,11 @@ namespace VOXA
 
         // ── Touch feedback ───────────────────────────────────────────────
         int  m_pressedItemIndex  { -1 };
-        bool m_isMicPressed      { false };
-        bool m_isChevronPressed  { false };
+        int  m_pressedCardIndex  { -1 };
+        bool m_isLaunchPressed   { false };
         bool m_isBackPressed     { false };
-        bool m_isRotatePressed   { false };
         bool m_wasTouched        { false };
     };
 }
-
 
 #endif // VOXA_HOMESCREEN_H

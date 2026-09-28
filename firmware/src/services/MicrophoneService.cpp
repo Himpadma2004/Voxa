@@ -174,11 +174,15 @@ namespace VOXA
             }
         }
 
-        m_bufferOffset = 0;
-        m_startMs      = nowMs;
-        m_durationMs   = 0;
-        m_recordedAt   = timeService.getISO8601Time();
-        m_recording    = true;
+        m_bufferOffset  = 0;
+        m_startMs       = nowMs;
+        m_durationMs    = 0;
+        m_accumulatedMs = 0;
+        m_lastResumeMs  = nowMs;
+        m_paused        = false;
+        m_lastDb        = -14;
+        m_recordedAt    = timeService.getISO8601Time();
+        m_recording     = true;
 
         setState(RecordingState::Recording, caller);
 
@@ -198,6 +202,55 @@ namespace VOXA
     }
 
     // -----------------------------------------------------------------------
+    // pauseRecording() / resumeRecording() / cancelRecording()
+    // -----------------------------------------------------------------------
+
+    bool MicrophoneService::pauseRecording(const char* caller)
+    {
+        if (m_recording && !m_paused)
+        {
+            uint32_t nowMs = millis();
+            m_accumulatedMs += (nowMs - m_lastResumeMs);
+            m_paused = true;
+            Serial.printf("[MicrophoneService] Recording PAUSED (caller: %s, accumulated: %u ms)\n",
+                          caller, (unsigned)m_accumulatedMs);
+            return true;
+        }
+        return false;
+    }
+
+    bool MicrophoneService::resumeRecording(const char* caller)
+    {
+        if (m_recording && m_paused)
+        {
+            m_lastResumeMs = millis();
+            m_paused = false;
+            Serial.printf("[MicrophoneService] Recording RESUMED (caller: %s)\n", caller);
+            return true;
+        }
+        return false;
+    }
+
+    bool MicrophoneService::cancelRecording(const char* caller)
+    {
+        Serial.printf("[MicrophoneService] cancelRecording() caller: %s\n", caller);
+        m_recording     = false;
+        m_paused        = false;
+        m_durationMs    = 0;
+        m_accumulatedMs = 0;
+
+        if (m_taskHandle != nullptr)
+        {
+            vTaskDelay(pdMS_TO_TICKS(120));
+            m_taskHandle = nullptr;
+        }
+
+        m_bufferOffset = 0;
+        setState(RecordingState::Idle, caller);
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
     // stopRecording() — stop I2S capture, build WAV, upload to cloud
     // -----------------------------------------------------------------------
 
@@ -213,8 +266,14 @@ namespace VOXA
             return false;
         }
 
+        if (m_recording && !m_paused)
+        {
+            m_accumulatedMs += (nowMs - m_lastResumeMs);
+        }
+
         m_recording  = false;
-        m_durationMs = nowMs - m_startMs;
+        m_paused     = false;
+        m_durationMs = m_accumulatedMs;
 
         setState(RecordingState::Stopping, caller);
 
@@ -237,34 +296,16 @@ namespace VOXA
                       pcmDataSize, m_durationMs, m_recordedAt.c_str());
 
         // ── Build complete WAV = 44-byte header + PCM in a heap buffer ────────
-        // We keep the PCM in PSRAM and prepend a small stack header copy.
-        // This avoids doubling PSRAM by allocating a fresh combined buffer —
-        // instead we pass header + data as two segments via sendRequest overload.
-        // For simplicity we use a single combined alloc from internal DRAM
-        // (header = 44 bytes) + a reference to PSRAM for the body.
-        // HTTPClient::POST(buf, len) requires a contiguous buffer, so we build
-        // a 44-byte header, write it, then stream the PSRAM in chunks.
-        // Simpler: allocate header only; use http.sendRequest with stream pointer.
-        // Current approach: build WAV header in stack, post header + PSRAM.
-
         constexpr size_t kHeaderSize = 44;
         uint8_t header[kHeaderSize];
         buildWavHeader(header, pcmDataSize);
 
         setState(RecordingState::Uploading, caller);
 
-        // Build a single contiguous WAV buffer if internal DRAM can hold header
-        // (44 bytes always fine), then POST it along with PSRAM PCM data.
-        // Since HTTPClient::POST(uint8_t*, size_t) needs one contiguous buffer
-        // and PCM is in PSRAM, we allocate a tiny header-only heap buf and
-        // stream via a combined in-heap buffer only when data fits in DRAM.
-        // For cloud upload we always have the PSRAM buffer available;
-        // create a combined PSRAM-backed WAV: copy header to start of a fresh alloc.
         size_t totalWavSize = kHeaderSize + pcmDataSize;
         uint8_t* wavBuf = (uint8_t*)heap_caps_malloc(totalWavSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (!wavBuf)
         {
-            // PSRAM full — try internal DRAM for smaller recordings
             wavBuf = (uint8_t*)malloc(totalWavSize);
         }
 
@@ -282,7 +323,7 @@ namespace VOXA
 
             if (res.success)
             {
-                m_lastAudioId = res.text; // audio_id from backend JSON
+                m_lastAudioId = res.text;
                 Serial.printf("[MicrophoneService] Cloud upload SUCCESS — audio_id: %s\n",
                               m_lastAudioId.c_str());
                 uploadOk = true;
@@ -297,7 +338,6 @@ namespace VOXA
             Serial.println("[MicrophoneService] ERROR: Could not allocate WAV buffer for upload!");
         }
 
-        // Clear buffer so duplicate stopRecording() calls exit early
         m_bufferOffset = 0;
         setState(RecordingState::Idle, caller);
         return uploadOk;
@@ -305,12 +345,16 @@ namespace VOXA
 
     uint32_t MicrophoneService::getDurationMs() const
     {
-        if (m_recording) return millis() - m_startMs;
+        if (m_recording)
+        {
+            if (m_paused) return m_accumulatedMs;
+            return m_accumulatedMs + (millis() - m_lastResumeMs);
+        }
         return m_durationMs;
     }
 
     // -----------------------------------------------------------------------
-    // recordTask() — I2S read loop (unchanged)
+    // recordTask() — I2S read loop with dynamic level measurement
     // -----------------------------------------------------------------------
 
     void MicrophoneService::recordTask()
@@ -338,37 +382,48 @@ namespace VOXA
             {
                 totalBytesRead += bytesRead;
 
-                if (totalReads == 1 || totalReads % 100 == 0)
-                    Serial.printf("[MicrophoneService] i2s_read: %u bytes (total: %u, offset: %u)\n",
-                                  (unsigned)bytesRead, (unsigned)totalBytesRead,
-                                  (unsigned)m_bufferOffset);
-
                 int totalSlots = bytesRead / sizeof(int32_t);
                 int stereoPairs = totalSlots / 2;
+                int32_t maxSample = 0;
+
                 for (int i = 0; i < stereoPairs; i++)
                 {
                     int32_t leftSample  = rawBuffer[i * 2];
                     int32_t rightSample = rawBuffer[i * 2 + 1];
-                    // Extract the genuine mic signal (avoids alternating tri-state bus noise)
                     int32_t rawVal = (std::abs(leftSample) >= std::abs(rightSample)) ? leftSample : rightSample;
-                    int32_t sample = rawVal >> 14;  // Clean 24-to-16-bit vocal conversion
+                    int32_t sample = rawVal >> 14;
                     if (sample >  32767) sample =  32767;
                     if (sample < -32768) sample = -32768;
                     pcmBuffer[i] = (int16_t)sample;
+
+                    int32_t absS = std::abs(sample);
+                    if (absS > maxSample) maxSample = absS;
                 }
 
-                size_t chunkBytes = stereoPairs * sizeof(int16_t);
-                if (m_bufferOffset + chunkBytes <= m_allocatedBufferSize)
+                if (maxSample > 0)
                 {
-                    memcpy(m_psramBuffer + m_bufferOffset, pcmBuffer, chunkBytes);
-                    m_bufferOffset += chunkBytes;
+                    float ratio = (float)maxSample / 32768.0f;
+                    int db = (int)(20.0f * std::log10(ratio));
+                    if (db < -60) db = -60;
+                    if (db > 0) db = 0;
+                    m_lastDb = db;
                 }
-                else
+
+                if (!m_paused)
                 {
-                    exitReason = "Buffer limit reached";
-                    Serial.println("[MicrophoneService] PSRAM buffer full — auto-stopping.");
-                    m_recording = false;
-                    break;
+                    size_t chunkBytes = stereoPairs * sizeof(int16_t);
+                    if (m_bufferOffset + chunkBytes <= m_allocatedBufferSize)
+                    {
+                        memcpy(m_psramBuffer + m_bufferOffset, pcmBuffer, chunkBytes);
+                        m_bufferOffset += chunkBytes;
+                    }
+                    else
+                    {
+                        exitReason = "Buffer limit reached";
+                        Serial.println("[MicrophoneService] PSRAM buffer full — auto-stopping.");
+                        m_recording = false;
+                        break;
+                    }
                 }
             }
             else if (err != ESP_OK)

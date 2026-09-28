@@ -2,10 +2,12 @@
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../services/RecordingService.h"
+#include "../services/TimeService.h"
 #include "Transition.h"
 #include "AudioPlayerScreen.h"
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 namespace VOXA
 {
@@ -31,11 +33,10 @@ namespace VOXA
 
         ScreenId targetScreen = ScreenId::RecordingsLibrary;
         uint32_t lastMs = millis();
+        int activeTab = 0; // 0: All, 1: Star, 2: Meet, 3: Memo
+        bool isRecTriggerPressed = false;
 
         auto recordings = recordingService.getAll();
-        float contentHeight = recordings.size() * 50.0f + 10.0f;
-        float visibleHeight = h - 70.0f - 18.0f;
-        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
         uint32_t lastDataRefreshMs = millis();
 
         while (targetScreen == ScreenId::RecordingsLibrary)
@@ -44,16 +45,25 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            // Only refresh data every 2 seconds or after deletion (not every 16ms frame)
             if (nowMs - lastDataRefreshMs > 2000)
             {
                 recordings = recordingService.getAll();
-                contentHeight = recordings.size() * 50.0f + 10.0f;
-                maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
                 lastDataRefreshMs = nowMs;
             }
 
-            // 1. Process Touch
+            int totalCount = recordings.size();
+
+            std::vector<Recording> items;
+            for (const auto& rec : recordings)
+            {
+                items.push_back(rec);
+            }
+
+            float contentHeight = items.size() * 56.0f + 10.0f;
+            float visibleHeight = 190.0f;
+            float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+
+            // Process Touch
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
 
@@ -74,93 +84,45 @@ namespace VOXA
                     m_isDragging = false;
                     m_scrollVelocity = 0.0f;
 
-                    // If deletion dialog is NOT active
-                    if (m_selectedDeleteIndex == -1)
+                    // Back button / Top left "< Hub"
+                    if (tx <= 65 && ty <= 46)
                     {
-                        // Back button bounds Y = 45
-                        if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
-                        {
-                            m_isBackPressed = true;
-                        }
-
-                        // Card checks
-                        if (ty >= 70.0f && ty <= (h - 18.0f))
-                        {
-                            float leftX = w * 0.04f;
-                            float cardW = w * 0.92f;
-                            for (std::size_t i = 0; i < recordings.size(); ++i)
-                            {
-                                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                                if (tx >= leftX && tx <= (leftX + cardW) &&
-                                    ty >= itemY && ty <= (itemY + 44.0f))
-                                {
-                                    m_pressedItemIndex = (int)i;
-                                }
-                            }
-                        }
+                        m_isBackPressed = true;
                     }
-                    else
+
+                    // Tab bar touch (Y = 46 to 68)
+                    if (ty >= 46 && ty <= 68)
                     {
-                        // Deletion dialog is active
-                        float cardW = w * 0.88f;
-                        float cardH = 90.0f;
-                        float cardX = w * 0.06f;
-                        float cardY = h * 0.55f;
+                        float tabW = (w - 20.0f) / 4.0f;
+                        if (tx >= 10 && tx < 10 + tabW) activeTab = 0;
+                        else if (tx >= 10 + tabW && tx < 10 + 2 * tabW) activeTab = 1;
+                        else if (tx >= 10 + 2 * tabW && tx < 10 + 3 * tabW) activeTab = 2;
+                        else if (tx >= 10 + 3 * tabW && tx <= w - 10) activeTab = 3;
+                        m_targetScrollY = 0.0f;
+                        m_scrollY = 0.0f;
+                    }
 
-                        // Confirm button bounds: right side
-                        float yesX = cardX + cardW * 0.55f;
-                        float yesY = cardY + 50.0f;
-                        if (tx >= yesX && tx <= (yesX + cardW * 0.38f) &&
-                            ty >= yesY && ty <= (yesY + 28.0f))
-                        {
-                            m_isConfirmDeletePressed = true;
-                        }
+                    // Bottom Action Button touch (Y >= 268) -> Record Screen
+                    if (ty >= 268 && ty <= 310 && tx >= 10 && tx <= w - 10)
+                    {
+                        isRecTriggerPressed = true;
+                    }
 
-                        // Cancel button bounds: left side
-                        float noX = cardX + cardW * 0.07f;
-                        float noY = cardY + 50.0f;
-                        if (tx >= noX && tx <= (noX + cardW * 0.38f) &&
-                            ty >= noY && ty <= (noY + 28.0f))
+                    // Card checks
+                    if (ty >= 72 && ty <= 264)
+                    {
+                        for (std::size_t i = 0; i < items.size(); ++i)
                         {
-                            m_isCancelDeletePressed = true;
+                            float itemY = 74.0f + i * 56.0f - m_scrollY;
+                            if (tx >= 10 && tx <= (w - 10) && ty >= itemY && ty <= (itemY + 50.0f))
+                            {
+                                m_pressedItemIndex = (int)i;
+                            }
                         }
                     }
                 }
                 else
                 {
-                    // Dragging & scrolling
-                    if (m_selectedDeleteIndex == -1)
-                    {
-                        float dy = ty - m_dragStartY;
-                        if (!m_isDragging && std::abs(dy) > 5.0f)
-                        {
-                            m_isDragging = true;
-                            m_pressedItemIndex = -1;
-                            m_isBackPressed = false;
-                        }
-
-                        if (m_isDragging)
-                        {
-                            m_targetScrollY = m_dragStartScrollY - dy;
-                            if (m_targetScrollY < -20.0f) m_targetScrollY = -20.0f + (m_targetScrollY + 20.0f) * 0.3f;
-                            if (m_targetScrollY > maxScrollY + 20.0f) m_targetScrollY = maxScrollY + 20.0f + (m_targetScrollY - maxScrollY - 20.0f) * 0.3f;
-
-                            uint32_t dt = nowMs - m_lastTouchSampleMs;
-                            if (dt > 0)
-                            {
-                                m_scrollVelocity = -dy / (dt / 1000.0f);
-                                m_lastTouchSampleMs = nowMs;
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if (m_wasTouched)
-                {
-                    m_wasTouched = false;
-                    
                     float dx = tx - dragStartX;
                     float dyLocal = ty - dragStartY;
                     if (swipeBackCandidate && dx > 60 && std::abs(dyLocal) < 40)
@@ -169,176 +131,189 @@ namespace VOXA
                         swipeBackCandidate = false;
                     }
 
-                    if (m_isBackPressed)
+                    float dy = ty - m_dragStartY;
+                    if (!m_isDragging && std::abs(dy) > 10.0f)
                     {
-                        targetScreen = ScreenId::Home;
+                        m_isDragging = true;
                         m_isBackPressed = false;
-                    }
-
-                    if (m_pressedItemIndex != -1)
-                    {
-                        if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)recordings.size())
-                        {
-                            AudioPlayerScreen::setRecording(recordings[m_pressedItemIndex].id, ScreenId::RecordingsLibrary);
-                            targetScreen = ScreenId::AudioPlayer;
-                        }
+                        isRecTriggerPressed = false;
                         m_pressedItemIndex = -1;
                     }
 
-                    if (m_isConfirmDeletePressed)
+                    if (m_isDragging)
                     {
-                        m_isConfirmDeletePressed = false;
-                        if (m_selectedDeleteIndex >= 0 && m_selectedDeleteIndex < (int)recordings.size())
+                        m_targetScrollY = m_dragStartScrollY - dy;
+                        m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
+
+                        uint32_t dt = nowMs - m_lastTouchSampleMs;
+                        if (dt > 0)
                         {
-                            recordingService.remove(recordings[m_selectedDeleteIndex].id);
-                            recordings = recordingService.getAll();
-                            contentHeight = recordings.size() * 50.0f + 10.0f;
-                            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+                            m_scrollVelocity = -dy / (dt / 1000.0f);
                         }
-                        m_selectedDeleteIndex = -1;
-                    }
-
-                    if (m_isCancelDeletePressed)
-                    {
-                        m_isCancelDeletePressed = false;
-                        m_selectedDeleteIndex = -1;
+                        m_lastTouchSampleMs = nowMs;
                     }
                 }
-
-                // Scroll rebound inertia physics
-                if (m_selectedDeleteIndex == -1)
-                {
-                    if (m_targetScrollY < 0.0f)
-                    {
-                        m_targetScrollY += (0.0f - m_targetScrollY) * 12.0f * deltaSecs;
-                    }
-                    else if (m_targetScrollY > maxScrollY)
-                    {
-                        m_targetScrollY += (maxScrollY - m_targetScrollY) * 12.0f * deltaSecs;
-                    }
-
-                    if (std::abs(m_scrollVelocity) > 0.0f)
-                    {
-                        m_targetScrollY += m_scrollVelocity * deltaSecs;
-                        m_scrollVelocity *= std::pow(0.88f, deltaSecs * 60.0f);
-                        if (std::abs(m_scrollVelocity) < 10.0f) m_scrollVelocity = 0.0f;
-                    }
-                }
-            }
-
-            m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
-
-            // Dimensions re-query
-            w = Display::width();
-            h = Display::height();
-
-            // 2. Render UI Surface
-            ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Voice Library", true, false, Icon::Mic, w, h);
-
-            // Render Back button
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-            uint16_t backColor = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
-                                              backFill, backColor, w, h);
-
-            float leftX = w * 0.04f;
-            float cardW = w * 0.92f;
-
-            canvas.setClipRect(0, 70, w, h - 70 - 18);
-
-            if (recordings.empty())
-            {
-                // Empty state card
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextColor(VoxaTheme::getTextSecondary());
-                canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.drawString("No Voice Recordings", w * 0.5f, h * 0.48f);
-                canvas.drawString("Hold physical button to record", w * 0.5f, h * 0.58f);
             }
             else
             {
-                for (std::size_t i = 0; i < recordings.size(); ++i)
+                if (m_wasTouched)
                 {
-                    float itemY = 72.0f + i * 50.0f - m_scrollY;
-                    if (itemY + 44.0f < 70.0f || itemY > (h - 18.0f))
-                        continue;
+                    m_wasTouched = false;
 
-                    bool isPressed = (m_pressedItemIndex == (int)i);
-                    ScreenCommon::drawGlassCard(canvas, leftX, itemY, cardW, 46.0f, 12.0f, isPressed, 0);
-
-                    uint16_t labelColor = isPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-                    uint16_t subColor = isPressed ? 0xFFFF : VoxaTheme::getTextSecondary();
-
-                    float cy = itemY + 23.0f;
-                    float iconX = leftX + 8.0f;
-                    float iconY = itemY + 8.0f;
-
-                    // iOS Squircle Badge
-                    bool isPending = (recordings[i].timestamp == "Pending");
-                    uint16_t badgeBg = isPending ? VoxaTheme::getSystemAmber() : VoxaTheme::getSystemRed();
-                    canvas.fillRoundRect((int)iconX, (int)iconY, 30, 30, 8, badgeBg);
-                    canvas.drawFastHLine((int)iconX + 6, (int)iconY + 1, 18, 0xFFFF);
-                    ScreenCommon::drawIcon(canvas, Icon::Mic, iconX + 5.0f, iconY + 5.0f, 20.0f, 0xFFFF);
-
-                    canvas.setFont(&fonts::FreeSansBold9pt7b);
-                    canvas.setTextDatum(textdatum_t::middle_left);
-                    canvas.setTextColor(labelColor);
-                    std::string titleStr = recordings[i].title;
-                    if (titleStr.length() > 14) titleStr = titleStr.substr(0, 12) + "...";
-                    canvas.drawString(titleStr.c_str(), leftX + 46.0f, cy - 8.0f);
-
-                    canvas.setFont(&fonts::FreeSans9pt7b);
-                    canvas.setTextColor(subColor);
-                    std::string timeStr = isPending ? "Pending sync" : recordings[i].timestamp;
-                    if (timeStr.length() > 18) timeStr = timeStr.substr(0, 16) + "...";
-                    canvas.drawString(timeStr.c_str(), leftX + 46.0f, cy + 8.0f);
-
-                    float chevX = leftX + cardW - 20.0f;
-                    ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 8.0f, 16.0f, subColor);
+                    if (m_isDragging)
+                    {
+                        m_isDragging = false;
+                    }
+                    else
+                    {
+                        if (m_isBackPressed)
+                        {
+                            targetScreen = ScreenId::Home;
+                        }
+                        else if (isRecTriggerPressed)
+                        {
+                            targetScreen = ScreenId::Record;
+                        }
+                        else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)items.size())
+                        {
+                            AudioPlayerScreen::setRecording(items[m_pressedItemIndex].id, ScreenId::RecordingsLibrary);
+                            targetScreen = ScreenId::AudioPlayer;
+                        }
+                    }
+                    m_isBackPressed = false;
+                    isRecTriggerPressed = false;
+                    m_pressedItemIndex = -1;
                 }
+            }
+
+            // Scroll Inertia
+            if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
+            {
+                m_targetScrollY += m_scrollVelocity * deltaSecs;
+                m_scrollVelocity *= std::pow(0.85f, deltaSecs * 60.0f);
+                if (std::abs(m_scrollVelocity) < 5.0f)
+                {
+                    m_scrollVelocity = 0.0f;
+                }
+            }
+
+            m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
+            m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
+            if (std::abs(m_targetScrollY - m_scrollY) < 0.1f)
+            {
+                m_scrollY = m_targetScrollY;
+            }
+
+            // Render Layout - Pure Pitch Black OLED
+            canvas.fillScreen(0x0000);
+
+            // 1. Top Status Bar (Y = 10)
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::top_left);
+            canvas.setTextColor(0xFFFF);
+            std::string timeStr = timeService.getCurrentTime();
+            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+            canvas.drawString(timeStr.c_str(), 12, 10);
+
+            canvas.setTextDatum(textdatum_t::top_right);
+            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.drawString("SD: 12.4GB", w - 20, 10);
+            // Flash bolt
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
+
+            // 2. Sub-Header (Y = 28)
+            canvas.setTextDatum(textdatum_t::middle_left);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextColor(0x94A3B8);
+            canvas.drawString("< Hub", 12, 34);
+
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextColor(0xFFFF);
+            char headerTitle[32];
+            snprintf(headerTitle, sizeof(headerTitle), "RECS (%d)", totalCount);
+            canvas.drawString(headerTitle, 56, 33);
+
+            // Sliders / list icon on right
+            uint16_t iconColor = 0xFDC0;
+            canvas.drawLine(w - 24, 28, w - 12, 28, iconColor);
+            canvas.drawLine(w - 24, 34, w - 15, 34, iconColor);
+            canvas.drawLine(w - 24, 40, w - 18, 40, iconColor);
+
+            // 3. Segmented Filter Tabs (Y = 48..68)
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            float tabW = (w - 20.0f) / 4.0f;
+
+            // Active Tab Pill
+            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
+
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_center);
+
+            const char* tabNames[] = { "All", "Star", "Meet", "Memo" };
+            for (int t = 0; t < 4; ++t)
+            {
+                canvas.setTextColor(activeTab == t ? 0x0000 : 0x888888);
+                canvas.drawString(tabNames[t], 10 + tabW * (t + 0.5f), 58);
+            }
+
+            // 4. Scrollable Card List (Y = 72..264)
+            canvas.setClipRect(0, 72, w, 194);
+
+            for (std::size_t i = 0; i < items.size(); ++i)
+            {
+                float itemY = 74.0f + i * 56.0f - m_scrollY;
+                if (itemY + 52.0f < 72.0f || itemY > 264.0f)
+                    continue;
+
+                bool isPressed = (m_pressedItemIndex == (int)i);
+
+                // Card container
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(34, 38, 48);
+                canvas.fillRoundRect(10, (int)itemY, w - 20, 50, 8, cardBg);
+                canvas.drawRoundRect(10, (int)itemY, w - 20, 50, 8, cardBorder);
+
+                // Line 1: Filename / Title
+                canvas.setFont(&fonts::Font0);
+                canvas.setTextDatum(textdatum_t::top_left);
+                canvas.setTextColor(0xFFFF);
+
+                std::string tTitle = items[i].title;
+                if (tTitle.find('.') == std::string::npos) tTitle += ".wav";
+                if (tTitle.length() > 22) tTitle = tTitle.substr(0, 20) + "..";
+                canvas.drawString(tTitle.c_str(), 18, (int)itemY + 10);
+
+                // Line 2: Meta / Duration / Status
+                canvas.setTextColor(0x94A3B8);
+                char metaBuf[48];
+                uint32_t dur = items[i].durationSeconds;
+                snprintf(metaBuf, sizeof(metaBuf), "%02d:%02d · 18.4MB · Today", dur / 60, dur % 60);
+                canvas.drawString(metaBuf, 18, (int)itemY + 26);
+
+                // Right Play Button Circle (Amber / Dark)
+                int playCx = w - 30;
+                int playCy = (int)itemY + 25;
+                canvas.drawCircle(playCx, playCy, 9, 0xFDC0);
+                canvas.fillTriangle(playCx - 2, playCy - 4, playCx + 4, playCy, playCx - 2, playCy + 4, 0xFDC0);
             }
 
             canvas.clearClipRect();
 
-            // 3. Render Deletion Modal overlay if selected
-            if (m_selectedDeleteIndex != -1)
-            {
-                // Darken / dim the background
-                canvas.fillScreen(canvas.color565(5, 3, 10));
+            // 5. Bottom Action Button (Y = 272..306)
+            uint16_t btnBg = isRecTriggerPressed ? 0xFFE0 : 0xFDC0;
+            canvas.fillRoundRect(10, 272, w - 20, 34, 17, btnBg);
 
-                float dW = w * 0.88f;
-                float dH = 95.0f;
-                float dX = w * 0.06f;
-                float dY = h * 0.50f;
+            // Black dot + + REC TRIGGER
+            canvas.fillCircle(w * 0.5f - 46, 289, 4, 0x0000);
 
-                canvas.fillRoundRect((int)dX, (int)dY, (int)dW, (int)dH, 12, VoxaTheme::getSurface());
-                canvas.drawRoundRect((int)dX, (int)dY, (int)dW, (int)dH, 12, VoxaTheme::getDivider());
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.setTextColor(0x0000);
+            canvas.drawString("+ REC TRIGGER", w * 0.5f + 6, 289);
 
-                canvas.setFont(&fonts::FreeSansBold12pt7b);
-                canvas.setTextDatum(textdatum_t::top_center);
-                canvas.setTextColor(TFT_WHITE);
-                canvas.drawString("Delete voice memo?", dX + dW*0.5f, dY + 12.0f);
-
-                // Cancel Button (grey)
-                uint16_t btnCancelCol = m_isCancelDeletePressed ? 0x5B5F : 0x2965;
-                float cancelX = dX + dW * 0.07f;
-                float cancelY = dY + 50.0f;
-                float btnW = dW * 0.38f;
-                canvas.fillRoundRect((int)cancelX, (int)cancelY, (int)btnW, 28, 6, btnCancelCol);
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.setTextColor(TFT_WHITE);
-                canvas.drawString("Cancel", cancelX + btnW*0.5f, cancelY + 14.0f);
-
-                // Delete Button (red)
-                uint16_t btnDelCol = m_isConfirmDeletePressed ? 0xF800 : 0xB800;
-                float delX = dX + dW * 0.55f;
-                float delY = dY + 50.0f;
-                canvas.fillRoundRect((int)delX, (int)delY, (int)btnW, 28, 6, btnDelCol);
-                canvas.drawString("Delete", delX + btnW*0.5f, delY + 14.0f);
-            }
-
+            // Screen Slide Transition or Direct push
             if (entryFrame < 10)
             {
                 VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::RecordingsLibrary), entryFrame, 10);

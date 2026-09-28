@@ -546,49 +546,67 @@ namespace VOXA
             m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
 
             // ── RENDERING ────────────────────────────────────────────────────
-            ScreenCommon::renderSurface(target, w, h);
+            target.fillScreen(0x0000);
 
             if (!m_showNowPlayingSheet)
             {
-                // 1. Navigation Header
-                ScreenCommon::renderHeader(target, "Voxa Music", true, true, Icon::Reset, w, h);
+                // 1. Top Status Bar (Y = 10)
+                target.setFont(&fonts::Font0);
+                target.setTextDatum(textdatum_t::top_left);
+                target.setTextColor(0xFFFF);
+                target.drawString("10:42", 12, 10);
 
-                // Back Button
-                uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-                uint16_t backCol = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-                ScreenCommon::renderCircularButton(target, 22.0f, 42.0f, Icon::Back, backFill, backCol, w, h);
+                target.setTextDatum(textdatum_t::top_right);
+                target.setTextColor(0xFDC0); // Amber tag
+                target.drawString("DAC 96K", w - 20, 10);
+                // Mini EQ bars on right
+                target.fillRect(w - 18, 14, 2, 6, 0xFDC0);
+                target.fillRect(w - 14, 11, 2, 9, 0xFDC0);
+                target.fillRect(w - 10, 15, 2, 5, 0xFDC0);
 
-                // Refresh Button
-                uint16_t refFill = m_isRefreshPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-                uint16_t refCol = m_isRefreshPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-                ScreenCommon::renderCircularButton(target, w - 22.0f, 42.0f, Icon::Reset, refFill, refCol, w, h);
+                // 2. Sub-Header (Y = 28)
+                target.setTextDatum(textdatum_t::middle_left);
+                target.setFont(&fonts::Font0);
+                target.setTextColor(0x94A3B8);
+                target.drawString("< Hub", 12, 34);
 
-                // 2. Category Tab Filter Pills (All / Hits / Cloud S3 / Search)
-                float tabY = 62.0f;
-                float tabH = 26.0f;
-                float tabW = (w - 16.0f) / 4.0f;
-                const char* tabNames[] = { "All", "Hits", "Cloud", "Search" };
+                target.setFont(&fonts::FreeSansBold9pt7b);
+                target.setTextColor(0xFFFF);
+                target.drawString("VOXA MUSIC", 56, 33);
+
+                // EQ icon on right
+                target.fillRect(w - 22, 28, 2, 12, 0xFDC0);
+                target.fillRect(w - 18, 24, 2, 16, 0xFDC0);
+                target.fillRect(w - 14, 30, 2, 10, 0xFDC0);
+
+                // 3. Segmented Category Tab Filter Pills (Y = 48..68)
+                target.fillRoundRect(10, 48, w - 20, 20, 5, target.color565(20, 22, 28));
+                float tabW = (w - 20.0f) / 4.0f;
+                const char* tabNames[] = { "Playlist", "Lossless", "Offline", "Search" };
+
+                int activeTabIdx = static_cast<int>(m_currentTab);
+                target.fillRoundRect(10 + activeTabIdx * tabW, 49, tabW, 18, 4, activeTabIdx == 0 ? 0xFFE8 : target.color565(36, 44, 58));
+
+                target.setFont(&fonts::Font0);
+                target.setTextDatum(textdatum_t::middle_center);
 
                 for (int t = 0; t < 4; ++t)
                 {
-                    float txPos = 8.0f + t * tabW;
-                    bool isSelected = (static_cast<int>(m_currentTab) == t);
-                    uint16_t tFill = isSelected ? VoxaTheme::getSystemPurple() : VoxaTheme::getGlassSurface();
-                    uint16_t tText = isSelected ? 0xFFFF : VoxaTheme::getTextSecondary();
-
-                    target.fillRoundRect((int)txPos, (int)tabY, (int)(tabW - 4.0f), (int)tabH, 8, tFill);
-                    target.drawRoundRect((int)txPos, (int)tabY, (int)(tabW - 4.0f), (int)tabH, 8, VoxaTheme::getGlassBorder());
-
-                    target.setFont(&fonts::Font0);
-                    target.setTextDatum(textdatum_t::middle_center);
-                    target.setTextColor(tText);
-                    target.drawString(tabNames[t], txPos + (tabW - 4.0f) * 0.5f, tabY + tabH * 0.5f);
+                    if (t == activeTabIdx)
+                    {
+                        target.setTextColor(t == 0 ? 0x0000 : 0xFFFF);
+                    }
+                    else
+                    {
+                        target.setTextColor(0x888888);
+                    }
+                    target.drawString(tabNames[t], 10 + tabW * (t + 0.5f), 58);
                 }
 
-                // 3. Track List & Search Chips
-                float leftX = w * 0.04f;
-                float cardW = w * 0.92f;
-                target.setClipRect(0, 92, w, h - 92 - (m_currentTrackIndex >= 0 ? 52 : 0));
+                // 4. Track List & Search Chips (Y = 72..264)
+                float leftX = 10.0f;
+                float cardW = w - 20.0f;
+                target.setClipRect(0, 72, w, 194);
 
                 // If on Search Tab, draw Quick Search Chips
                 if (m_currentTab == MusicTab::Search)
@@ -597,212 +615,197 @@ namespace VOXA
                     for (size_t c = 0; c < NUM_SEARCH_CHIPS; ++c)
                     {
                         float cx = 8.0f + (c % 2) * (chipW + 8.0f);
-                        float cy = 94.0f + (c / 2) * 32.0f - m_scrollY;
-                        if (cy + 28.0f < 92.0f || cy > h) continue;
+                        float cy = 74.0f + (c / 2) * 30.0f - m_scrollY;
+                        if (cy + 26.0f < 72.0f || cy > 264.0f) continue;
 
                         bool isP = (m_pressedSearchChipIdx == (int)c);
-                        target.fillRoundRect((int)cx, (int)cy, (int)chipW, 28, 8, isP ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface());
-                        target.drawRoundRect((int)cx, (int)cy, (int)chipW, 28, 8, VoxaTheme::getGlassBorder());
+                        target.fillRoundRect((int)cx, (int)cy, (int)chipW, 26, 6, isP ? 0xFDC0 : target.color565(24, 28, 36));
+                        target.drawRoundRect((int)cx, (int)cy, (int)chipW, 26, 6, target.color565(38, 44, 56));
 
                         target.setFont(&fonts::Font0);
                         target.setTextDatum(textdatum_t::middle_center);
-                        target.setTextColor(isP ? 0xFFFF : VoxaTheme::getTextPrimary());
-                        target.drawString(SEARCH_CHIPS[c], cx + chipW * 0.5f, cy + 14.0f);
-                    }
-
-                    if (m_isSearching)
-                    {
-                        target.setFont(&fonts::FreeSans9pt7b);
-                        target.setTextDatum(textdatum_t::middle_center);
-                        target.setTextColor(VoxaTheme::getSystemPurple());
-                        target.drawString("Searching full music catalog...", w * 0.5f, 240.0f - m_scrollY);
+                        target.setTextColor(isP ? 0x0000 : 0xFFFF);
+                        target.drawString(SEARCH_CHIPS[c], cx + chipW * 0.5f, cy + 13.0f);
                     }
                 }
 
                 // Render song list cards
-                float startListY = 94.0f + extraSearchChipsH;
+                float startListY = (m_currentTab == MusicTab::Search) ? 140.0f : 74.0f;
                 for (size_t i = 0; i < displayedTracks.size(); ++i)
                 {
-                    float itemY = startListY + i * 52.0f - m_scrollY;
-                    if (itemY + 46.0f < 92.0f || itemY > h) continue;
+                    float itemY = startListY + i * 56.0f - m_scrollY;
+                    if (itemY + 52.0f < 72.0f || itemY > 264.0f) continue;
 
                     bool isPressed = (m_pressedItemIndex == (int)i);
                     bool isCur = (m_currentTrackIndex == (int)i);
 
-                    ScreenCommon::drawGlassCard(target, leftX, itemY, cardW, 46.0f, 12.0f, 
-                                                isPressed, isCur ? VoxaTheme::getSystemPurple() : 0);
+                    uint16_t cardBg = isPressed ? target.color565(28, 32, 42) : target.color565(18, 20, 26);
+                    uint16_t cardBorder = isCur ? 0xFDC0 : target.color565(34, 38, 48);
 
-                    float cy = itemY + 23.0f;
-                    float iconX = leftX + 8.0f;
-                    float iconY = itemY + 8.0f;
-
-                    // Squircle Icon Badge
-                    uint16_t badgeCol = (displayedTracks[i].id.rfind("s3_", 0) == 0) 
-                        ? VoxaTheme::getSystemBlue() 
-                        : VoxaTheme::getSystemPurple();
-
-                    target.fillRoundRect((int)iconX, (int)iconY, 30, 30, 8, badgeCol);
-                    target.drawFastHLine((int)iconX + 6, (int)iconY + 1, 18, 0xFFFF);
-                    ScreenCommon::drawIcon(target, isCur ? Icon::Play : Icon::Note, iconX + 5.0f, iconY + 5.0f, 20.0f, 0xFFFF);
+                    target.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 50, 8, cardBg);
+                    target.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 50, 8, cardBorder);
 
                     // Track Title
-                    target.setFont(&fonts::FreeSansBold9pt7b);
-                    target.setTextDatum(textdatum_t::middle_left);
-                    target.setTextColor(isPressed ? 0xFFFF : (isCur ? VoxaTheme::getSystemPurple() : VoxaTheme::getTextPrimary()));
+                    target.setFont(&fonts::Font0);
+                    target.setTextDatum(textdatum_t::top_left);
+                    target.setTextColor(0xFFFF);
                     std::string titleStr = displayedTracks[i].title;
-                    if (titleStr.length() > 14) titleStr = titleStr.substr(0, 12) + "...";
-                    target.drawString(titleStr.c_str(), leftX + 46.0f, cy - 8.0f);
+                    if (titleStr.length() > 22) titleStr = titleStr.substr(0, 20) + "..";
+                    target.drawString(titleStr.c_str(), leftX + 12.0f, itemY + 10.0f);
 
-                    // Track Artist & Formatted Full Duration (e.g. 4:33)
-                    int dMin = displayedTracks[i].durationSecs / 60;
-                    int dSec = displayedTracks[i].durationSecs % 60;
-                    char durBuf[16];
-                    snprintf(durBuf, sizeof(durBuf), "%d:%02d", dMin, dSec);
+                    // Track Subtitle / Artist / Specs
+                    target.setTextColor(0x94A3B8);
+                    std::string sub = displayedTracks[i].artist + " · FLAC Lossless";
+                    if (sub.length() > 24) sub = sub.substr(0, 22) + "..";
+                    target.drawString(sub.c_str(), leftX + 12.0f, itemY + 26.0f);
 
-                    target.setFont(&fonts::FreeSans9pt7b);
-                    target.setTextColor(isPressed ? 0xFFFF : VoxaTheme::getTextSecondary());
-                    std::string sub = displayedTracks[i].artist + " * " + durBuf;
-                    if (sub.length() > 18) sub = sub.substr(0, 16) + "...";
-                    target.drawString(sub.c_str(), leftX + 46.0f, cy + 8.0f);
-
-                    // Right Play arrow
-                    float chevX = leftX + cardW - 18.0f;
-                    ScreenCommon::drawIcon(target, Icon::ChevronRight, chevX - 5.0f, cy - 8.0f, 16.0f, VoxaTheme::getTextSecondary());
+                    // Right EQ / Disc Icon
+                    if (isCur && m_isPlaying)
+                    {
+                        // Animated orange EQ bars
+                        for (int b = 0; b < 3; ++b)
+                        {
+                            int barH = 6 + (int)(std::abs(std::sin(m_animTime * 6.0f + b * 1.5f)) * 14.0f);
+                            target.fillRect((int)(leftX + cardW - 24.0f + b * 5.0f), (int)(itemY + 25.0f - barH * 0.5f), 3, barH, 0xFDC0);
+                        }
+                    }
+                    else
+                    {
+                        // Disc circle
+                        target.drawCircle((int)(leftX + cardW - 16.0f), (int)(itemY + 25.0f), 7, target.color565(60, 68, 84));
+                        target.drawCircle((int)(leftX + cardW - 16.0f), (int)(itemY + 25.0f), 2, target.color565(80, 90, 110));
+                    }
                 }
 
                 target.clearClipRect();
 
-                // 4. Floating Bottom Mini-Player Bar
-                if (m_currentTrackIndex >= 0 && m_currentTrackIndex < (int)displayedTracks.size())
-                {
-                    float barY = h - 50.0f;
-                    ScreenCommon::drawGlassCard(target, leftX, barY, cardW, 44.0f, 14.0f, false, 0);
+                // 5. Floating Bottom Mini-Player Bar (Y = 270..306)
+                float barY = 270.0f;
+                target.fillRoundRect((int)leftX, (int)barY, (int)cardW, 36, 6, target.color565(22, 24, 30));
+                target.drawRoundRect((int)leftX, (int)barY, (int)cardW, 36, 6, target.color565(40, 44, 56));
 
-                    // Mini animated equalizer bars on left
-                    for (int b = 0; b < 3; ++b)
-                    {
-                        float barH = m_isPlaying ? (6.0f + std::abs(std::sin(m_animTime * 4.0f + b * 1.5f)) * 12.0f) : 6.0f;
-                        target.fillRoundRect((int)(leftX + 14.0f + b * 6.0f), (int)(barY + 22.0f - barH * 0.5f), 3, (int)barH, 1, VoxaTheme::getSystemPurple());
-                    }
+                // Progress line
+                target.fillRect((int)leftX + 4, (int)barY + 2, 40, 2, 0xFDC0);
 
-                    // Playing track title
-                    target.setFont(&fonts::FreeSansBold9pt7b);
-                    target.setTextDatum(textdatum_t::middle_left);
-                    target.setTextColor(VoxaTheme::getTextPrimary());
-                    std::string mTitle = displayedTracks[m_currentTrackIndex].title;
-                    if (mTitle.length() > 13) mTitle = mTitle.substr(0, 11) + "...";
-                    target.drawString(mTitle.c_str(), leftX + 38.0f, barY + 22.0f);
+                // Play triangle + timestamp
+                target.fillTriangle((int)leftX + 10, (int)barY + 14, (int)leftX + 10, (int)barY + 24, (int)leftX + 18, (int)barY + 19, 0xFDC0);
 
-                    // Play/Pause button on right
-                    float ppX = leftX + cardW - 32.0f;
-                    target.fillCircle((int)ppX, (int)(barY + 22.0f), 14, VoxaTheme::getSystemPurple());
-                    ScreenCommon::drawIcon(target, m_isPlaying ? Icon::Pause : Icon::Play, ppX - 8.0f, barY + 14.0f, 16.0f, 0xFFFF);
-                }
+                target.setFont(&fonts::Font0);
+                target.setTextDatum(textdatum_t::middle_left);
+                target.setTextColor(0xFFFF);
+                target.drawString("03:42 / 12:00", leftX + 24.0f, barY + 19.0f);
+
+                // "24-BIT" tag on right
+                target.setTextDatum(textdatum_t::middle_right);
+                target.setTextColor(0xFDC0);
+                target.drawString("24-BIT", leftX + cardW - 10.0f, barY + 19.0f);
             }
             else
             {
-                // ── NOW PLAYING SHEET (iOS 26 Liquid Glass Music Player) ──────
-                float sheetY = 16.0f;
-                float sheetH = h - 22.0f;
-                float cardW = w * 0.94f;
-                float cardX = (w - cardW) * 0.5f;
+                // ── NOW PLAYING SHEET (Minimal Lossless DAC Player) ─────────
+                target.fillScreen(0x0000);
 
-                ScreenCommon::drawGlassCard(target, cardX, sheetY, cardW, sheetH, 20.0f, false, 0);
-
-                // Top Dismiss Grabber
-                float grabW = 36.0f;
-                target.fillRoundRect((int)(w * 0.5f - grabW * 0.5f), (int)(sheetY + 8.0f), (int)grabW, 4, 2, VoxaTheme::getDivider());
-
+                // 1. Top Header (Y = 16)
                 target.setFont(&fonts::Font0);
-                target.setTextDatum(textdatum_t::middle_center);
-                target.setTextColor(VoxaTheme::getTextSecondary());
-                target.drawString("NOW PLAYING", w * 0.5f, sheetY + 24.0f);
+                target.setTextDatum(textdatum_t::top_left);
+                target.setTextColor(target.color565(140, 155, 175));
+                target.drawString("LOSSLESS  DAC", 16.0f, 16.0f);
 
-                // Dynamic Audio Spectrum Visualizer (7 Dancing Chromatic Glass Bars)
-                float specY = sheetY + 95.0f;
-                float barSpacing = 16.0f;
-                float startX = w * 0.5f - 3.0f * barSpacing;
+                target.setTextDatum(textdatum_t::top_right);
+                target.setTextColor(target.color565(115, 185, 235));
+                target.drawString("96kHz", w - 16.0f, 16.0f);
 
-                for (int b = 0; b < 7; ++b)
+                // 2. Center Waveform Capsule Card (Y = 88)
+                int cardW = 76;
+                int cardH = 76;
+                int cardX = (w - cardW) / 2;
+                int cardY = 88;
+
+                target.fillRoundRect(cardX, cardY, cardW, cardH, 16, target.color565(26, 30, 42));
+                target.drawRoundRect(cardX, cardY, cardW, cardH, 16, target.color565(38, 44, 58));
+
+                int cardCx = cardX + cardW / 2;
+                int cardCy = cardY + cardH / 2;
+
+                const float barOffsets[5] = { -16.0f, -8.0f, 0.0f, 8.0f, 16.0f };
+                const float barBaseH[5]   = { 12.0f,  20.0f,  30.0f, 20.0f, 12.0f };
+                const float barW_px       = 3.5f;
+
+                for (int i = 0; i < 5; ++i)
                 {
-                    float barVal = m_isPlaying 
-                        ? (12.0f + std::abs(std::sin(m_animTime * 5.0f + b * 1.2f)) * 52.0f)
-                        : 10.0f;
-                    
-                    uint16_t bCol = (b % 3 == 0) ? VoxaTheme::getSystemPurple() 
-                                  : ((b % 3 == 1) ? VoxaTheme::getSystemBlue() : VoxaTheme::getPrimary());
-                    
-                    target.fillRoundRect((int)(startX + b * barSpacing - 4.0f), (int)(specY - barVal * 0.5f), 8, (int)barVal, 4, bCol);
-                    target.drawFastHLine((int)(startX + b * barSpacing - 2.0f), (int)(specY - barVal * 0.5f + 1.0f), 4, 0xFFFF);
+                    float bx = cardCx + barOffsets[i];
+                    float animScale = 1.0f;
+                    if (m_isPlaying)
+                    {
+                        float waveAnim = std::sin(m_animTime * 10.0f + i * 1.2f);
+                        animScale = 0.55f + 0.45f * waveAnim;
+                    }
+                    else
+                    {
+                        animScale = 0.65f;
+                    }
+
+                    float bh = std::max(6.0f, barBaseH[i] * animScale);
+                    float by = cardCy - bh * 0.5f;
+                    target.fillRoundRect((int)(bx - barW_px * 0.5f), (int)by, (int)barW_px, (int)bh, 1, 0xFFFF);
                 }
 
-                // Centered Track Info
+                // 3. Filename / Title (Y = 186)
                 if (m_currentTrackIndex >= 0 && m_currentTrackIndex < (int)displayedTracks.size())
                 {
                     const auto& curT = displayedTracks[m_currentTrackIndex];
 
-                    target.setFont(&fonts::FreeSansBold12pt7b);
+                    target.setFont(&fonts::FreeSansBold9pt7b);
                     target.setTextDatum(textdatum_t::middle_center);
-                    target.setTextColor(VoxaTheme::getTextPrimary());
-                    target.drawString(curT.title.c_str(), w * 0.5f, sheetY + 158.0f);
-
-                    target.setFont(&fonts::FreeSans9pt7b);
-                    target.setTextColor(VoxaTheme::getTextSecondary());
-                    target.drawString(curT.artist.c_str(), w * 0.5f, sheetY + 180.0f);
-
-                    // Timeline Progress Bar
-                    float barX = cardX + 18.0f;
-                    float barW = cardW - 36.0f;
-                    float progY = sheetY + 208.0f;
-
-                    uint32_t elapsedMs = m_isPlaying ? (nowMs - m_trackStartMs) : 0;
-                    float pct = std::min(1.0f, (float)elapsedMs / (float)m_trackDurationMs);
-                    if (elapsedMs >= m_trackDurationMs && m_isPlaying)
-                    {
-                        nextTrack();
-                    }
-
-                    // Progress Track
-                    target.fillRoundRect((int)barX, (int)progY, (int)barW, 4, 2, VoxaTheme::getDivider());
-                    target.fillRoundRect((int)barX, (int)progY, (int)(barW * pct), 4, 2, VoxaTheme::getSystemPurple());
-                    target.fillCircle((int)(barX + barW * pct), (int)(progY + 2.0f), 4, 0xFFFF);
-
-                    // Full Song Timestamps (e.g. "1:45" / "4:33")
-                    int elapsedMin = (elapsedMs / 1000) / 60;
-                    int elapsedSec = (elapsedMs / 1000) % 60;
-                    int totalMin = (m_trackDurationMs / 1000) / 60;
-                    int totalSec = (m_trackDurationMs / 1000) % 60;
-
-                    char timeBuf[16];
-                    snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", elapsedMin, elapsedSec);
-                    target.setFont(&fonts::Font0);
-                    target.setTextDatum(textdatum_t::top_left);
-                    target.setTextColor(VoxaTheme::getTextSecondary());
-                    target.drawString(timeBuf, barX, progY + 8.0f);
-
-                    snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", totalMin, totalSec);
-                    target.setTextDatum(textdatum_t::top_right);
-                    target.drawString(timeBuf, barX + barW, progY + 8.0f);
+                    target.setTextColor(0xFFFF);
+                    std::string mTitle = curT.title;
+                    if (mTitle.find('.') == std::string::npos) mTitle += ".wav";
+                    if (mTitle.length() > 22) mTitle = mTitle.substr(0, 20) + "..";
+                    target.drawString(mTitle.c_str(), w * 0.5f, 186.0f);
                 }
 
-                // Controls (Prev, Play/Pause, Next)
-                float ctlY = sheetY + 248.0f;
+                // 4. Progress Bar (Y = 216)
+                float progY = 216.0f;
+                float barStartX = 16.0f;
+                float barW = w - 32.0f;
+                target.fillRoundRect((int)barStartX, (int)progY, (int)barW, 4, 2, target.color565(36, 42, 54));
 
-                // Previous Button
-                target.fillCircle(44, (int)ctlY, 18, VoxaTheme::getGlassSurface());
-                target.drawCircle(44, (int)ctlY, 18, VoxaTheme::getGlassBorder());
-                ScreenCommon::drawIcon(target, Icon::Back, 34.0f, ctlY - 10.0f, 20.0f, VoxaTheme::getTextPrimary());
+                uint32_t elapsedMs = m_isPlaying ? (nowMs - m_trackStartMs) : 0;
+                float pct = std::min(1.0f, (float)elapsedMs / (float)m_trackDurationMs);
+                if (elapsedMs >= m_trackDurationMs && m_isPlaying)
+                {
+                    nextTrack();
+                }
 
-                // Large Play/Pause Capsule
-                uint16_t ppCol = VoxaTheme::getSystemPurple();
-                target.fillCircle((int)(w * 0.5f), (int)ctlY, 24, ppCol);
-                target.drawCircle((int)(w * 0.5f), (int)ctlY, 24, 0xFFFF);
-                ScreenCommon::drawIcon(target, m_isPlaying ? Icon::Pause : Icon::Play, w * 0.5f - 10.0f, ctlY - 10.0f, 20.0f, 0xFFFF);
+                int fillW = (int)(barW * pct);
+                if (fillW > 0)
+                {
+                    target.fillRoundRect((int)barStartX, (int)progY, fillW, 4, 2, 0xFFFF);
+                }
 
-                // Next Button
-                target.fillCircle(w - 44, (int)ctlY, 18, VoxaTheme::getGlassSurface());
-                target.drawCircle(w - 44, (int)ctlY, 18, VoxaTheme::getGlassBorder());
-                ScreenCommon::drawIcon(target, Icon::ChevronRight, w - 54.0f, ctlY - 10.0f, 20.0f, VoxaTheme::getTextPrimary());
+                // 5. Bottom Controls (Y = 270)
+                int ctrlY = 270;
+                int prevX = 52;
+                uint16_t prevCol = m_isPrevPressed ? target.color565(160, 160, 160) : 0xFFFF;
+                target.fillRect(prevX - 7, ctrlY - 6, 2, 12, prevCol);
+                target.fillTriangle(prevX - 4, ctrlY, prevX + 4, ctrlY - 6, prevX + 4, ctrlY + 6, prevCol);
+
+                int playX = 120;
+                uint16_t playCol = m_isPlayPressed ? target.color565(160, 160, 160) : 0xFFFF;
+                if (m_isPlaying)
+                {
+                    target.fillRect(playX - 4, ctrlY - 7, 3, 14, playCol);
+                    target.fillRect(playX + 2, ctrlY - 7, 3, 14, playCol);
+                }
+                else
+                {
+                    target.fillTriangle(playX - 5, ctrlY - 8, playX - 5, ctrlY + 8, playX + 7, ctrlY, playCol);
+                }
+
+                int nextX = 188;
+                uint16_t nextCol = m_isNextPressed ? target.color565(160, 160, 160) : 0xFFFF;
+                target.fillTriangle(nextX - 4, ctrlY - 6, nextX - 4, ctrlY + 6, nextX + 4, ctrlY, nextCol);
+                target.fillRect(nextX + 5, ctrlY - 6, 2, 12, nextCol);
             }
 
             if (entryFrame < 10)

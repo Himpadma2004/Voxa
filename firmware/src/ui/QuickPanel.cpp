@@ -2,6 +2,7 @@
 #include "../display/Display.h"
 #include "../audio/AudioManager.h"
 #include "../services/WiFiManager.h"
+#include "../services/TimeService.h"
 #include "../screens/ScreenCommon.h"
 #include "Theme.h"
 #include <algorithm>
@@ -26,7 +27,9 @@ namespace VOXA
         ScreenId navTarget = ScreenId::Home;
         uint32_t nowMs = millis();
 
-        // 1. GESTURE DETECTION (Pull down from status bar to open, pull up from handle to close)
+        float panelH = 224.0f;
+
+        // 1. GESTURE DETECTION (Pull down from top status bar to open, pull up from handle to close)
         if (touched)
         {
             if (!m_trackingPull && m_activeSlider == -1)
@@ -36,7 +39,7 @@ namespace VOXA
                     m_trackingPull = true;
                     m_pullStartY = ty;
                 }
-                else if (m_isOpen && ty >= 195) // Touch down near bottom handle area (below sliders)
+                else if (m_isOpen && ty >= panelH - 25.0f) // Touch down near bottom handle area
                 {
                     m_trackingPull = true;
                     m_pullStartY = ty;
@@ -73,40 +76,33 @@ namespace VOXA
                     m_bluetoothEnabled = !m_bluetoothEnabled;
                     Serial.printf("[QuickPanel] Bluetooth Toggled -> %s\n", m_bluetoothEnabled ? "ON" : "OFF");
                 }
-                else if (m_pressedBtn == 2) // Night Mode toggle (Warm/Dimmed vs Normal Brightness)
+                else if (m_pressedBtn == 2) // Mode toggle (Day vs Night)
                 {
                     m_nightMode = !m_nightMode;
                     if (m_nightMode)
                     {
-                        Display::setBrightness(30); // Soft dimmed warm night brightness
+                        Display::setBrightness(40);
                     }
                     else
                     {
-                        Display::setBrightness(200); // Standard vibrant daylight brightness
+                        Display::setBrightness(200);
                     }
-                    Serial.printf("[QuickPanel] Night Mode Toggled -> %s\n", m_nightMode ? "NIGHT (DIM)" : "DAY (BRIGHT)");
+                    Serial.printf("[QuickPanel] Mode Toggled -> %s\n", m_nightMode ? "NIGHT" : "DAY");
                 }
-                else if (m_pressedBtn == 3) // Rotate Screen toggle (Horizontal default vs Vertical)
+                else if (m_pressedBtn == 3) // Port. Lock toggle
                 {
                     uint8_t curRot = Display::getRotation();
-                    // Toggle between 1 (Horizontal Landscape default) and 0 (Vertical Portrait)
                     uint8_t nextRot = (curRot == 1) ? 0 : 1;
                     Display::setRotation(nextRot);
-                    touch.setRotation(nextRot); // Synchronize CST328 touch controller rotation on hardware!
-                    Serial.printf("[QuickPanel] Screen & Touch Rotation Toggled -> %u (%s)\n", nextRot, nextRot == 1 ? "Landscape" : "Portrait");
+                    touch.setRotation(nextRot);
+                    Serial.printf("[QuickPanel] Rotation Lock Toggled -> %u\n", nextRot);
                 }
-
             }
 
             m_trackingPull = false;
             if (m_activeSlider == 1)
             {
-                // Save volume setting to NVS on release
                 AudioManager::instance().setVolume(AudioManager::instance().getVolume(), true);
-                if (AudioManager::instance().getVolume() > 0)
-                {
-                    AudioManager::instance().playTone(1200, 30);
-                }
             }
             m_activeSlider = -1;
             m_pressedBtn = -1;
@@ -116,7 +112,7 @@ namespace VOXA
 
         // 2. ANIMATION TIMELINE SMOOTHING
         float targetY = m_isOpen ? 1.0f : 0.0f;
-        m_animY += (targetY - m_animY) * 0.30f;
+        m_animY += (targetY - m_animY) * 0.35f;
         if (std::abs(targetY - m_animY) < 0.005f)
         {
             m_animY = targetY;
@@ -128,44 +124,42 @@ namespace VOXA
         }
 
         // 3. INTERACTION TOUCH HANDLING WHEN OPEN
-        float panelH = std::min((float)h * 0.88f, 210.0f);
         float currentPanelY = (m_animY - 1.0f) * panelH;
 
         if (m_isOpen && touched && m_animY > 0.7f && !m_trackingPull)
         {
-            float toggleY = currentPanelY + 42.0f;
-            float btnW = (w - 30.0f) / 4.0f; // 4 Grid Toggle Buttons
+            float toggleY = currentPanelY + 36.0f;
+            float btnW = 51.0f;
+            float gapX = 6.0f;
 
-            // Toggle Buttons Touch Region (Y = toggleY to toggleY + 60)
-            if (ty >= toggleY - 5.0f && ty <= toggleY + 65.0f && m_activeSlider == -1)
+            // Toggle Buttons Touch Region (Y = toggleY to toggleY + 56)
+            if (ty >= toggleY && ty <= toggleY + 56.0f && m_activeSlider == -1)
             {
                 if (m_pressedBtn == -1)
                 {
                     m_touchStartMs = nowMs;
                     m_longPressTriggered = false;
 
-                    if (tx >= 6.0f && tx <= 6.0f + btnW) m_pressedBtn = 0; // Wi-Fi
-                    else if (tx >= 11.0f + btnW && tx <= 11.0f + 2 * btnW) m_pressedBtn = 1; // BT
-                    else if (tx >= 16.0f + 2 * btnW && tx <= 16.0f + 3 * btnW) m_pressedBtn = 2; // Night Mode
-                    else if (tx >= 21.0f + 3 * btnW && tx <= 21.0f + 4 * btnW) m_pressedBtn = 3; // Rotate
+                    if (tx >= 8.0f && tx <= 8.0f + btnW) m_pressedBtn = 0; // Wi-Fi
+                    else if (tx >= 8.0f + (btnW + gapX) && tx <= 8.0f + 2 * btnW + gapX) m_pressedBtn = 1; // BT
+                    else if (tx >= 8.0f + 2 * (btnW + gapX) && tx <= 8.0f + 3 * btnW + 2 * gapX) m_pressedBtn = 2; // Mode
+                    else if (tx >= 8.0f + 3 * (btnW + gapX) && tx <= 8.0f + 4 * btnW + 3 * gapX) m_pressedBtn = 3; // Port Lock
                 }
                 else if (m_touchStartMs > 0 && !m_longPressTriggered)
                 {
-                    // Check for Long Press (> 350ms)
+                    // Long press (> 350ms)
                     if (nowMs - m_touchStartMs >= 350)
                     {
                         m_longPressTriggered = true;
-                        if (m_pressedBtn == 0) // Long Press Wi-Fi
+                        if (m_pressedBtn == 0) // Wi-Fi settings
                         {
-                            Serial.println("[QuickPanel] Long-press Wi-Fi -> Opening Wi-Fi Settings Screen!");
                             m_isOpen = false;
                             m_pressedBtn = -1;
                             m_touchStartMs = 0;
                             navTarget = ScreenId::WiFiSettings;
                         }
-                        else if (m_pressedBtn == 1) // Long Press BT
+                        else if (m_pressedBtn == 1) // BT settings
                         {
-                            Serial.println("[QuickPanel] Long-press Bluetooth -> Opening Bluetooth Settings Screen!");
                             m_isOpen = false;
                             m_pressedBtn = -1;
                             m_touchStartMs = 0;
@@ -175,225 +169,277 @@ namespace VOXA
                 }
             }
 
-            // Sliders Touch Region (iOS Fat Capsule Sliders)
-            float sliderX = 14.0f;
-            float sliderW = w - 28.0f;
-            float brightY = currentPanelY + 114.0f;
-            float volY    = currentPanelY + 152.0f;
-            float sliderH = 28.0f;
+            // Vertical Sliders (OLED LUX & REC GAIN)
+            float sliderCardY = currentPanelY + 98.0f;
+            float sliderCardH = 104.0f;
+            float cardW = 108.0f;
 
-            if (m_activeSlider == 0) // Currently dragging Brightness slider
+            if (m_activeSlider == 0) // Dragging Brightness (Left Card)
             {
-                float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
+                float pct = 1.0f - std::max(0.0f, std::min(1.0f, (ty - sliderCardY) / sliderCardH));
                 uint8_t newBright = static_cast<uint8_t>(pct * 255.0f);
                 Display::setBrightness(std::max((uint8_t)15, newBright));
             }
-            else if (m_activeSlider == 1) // Currently dragging Volume slider
+            else if (m_activeSlider == 1) // Dragging Volume (Right Card)
             {
-                float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
+                float pct = 1.0f - std::max(0.0f, std::min(1.0f, (ty - sliderCardY) / sliderCardH));
                 uint8_t newVol = static_cast<uint8_t>(pct * 100.0f + 0.5f);
                 AudioManager::instance().setVolume(newVol, false);
             }
-            else if (m_pressedBtn == -1) // If no toggle button is touched, check slider hitboxes
+            else if (m_pressedBtn == -1) // Hitbox detection for sliders
             {
-                if (ty >= brightY - 6.0f && ty <= brightY + sliderH + 6.0f)
+                if (ty >= sliderCardY && ty <= sliderCardY + sliderCardH)
                 {
-                    m_activeSlider = 0;
-                    float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
-                    uint8_t newBright = static_cast<uint8_t>(pct * 255.0f);
-                    Display::setBrightness(std::max((uint8_t)15, newBright));
-                }
-                else if (ty >= volY - 6.0f && ty <= volY + sliderH + 6.0f)
-                {
-                    // Tapping directly on the Volume Icon on the left (< sliderX + 32) toggles Mute/Unmute
-                    if (tx < sliderX + 32.0f)
+                    if (tx >= 8.0f && tx <= 8.0f + cardW) // Left Card: OLED LUX
                     {
-                        uint8_t curVol = AudioManager::instance().getVolume();
-                        if (curVol > 0)
-                        {
-                            m_prevNonZeroVol = curVol;
-                            AudioManager::instance().setVolume(0, true);
-                            Serial.println("[QuickPanel] Volume Muted");
-                        }
-                        else
-                        {
-                            uint8_t restoreVol = (m_prevNonZeroVol > 0) ? m_prevNonZeroVol : 80;
-                            AudioManager::instance().setVolume(restoreVol, true);
-                            AudioManager::instance().playTone(1200, 30);
-                            Serial.printf("[QuickPanel] Volume Unmuted -> %u%%\n", restoreVol);
-                        }
-                        m_activeSlider = -1; // Tap action, don't drag
+                        m_activeSlider = 0;
+                        float pct = 1.0f - std::max(0.0f, std::min(1.0f, (ty - sliderCardY) / sliderCardH));
+                        uint8_t newBright = static_cast<uint8_t>(pct * 255.0f);
+                        Display::setBrightness(std::max((uint8_t)15, newBright));
                     }
-                    else
+                    else if (tx >= 124.0f && tx <= 124.0f + cardW) // Right Card: REC GAIN
                     {
                         m_activeSlider = 1;
-                        float pct = std::max(0.0f, std::min(1.0f, (tx - sliderX) / sliderW));
+                        float pct = 1.0f - std::max(0.0f, std::min(1.0f, (ty - sliderCardY) / sliderCardH));
                         uint8_t newVol = static_cast<uint8_t>(pct * 100.0f + 0.5f);
                         AudioManager::instance().setVolume(newVol, false);
                     }
                 }
             }
-            
-            // Handle Bar tap to close (bottom area only)
+
+            // Tap handle bar to close
             if (ty >= currentPanelY + panelH - 18.0f && m_activeSlider == -1)
             {
                 m_isOpen = false;
             }
         }
 
-        // 4. PANEL RENDER OVERLAY (iOS 26 Liquid Glass Control Center)
-        // Frosted Glass Sheet with Optical Reflection Top Edge
-        ScreenCommon::drawGlassCard(target, 4, currentPanelY, w - 8, panelH, 20, false, 0);
+        // 4. PANEL RENDER OVERLAY - Pure Pitch Black OLED Hub Style
+        target.fillRoundRect(0, (int)currentPanelY, w, (int)panelH, 14, 0x0000);
+        target.drawRoundRect(0, (int)currentPanelY, w, (int)panelH, 14, target.color565(34, 38, 48));
 
-        // Header: iOS Floating Pill Badge & Title
+        // Grabber Bar at Top Center
+        target.fillRoundRect((int)(w * 0.5f - 14.0f), (int)(currentPanelY + 5.0f), 28, 3, 1, target.color565(80, 90, 105));
+
+        // ── TOP STATUS / HEADER (Y = currentPanelY + 12) ──
+        // Title "Control"
         target.setFont(&fonts::FreeSansBold9pt7b);
-        target.setTextSize(1);
-        target.setTextColor(VoxaTheme::getTextPrimary());
         target.setTextDatum(textdatum_t::top_left);
-        target.drawString("Control Center", 16, (int)(currentPanelY + 14.0f));
+        target.setTextColor(0xFFFF);
+        target.drawString("Control", 10, (int)(currentPanelY + 12.0f));
 
-        // Close Pull Handle Bar (iOS Grabber Capsule)
-        float handleX = w * 0.5f - 18.0f;
-        float handleY = currentPanelY + panelH - 10.0f;
-        target.fillRoundRect((int)handleX, (int)handleY, 36, 4, 2, VoxaTheme::getGlassHighlight());
+        // Cyan Time "10:42"
+        target.setFont(&fonts::Font0);
+        std::string timeStr = timeService.getCurrentTime();
+        if (timeStr.empty()) timeStr = "10:42";
+        if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+        target.setTextColor(0x3DFE); // Bright Cyan
+        target.drawString(timeStr.c_str(), 72, (int)(currentPanelY + 14.0f));
 
-        // ── 4 QUICK TOGGLE BUTTONS (Wi-Fi, Bluetooth, Night Shift, Rotate) ────
-        float marginX = 14.0f;
+        // Memory "128M"
+        target.setTextDatum(textdatum_t::top_right);
+        target.setTextColor(0x94A3B8);
+        target.drawString("128M", w - 50, (int)(currentPanelY + 14.0f));
+
+        // Battery "94% ⚡" in Amber
+        target.setTextColor(0xFDC0);
+        target.drawString("94%", w - 20, (int)(currentPanelY + 14.0f));
+        // Lightning bolt
+        target.fillTriangle(w - 14, (int)(currentPanelY + 14.0f), w - 18, (int)(currentPanelY + 20.0f), w - 13, (int)(currentPanelY + 20.0f), 0xFDC0);
+        target.fillTriangle(w - 15, (int)(currentPanelY + 19.0f), w - 10, (int)(currentPanelY + 19.0f), w - 14, (int)(currentPanelY + 25.0f), 0xFDC0);
+
+        // ── 4 QUICK TOGGLE CARDS (Y = currentPanelY + 36, H = 54) ──
+        float btnW = 51.0f;
+        float btnH = 54.0f;
         float gapX = 6.0f;
-        float btnW = (w - (2.0f * marginX) - (3.0f * gapX)) / 4.0f;
-        float btnH = 58.0f;
-        float toggleY = currentPanelY + 44.0f;
+        float toggleY = currentPanelY + 36.0f;
 
-        // 1. Wi-Fi Toggle (iOS System Blue when active)
+        // 1. Wi-Fi Card
+        float b0X = 8.0f;
         bool wifiOn = m_wifiEnabled;
-        uint16_t wifiBg = wifiOn ? VoxaTheme::getSystemBlue() : VoxaTheme::getGlassSurface();
-        uint16_t wifiFg = wifiOn ? 0xFFFF : VoxaTheme::getTextPrimary();
-        float b0X = marginX;
-        target.fillRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 14, wifiBg);
-        target.drawRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 14, wifiOn ? VoxaTheme::getSystemBlue() : VoxaTheme::getGlassBorder());
-        if (!wifiOn)
-        {
-            target.drawFastHLine((int)b0X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
-        }
-        ScreenCommon::drawIcon(target, wifiOn ? Icon::Wifi : Icon::WiFiOff, b0X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, wifiFg);
+        target.fillRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 8, target.color565(18, 20, 26));
+        target.drawRoundRect((int)b0X, (int)toggleY, (int)btnW, (int)btnH, 8, target.color565(34, 38, 48));
+
+        // Wi-Fi Icon (Cyan arcs)
+        uint16_t wifiCol = wifiOn ? 0x3DFE : target.color565(90, 100, 115);
+        int wCx = (int)(b0X + btnW * 0.5f);
+        int wCy = (int)(toggleY + 18.0f);
+        target.drawCircle(wCx, wCy, 7, wifiCol);
+        target.drawCircle(wCx, wCy, 4, wifiCol);
+        target.fillCircle(wCx, wCy, 2, wifiCol);
+        target.fillRect((int)b0X, wCy + 1, (int)btnW, 12, target.color565(18, 20, 26)); // clip bottom half of arcs
+
         target.setFont(&fonts::Font0);
         target.setTextDatum(textdatum_t::top_center);
-        target.setTextColor(wifiFg);
-        target.drawString(wifiOn ? "Wi-Fi" : "Off", b0X + btnW * 0.5f, toggleY + 40.0f);
+        target.setTextColor(0xFFFF);
+        target.drawString("Wi-Fi", wCx, (int)(toggleY + 28.0f));
+        target.setTextColor(wifiOn ? 0x3DFE : 0x64748B);
+        target.drawString(wifiOn ? "VOX-5G" : "Off", wCx, (int)(toggleY + 40.0f));
 
-        // 2. Bluetooth Toggle (iOS System Indigo when active)
-        uint16_t btBg = m_bluetoothEnabled ? VoxaTheme::getSystemIndigo() : VoxaTheme::getGlassSurface();
-        uint16_t btFg = m_bluetoothEnabled ? 0xFFFF : VoxaTheme::getTextPrimary();
-        float b1X = marginX + btnW + gapX;
-        target.fillRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 14, btBg);
-        target.drawRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 14, m_bluetoothEnabled ? VoxaTheme::getSystemIndigo() : VoxaTheme::getGlassBorder());
+        // 2. BT Card
+        float b1X = 8.0f + btnW + gapX;
+        target.fillRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 8, target.color565(18, 20, 26));
+        target.drawRoundRect((int)b1X, (int)toggleY, (int)btnW, (int)btnH, 8, target.color565(34, 38, 48));
+
+        // BT Icon (Orange with slash if off)
+        int btCx = (int)(b1X + btnW * 0.5f);
+        int btCy = (int)(toggleY + 14.0f);
+        uint16_t btCol = m_bluetoothEnabled ? 0x3DFE : 0xFDC0;
+        target.drawLine(btCx, btCy - 6, btCx, btCy + 6, btCol);
+        target.drawLine(btCx, btCy - 6, btCx + 4, btCy - 2, btCol);
+        target.drawLine(btCx + 4, btCy - 2, btCx - 4, btCy + 2, btCol);
+        target.drawLine(btCx - 4, btCy - 2, btCx + 4, btCy + 2, btCol);
+        target.drawLine(btCx + 4, btCy + 2, btCx, btCy + 6, btCol);
         if (!m_bluetoothEnabled)
         {
-            target.drawFastHLine((int)b1X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
+            target.drawLine(btCx - 6, btCy - 6, btCx + 6, btCy + 6, target.color565(160, 170, 185));
         }
-        ScreenCommon::drawIcon(target, Icon::Bluetooth, b1X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, btFg);
-        target.setTextColor(btFg);
-        target.drawString(m_bluetoothEnabled ? "BT On" : "BT Off", b1X + btnW * 0.5f, toggleY + 40.0f);
 
-        // 3. Night Mode / Night Shift Toggle (iOS System Amber when active)
-        uint16_t nightBg = m_nightMode ? VoxaTheme::getSystemAmber() : VoxaTheme::getGlassSurface();
-        uint16_t nightFg = m_nightMode ? 0xFFFF : VoxaTheme::getTextPrimary();
-        float b2X = marginX + (btnW + gapX) * 2.0f;
-        target.fillRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 14, nightBg);
-        target.drawRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 14, m_nightMode ? VoxaTheme::getSystemAmber() : VoxaTheme::getGlassBorder());
-        if (!m_nightMode)
+        target.setTextColor(0xFFFF);
+        target.drawString("BT", btCx, (int)(toggleY + 28.0f));
+        target.setTextColor(m_bluetoothEnabled ? 0x3DFE : 0x64748B);
+        target.drawString(m_bluetoothEnabled ? "On" : "Off", btCx, (int)(toggleY + 40.0f));
+
+        // 3. Mode Card (Sun / Mode)
+        float b2X = 8.0f + 2.0f * (btnW + gapX);
+        target.fillRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 8, target.color565(18, 20, 26));
+        target.drawRoundRect((int)b2X, (int)toggleY, (int)btnW, (int)btnH, 8, target.color565(34, 38, 48));
+
+        int mCx = (int)(b2X + btnW * 0.5f);
+        int mCy = (int)(toggleY + 14.0f);
+        target.drawCircle(mCx, mCy, 4, 0xFDC0);
+        for (int r = 0; r < 8; ++r)
         {
-            target.drawFastHLine((int)b2X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
+            float ang = r * 0.785f;
+            target.drawLine(mCx + (int)(std::cos(ang) * 5.0f), mCy + (int)(std::sin(ang) * 5.0f),
+                            mCx + (int)(std::cos(ang) * 7.0f), mCy + (int)(std::sin(ang) * 7.0f), 0xFDC0);
         }
-        ScreenCommon::drawIcon(target, m_nightMode ? Icon::Moon : Icon::Sun, b2X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, nightFg);
-        target.setTextColor(nightFg);
-        target.drawString(m_nightMode ? "Night" : "Day", b2X + btnW * 0.5f, toggleY + 40.0f);
 
-        // 4. Rotate Screen Toggle (iOS System Flame when active)
-        bool isPortrait = (Display::getRotation() == 0 || Display::getRotation() == 2);
-        uint16_t rotBg = isPortrait ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-        uint16_t rotFg = isPortrait ? 0xFFFF : VoxaTheme::getTextPrimary();
-        float b3X = marginX + (btnW + gapX) * 3.0f;
-        target.fillRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 14, rotBg);
-        target.drawRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 14, isPortrait ? VoxaTheme::getPrimary() : VoxaTheme::getGlassBorder());
-        if (!isPortrait)
-        {
-            target.drawFastHLine((int)b3X + 8, (int)toggleY + 1, (int)btnW - 16, VoxaTheme::getGlassHighlight());
-        }
-        ScreenCommon::drawIcon(target, Icon::Rotate, b3X + btnW * 0.5f - 10.0f, toggleY + 8.0f, 20.0f, rotFg);
-        target.setTextColor(rotFg);
-        target.drawString(isPortrait ? "Port." : "Land.", b3X + btnW * 0.5f, toggleY + 40.0f);
+        target.setTextColor(0xFFFF);
+        target.drawString("Mode", mCx, (int)(toggleY + 28.0f));
+        target.setTextColor(m_nightMode ? target.color565(160, 180, 255) : 0xFDC0);
+        target.drawString(m_nightMode ? "Night" : "Day", mCx, (int)(toggleY + 40.0f));
 
+        // 4. Port. Lock Card (Solid Amber Highlighted Button)
+        float b3X = 8.0f + 3.0f * (btnW + gapX);
+        bool isPortLocked = true;
+        uint16_t portBg = isPortLocked ? 0xFDC0 : target.color565(18, 20, 26);
+        uint16_t portFg = isPortLocked ? 0x0000 : 0xFFFF;
+        target.fillRoundRect((int)b3X, (int)toggleY, (int)btnW, (int)btnH, 8, portBg);
 
-        // ── BRIGHTNESS SLIDER (iOS Thick Capsule Pill) ───────────────────────
-        float sliderX = 14.0f;
-        float sliderW = w - 28.0f;
-        float sliderH = 28.0f;
-        float brightY = currentPanelY + 114.0f;
+        int pCx = (int)(b3X + btnW * 0.5f);
+        int pCy = (int)(toggleY + 14.0f);
+        // Phone icon with lock inside
+        target.drawRoundRect(pCx - 5, pCy - 6, 10, 13, 2, portFg);
+        target.drawRoundRect(pCx - 2, pCy - 2, 5, 4, 1, portFg);
+        target.drawCircle(pCx, pCy - 3, 1, portFg);
 
+        target.setTextColor(portFg);
+        target.drawString("Port.", pCx, (int)(toggleY + 28.0f));
+        target.setTextColor(isPortLocked ? target.color565(60, 50, 0) : 0x64748B);
+        target.drawString("Lock", pCx, (int)(toggleY + 40.0f));
+
+        // ── 2 LARGE VERTICAL SLIDER CARDS (Y = currentPanelY + 98, H = 104) ──
+        float sliderCardY = currentPanelY + 98.0f;
+        float sliderCardH = 104.0f;
+        float cardW = 108.0f;
+
+        // ─────────────────── LEFT CARD: OLED LUX ───────────────────
+        float c0X = 8.0f;
         uint8_t curBright = Display::getBrightness();
         float brightPct = curBright / 255.0f;
-        int bFillW = std::max(14, (int)(sliderW * brightPct));
+        int brightFillY = (int)(sliderCardY + sliderCardH * (1.0f - brightPct));
+        int brightFillH = (int)(sliderCardY + sliderCardH - brightFillY);
 
-        // Pill Capsule Track (Color-Adaptive)
-        uint16_t trackBg = VoxaTheme::isDarkMode() ? target.color565(14, 16, 24) : target.color565(225, 230, 238);
-        target.fillRoundRect((int)sliderX, (int)brightY, (int)sliderW, (int)sliderH, 14, trackBg);
-        // Filled Active Pill
-        target.fillRoundRect((int)sliderX, (int)brightY, bFillW, (int)sliderH, 14, VoxaTheme::getSystemAmber());
-        // Capsule Border & Specular Highlight
-        target.drawRoundRect((int)sliderX, (int)brightY, (int)sliderW, (int)sliderH, 14, VoxaTheme::getGlassBorder());
-        target.drawFastHLine((int)sliderX + 14, (int)brightY + 1, (int)sliderW - 28, VoxaTheme::getGlassHighlight());
+        // Card base
+        target.fillRoundRect((int)c0X, (int)sliderCardY, (int)cardW, (int)sliderCardH, 10, target.color565(18, 20, 26));
 
-        // Nested Sun Icon inside Capsule Pill on the left
-        uint16_t sunCol = (bFillW > 36) ? 0xFFFF : (VoxaTheme::isDarkMode() ? VoxaTheme::getSystemAmber() : VoxaTheme::getTextPrimary());
-        ScreenCommon::drawIcon(target, Icon::Sun, sliderX + 8.0f, brightY + 4.0f, 20.0f, sunCol);
+        // Filled lower region (amber/gold fill)
+        if (brightFillH > 0)
+        {
+            target.setClipRect((int)c0X, brightFillY, (int)cardW, brightFillH);
+            target.fillRoundRect((int)c0X, (int)sliderCardY, (int)cardW, (int)sliderCardH, 10, target.color565(55, 45, 12));
+            target.clearClipRect();
 
-        // Percentage Text on Right
+            // Glowing Amber divider bar at brightFillY
+            target.drawLine((int)c0X + 3, brightFillY, (int)(c0X + cardW - 3), brightFillY, 0xFDC0);
+            target.drawLine((int)c0X + 3, brightFillY + 1, (int)(c0X + cardW - 3), brightFillY + 1, 0xFDC0);
+        }
+
+        // Card Border
+        target.drawRoundRect((int)c0X, (int)sliderCardY, (int)cardW, (int)sliderCardH, 10, target.color565(34, 38, 48));
+
+        // Top Left: Sun Icon (Amber)
+        int sCx = (int)(c0X + 16.0f);
+        int sCy = (int)(sliderCardY + 16.0f);
+        target.drawCircle(sCx, sCy, 4, 0xFDC0);
+        for (int r = 0; r < 8; ++r)
+        {
+            float ang = r * 0.785f;
+            target.drawLine(sCx + (int)(std::cos(ang) * 5.0f), sCy + (int)(std::sin(ang) * 5.0f),
+                            sCx + (int)(std::cos(ang) * 7.0f), sCy + (int)(std::sin(ang) * 7.0f), 0xFDC0);
+        }
+
+        // Top Right: Percentage Text (e.g. 52%)
         target.setFont(&fonts::Font0);
-        target.setTextDatum(textdatum_t::middle_right);
-        uint16_t bTextCol = (bFillW > sliderW - 35) ? 0xFFFF : VoxaTheme::getTextPrimary();
-        target.setTextColor(bTextCol);
-        char bStr[8];
-        snprintf(bStr, sizeof(bStr), "%d%%", (int)(brightPct * 100.0f + 0.5f));
-        target.drawString(bStr, sliderX + sliderW - 10.0f, brightY + 14.0f);
+        target.setTextDatum(textdatum_t::top_right);
+        target.setTextColor(0xFDC0);
+        char bBuf[16];
+        snprintf(bBuf, sizeof(bBuf), "%d%%", (int)(brightPct * 100.0f + 0.5f));
+        target.drawString(bBuf, (int)(c0X + cardW - 10.0f), (int)(sliderCardY + 12.0f));
 
-        // ── VOLUME SLIDER (iOS Thick Capsule Pill) ───────────────────────────
-        float volY = currentPanelY + 152.0f;
+        // Bottom Left Label: "OLED LUX"
+        target.setTextDatum(textdatum_t::bottom_left);
+        target.setTextColor(0xFDC0);
+        target.drawString("OLED LUX", (int)(c0X + 10.0f), (int)(sliderCardY + sliderCardH - 8.0f));
+
+        // ─────────────────── RIGHT CARD: REC GAIN ───────────────────
+        float c1X = 124.0f;
         uint8_t curVol = AudioManager::instance().getVolume();
         float volPct = curVol / 100.0f;
-        int vFillW = (curVol == 0) ? 0 : std::max(14, (int)(sliderW * volPct));
+        int volFillY = (int)(sliderCardY + sliderCardH * (1.0f - volPct));
+        int volFillH = (int)(sliderCardY + sliderCardH - volFillY);
 
-        // Pill Capsule Track (Color-Adaptive)
-        target.fillRoundRect((int)sliderX, (int)volY, (int)sliderW, (int)sliderH, 14, trackBg);
-        if (vFillW > 0)
+        // Card base
+        target.fillRoundRect((int)c1X, (int)sliderCardY, (int)cardW, (int)sliderCardH, 10, target.color565(18, 20, 26));
+
+        // Filled lower region (deep cyan/teal fill)
+        if (volFillH > 0)
         {
-            target.fillRoundRect((int)sliderX, (int)volY, vFillW, (int)sliderH, 14, VoxaTheme::getPrimary());
+            target.setClipRect((int)c1X, volFillY, (int)cardW, volFillH);
+            target.fillRoundRect((int)c1X, (int)sliderCardY, (int)cardW, (int)sliderCardH, 10, target.color565(12, 45, 52));
+            target.clearClipRect();
+
+            // Glowing Cyan divider bar at volFillY
+            target.drawLine((int)c1X + 3, volFillY, (int)(c1X + cardW - 3), volFillY, 0x3DFE);
+            target.drawLine((int)c1X + 3, volFillY + 1, (int)(c1X + cardW - 3), volFillY + 1, 0x3DFE);
         }
-        // Capsule Border & Specular Highlight
-        target.drawRoundRect((int)sliderX, (int)volY, (int)sliderW, (int)sliderH, 14, VoxaTheme::getGlassBorder());
-        target.drawFastHLine((int)sliderX + 14, (int)volY + 1, (int)sliderW - 28, VoxaTheme::getGlassHighlight());
 
-        // Nested Volume Icon inside Capsule Pill on the left
-        uint16_t volIconColor = (curVol == 0) ? VoxaTheme::getTextSecondary() : ((vFillW > 36) ? 0xFFFF : (VoxaTheme::isDarkMode() ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary()));
-        ScreenCommon::drawIcon(target, Icon::Volume, sliderX + 8.0f, volY + 4.0f, 20.0f, volIconColor);
+        // Card Border
+        target.drawRoundRect((int)c1X, (int)sliderCardY, (int)cardW, (int)sliderCardH, 10, target.color565(34, 38, 48));
 
-        // Volume % / MUTE badge on Right
+        // Top Left: Soundwave / Speaker Icon (Cyan)
+        int vCx = (int)(c1X + 16.0f);
+        int vCy = (int)(sliderCardY + 16.0f);
+        target.drawCircle(vCx - 2, vCy, 3, 0x3DFE);
+        target.drawLine(vCx - 2, vCy - 3, vCx + 3, vCy - 6, 0x3DFE);
+        target.drawLine(vCx + 3, vCy - 6, vCx + 3, vCy + 6, 0x3DFE);
+        target.drawLine(vCx + 3, vCy + 6, vCx - 2, vCy + 3, 0x3DFE);
+        target.drawCircle(vCx + 6, vCy, 4, 0x3DFE);
+
+        // Top Right: Percentage Text (e.g. 85%)
         target.setFont(&fonts::Font0);
-        target.setTextDatum(textdatum_t::middle_right);
-        uint16_t vTextCol = (curVol == 0) ? VoxaTheme::getTextSecondary() : ((vFillW > sliderW - 35) ? 0xFFFF : VoxaTheme::getTextPrimary());
-        target.setTextColor(vTextCol);
-        if (curVol == 0)
-        {
-            target.drawString("MUTED", sliderX + sliderW - 10.0f, volY + 14.0f);
-        }
-        else
-        {
-            char vStr[8];
-            snprintf(vStr, sizeof(vStr), "%u%%", curVol);
-            target.drawString(vStr, sliderX + sliderW - 10.0f, volY + 14.0f);
-        }
+        target.setTextDatum(textdatum_t::top_right);
+        target.setTextColor(0x3DFE);
+        char vBuf[16];
+        snprintf(vBuf, sizeof(vBuf), "%d%%", curVol);
+        target.drawString(vBuf, (int)(c1X + cardW - 10.0f), (int)(sliderCardY + 12.0f));
+
+        // Bottom Left Label: "REC GAIN"
+        target.setTextDatum(textdatum_t::bottom_left);
+        target.setTextColor(0x3DFE);
+        target.drawString("REC GAIN", (int)(c1X + 10.0f), (int)(sliderCardY + sliderCardH - 8.0f));
 
         return navTarget;
     }
 }
-

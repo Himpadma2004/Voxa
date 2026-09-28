@@ -1,4 +1,5 @@
 #include "SettingsScreen.h"
+#include "ScreenCommon.h"
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../audio/AudioManager.h"
@@ -9,6 +10,7 @@
 #include "../services/ApiClient.h"
 #include "../services/PowerManager.h"
 #include <SPIFFS.h>
+#include "../services/TimeService.h"
 
 #include <cmath>
 #include <algorithm>
@@ -17,13 +19,6 @@ namespace VOXA
 {
     extern SettingsService settingsService;
 
-    struct SettingRow
-    {
-        Icon icon;
-        const char* title;
-        std::string subtitle;
-        uint16_t color;
-    };
 
     ScreenId SettingsScreen::show(Touch& touch)
     {
@@ -46,8 +41,8 @@ namespace VOXA
         ScreenId targetScreen = ScreenId::Settings;
         uint32_t lastMs = millis();
 
-        float contentHeight = 72.0f + 10.0f * 52.0f + 30.0f;
-        float visibleHeight = h - 68.0f;
+        float contentHeight = 50.0f + 10.0f * 52.0f + 20.0f;  // 10 rows * 52px + padding
+        float visibleHeight = h - 46.0f;                        // below header divider at y=44
         float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
         Settings settings = settingsService.getSettings();
@@ -230,108 +225,148 @@ namespace VOXA
                 m_scrollY = m_targetScrollY;
             }
 
-            // 3. Render Settings
-            ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Settings", true, false, Icon::Plus, w, h);
-            
+            // 3. Render - Minimal black/white design (matches TasksScreen / ReminderScreen)
+            canvas.fillScreen(0x0000); // Pitch black
+
+            // --- Top Status Bar ---
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::top_left);
+            canvas.setTextColor(0xFFFF);
+            std::string timeStr = timeService.getCurrentTime();
+            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+            canvas.drawString(timeStr.c_str(), 12, 10);
+
+            canvas.setTextDatum(textdatum_t::top_right);
+            canvas.setTextColor(0xFDC0);
+            canvas.drawString("VOXA OS", w - 20, 10);
+            // Flash bolt icon
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
+
+            // --- Sub-Header ---
+            canvas.setTextDatum(textdatum_t::middle_left);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextColor(0x94A3B8);
+            canvas.drawString("< Hub", 12, 34);
+
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextColor(0xFFFF);
+            canvas.drawString("SETTINGS", 56, 33);
+
+            // Gear icon on right
+            uint16_t gicC = 0xFDC0;
+            canvas.drawCircle(w - 18, 33, 5, gicC);
+            canvas.drawCircle(w - 18, 33, 2, gicC);
+            canvas.drawLine(w - 18, 26, w - 18, 28, gicC);
+            canvas.drawLine(w - 18, 38, w - 18, 40, gicC);
+            canvas.drawLine(w - 25, 33, w - 23, 33, gicC);
+            canvas.drawLine(w - 13, 33, w - 11, 33, gicC);
+
+            // Thin divider under header
+            canvas.drawFastHLine(0, 44, w, canvas.color565(30, 32, 40));
+
+            // Build live data strings
             std::string wifiStatus = "Disconnected";
             if (settings.wifiEnabled)
             {
-                if (wifiManager.isConnected())
-                {
-                    wifiStatus = wifiManager.getSSID();
-                }
-                else if (wifiManager.hasSavedCredentials())
-                {
-                    wifiStatus = "Connecting...";
-                }
-                else
-                {
-                    wifiStatus = "No Saved Wi-Fi";
-                }
+                if (wifiManager.isConnected())      wifiStatus = wifiManager.getSSID();
+                else if (wifiManager.hasSavedCredentials()) wifiStatus = "Connecting...";
+                else                                wifiStatus = "No Saved Wi-Fi";
             }
-            std::string syncStatus = settings.autoSync ? "Auto Sync: On" : "Auto Sync: Off";
+            std::string syncStatus  = settings.autoSync ? "Auto Sync: On" : "Auto Sync: Off";
             std::string storageInfo;
             {
                 size_t spiffsTotal = SPIFFS.totalBytes();
                 size_t spiffsUsed  = SPIFFS.usedBytes();
                 size_t spiffsFree  = spiffsTotal > spiffsUsed ? spiffsTotal - spiffsUsed : 0;
                 char buf[64];
-                snprintf(buf, sizeof(buf), "Cloud-Primary (%.1f MB Free)",
-                         spiffsFree / (1024.0f * 1024.0f));
+                snprintf(buf, sizeof(buf), "%.1f MB free", spiffsFree / (1024.0f * 1024.0f));
                 storageInfo = buf;
             }
-            std::string deviceInfo = settings.deviceName + " (v" + settings.firmwareVersion + ")";
-            std::string backendUrl = VOXA::apiClient.getBaseUrl();
+            std::string deviceInfo  = settings.deviceName + "  v" + settings.firmwareVersion;
+            std::string backendUrl  = VOXA::apiClient.getBaseUrl();
+            std::string themeLabel  = VoxaTheme::isDarkMode() ? "Dark Mode" : "Light Mode";
 
-            std::string themeStatus = VoxaTheme::isDarkMode() ? "Dark Mode (Tap to Switch)" : "Light Mode (Tap to Switch)";
-            SettingRow rows[10] = {
-                { VoxaTheme::isDarkMode() ? Icon::Moon : Icon::Sun, "Appearance", themeStatus, VoxaTheme::getPrimary() },
-                { Icon::Wifi,       "Wi-Fi",          wifiStatus,  0x266C },
-                { Icon::Cloud,      "Sync & Backup",  syncStatus,  0x067F },
-                { Icon::Folder,     "Backend URL",    backendUrl,  0x1BE0 },
-                { Icon::Folder,     "Storage",        storageInfo, 0x52AA },
-                { Icon::Question,   "Device Info",    deviceInfo,  0xAD55 },
-                { Icon::Settings,   "About VOXA",     "AI Companion", 0x79CF },
-                { Icon::Rotate,     "Restart",        "Reboot Device", 0xFD20 },
-                { Icon::Power,      "Power Off",      "Deep Sleep Mode", 0xF800 },
-                { Icon::Reset,      "Factory Reset",  "Clear all data", 0xD000 }
+            // Row definitions: { label, subtitle, accent color, icon }
+            struct SRow { const char* label; std::string sub; uint16_t dot; Icon icon; };
+            SRow rows[10] = {
+                { "Appearance",    themeLabel,    0x4208,  VoxaTheme::isDarkMode() ? Icon::Moon : Icon::Sun },
+                { "Wi-Fi",         wifiStatus,    0x0439,  Icon::Wifi      },
+                { "Sync & Backup", syncStatus,    0x024F,  Icon::Cloud     },
+                { "Backend URL",   backendUrl,    0x3186,  Icon::Upload    },
+                { "Storage",       storageInfo,   0x294A,  Icon::Storage   },
+                { "Device Info",   deviceInfo,    0x3A69,  Icon::Info      },
+                { "About VOXA",    "AI Companion",0x2965,  Icon::Spark     },
+                { "Restart",       "Reboot device",0x5AA0, Icon::Rotate   },
+                { "Power Off",     "Deep sleep",  0x6000,  Icon::Power     },
+                { "Factory Reset", "Clear all data",0x6000,Icon::Reset    }
             };
 
             float leftX = w * 0.04f;
             float cardW = w * 0.92f;
 
-            canvas.setClipRect(0, 68, w, h - 68);
+            canvas.setClipRect(0, 46, w, h - 46);
 
             for (int i = 0; i < 10; ++i)
             {
-                float itemY = 72.0f + i * 52.0f - m_scrollY;
-                if (itemY + 46.0f < 68.0f || itemY > (h + 10.0f))
+                float itemY = 50.0f + i * 52.0f - m_scrollY;
+                if (itemY + 48.0f < 46.0f || itemY > (float)h + 10.0f)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == i);
-                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
-                uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
 
-                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
-                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
+                // Card
+                uint16_t cardBg     = isPressed ? canvas.color565(30, 32, 42) : canvas.color565(14, 16, 20);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(32, 36, 48);
+                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 46, 8, cardBg);
+                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 46, 8, cardBorder);
 
-                float cy = itemY + 22.0f;
-                float iconCx = leftX + 22.0f;
-                canvas.fillCircle((int)iconCx, (int)cy, 12, rows[i].color);
-                ScreenCommon::drawIcon(canvas, rows[i].icon, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+                // Icon tile (small rounded square) + icon
+                int iconTileX = (int)leftX + 6;
+                int iconTileY = (int)itemY + 11;
+                // Danger rows get red tile, others get muted tinted tile
+                uint16_t tileFill = (i >= 8) ? canvas.color565(40, 8, 8)
+                                             : canvas.color565(22, 26, 36);
+                uint16_t tileBorder = (i >= 8) ? rows[i].dot : canvas.color565(44, 50, 66);
+                canvas.fillRoundRect(iconTileX, iconTileY, 24, 24, 4, tileFill);
+                canvas.drawRoundRect(iconTileX, iconTileY, 24, 24, 4, tileBorder);
+                // Icon drawn centred inside tile
+                uint16_t iconColor = isPressed ? 0xFDC0 : rows[i].dot;
+                ScreenCommon::drawIcon(canvas, rows[i].icon,
+                                       iconTileX + 4.0f, iconTileY + 4.0f, 16.0f, iconColor);
 
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_left);
-                
-                canvas.setTextColor(labelColor);
-                canvas.drawString(rows[i].title, leftX + 42.0f, cy - 8.0f);
-
+                // Label (white)
                 canvas.setFont(&fonts::Font0);
-                canvas.setTextColor(subColor);
+                canvas.setTextDatum(textdatum_t::middle_left);
+                canvas.setTextColor(isPressed ? 0xFDC0 : 0xFFFF);
+                canvas.drawString(rows[i].label, (int)leftX + 38, (int)itemY + 14);
 
-                
-                // Auto-truncate any long subtitle string so it never clips off the card bounds
-                std::string dispSubtitle = rows[i].subtitle;
-                float maxSubWidth = cardW - 55.0f;
-                if (canvas.textWidth(dispSubtitle.c_str()) > maxSubWidth)
-                {
-                    while (dispSubtitle.length() > 3 && canvas.textWidth((dispSubtitle + "...").c_str()) > maxSubWidth)
-                    {
-                        dispSubtitle.pop_back();
-                    }
-                    dispSubtitle += "...";
-                }
-                canvas.drawString(dispSubtitle.c_str(), leftX + 42.0f, cy + 8.0f);
+                // Subtitle (grey)
+                canvas.setTextColor(isPressed ? 0xCBD5E1 : 0x7B8EA8);
+                std::string sub = rows[i].sub;
+                if (sub.length() > 30) sub = sub.substr(0, 28) + "..";
+                canvas.drawString(sub.c_str(), (int)leftX + 38, (int)itemY + 31);
 
-                if (i == 1) // Sync & Backup has a navigation chevron
+                // Chevron on right for navigable rows (Wi-Fi=1, Sync=2)
+                if (i == 1 || i == 2)
                 {
-                    float chevX = leftX + cardW - 16.0f;
-                    ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+                    int cx = (int)(leftX + cardW) - 14;
+                    int cy = (int)itemY + 23;
+                    canvas.drawLine(cx, cy - 5, cx + 4, cy, isPressed ? 0xFDC0 : 0x555555);
+                    canvas.drawLine(cx + 4, cy, cx, cy + 5, isPressed ? 0xFDC0 : 0x555555);
                 }
 
+                // Tag badge for dangerous actions
+                if (i == 8 || i == 9)
+                {
+                    uint16_t tagC = (i == 9) ? 0xD000 : 0xF800;
+                    canvas.fillRoundRect((int)(leftX + cardW) - 38, (int)itemY + 14, 28, 14, 3, canvas.color565(30, 8, 8));
+                    canvas.drawRoundRect((int)(leftX + cardW) - 38, (int)itemY + 14, 28, 14, 3, tagC);
+                    canvas.setTextDatum(textdatum_t::middle_center);
+                    canvas.setTextColor(tagC);
+                    canvas.drawString(i == 9 ? "RISK" : "OFF", (int)(leftX + cardW) - 24, (int)itemY + 21);
+                }
             }
 
             canvas.clearClipRect();

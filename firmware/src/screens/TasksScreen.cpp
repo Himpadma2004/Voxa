@@ -4,10 +4,10 @@
 #include "../services/DataService.h"
 #include "../services/TimeService.h"
 #include "DetailScreen.h"
-#include "TextInputScreen.h"
 #include "Transition.h"
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 namespace VOXA
 {
@@ -31,22 +31,10 @@ namespace VOXA
 
         ScreenId targetScreen = ScreenId::Tasks;
         uint32_t lastMs = millis();
+        int activeTab = 0; // 0: All, 1: Pend, 2: Done
 
-        // Handle text input addition
-        std::string addedText = TextInputScreen::getResult();
-        if (!addedText.empty())
-        {
-            TaskItem newTask;
-            newTask.title = addedText;
-            newTask.timestamp = timeService.getFormattedDateTime();
-            newTask.isDone = false;
-            dataService.addTaskLocal(newTask);
-        }
 
-        auto items = dataService.getTasks();
-        float contentHeight = items.size() * 50.0f + 10.0f;
-        float visibleHeight = h - 70.0f - 18.0f;
-        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+        auto allItems = dataService.getTasks();
 
         while (targetScreen == ScreenId::Tasks)
         {
@@ -54,9 +42,29 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            items = dataService.getTasks();
-            contentHeight = items.size() * 50.0f + 10.0f;
-            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
+            allItems = dataService.getTasks();
+
+            // Filter tasks based on activeTab
+            std::vector<TaskItem> items;
+            int totalCount = allItems.size();
+            int pendCount = 0;
+            int doneCount = 0;
+            for (const auto& t : allItems)
+            {
+                if (t.isDone) doneCount++;
+                else pendCount++;
+            }
+
+            for (const auto& t : allItems)
+            {
+                if (activeTab == 0) items.push_back(t);
+                else if (activeTab == 1 && !t.isDone) items.push_back(t);
+                else if (activeTab == 2 && t.isDone) items.push_back(t);
+            }
+
+            float contentHeight = items.size() * 56.0f + 10.0f;
+            float visibleHeight = 190.0f; // from y=72 to y=262
+            float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // Process Touch
             uint16_t tx = 0, ty = 0;
@@ -79,36 +87,33 @@ namespace VOXA
                     m_isDragging = false;
                     m_scrollVelocity = 0.0f;
 
-                    // Header Back button bounds
-                    if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    // Back button / Top left "< Hub"
+                    if (tx <= 65 && ty <= 46)
                     {
                         m_isBackPressed = true;
                     }
 
-                    // Header Add button bounds
-                    if (std::sqrt((tx - (w - 20.0f))*(tx - (w - 20.0f)) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    // Tab bar touch (Y = 46 to 68)
+                    if (ty >= 46 && ty <= 68)
                     {
-                        m_isAddPressed = true;
+                        float tabW = (w - 20.0f) / 3.0f;
+                        if (tx >= 10 && tx < 10 + tabW) activeTab = 0;
+                        else if (tx >= 10 + tabW && tx < 10 + 2 * tabW) activeTab = 1;
+                        else if (tx >= 10 + 2 * tabW && tx <= w - 10) activeTab = 2;
+                        m_targetScrollY = 0.0f;
+                        m_scrollY = 0.0f;
                     }
 
-                    // Header Search button bounds
-                    if (std::sqrt((tx - (w - 55.0f))*(tx - (w - 55.0f)) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
-                    {
-                        m_isSearchPressed = true;
-                    }
 
                     // Card checks
-                    if (ty >= 70.0f && ty <= (h - 18.0f))
+                    if (ty >= 72 && ty <= 264)
                     {
-                        float leftX = w * 0.04f;
-                        float cardW = w * 0.92f;
                         for (std::size_t i = 0; i < items.size(); ++i)
                         {
-                            float itemY = 72.0f + i * 50.0f - m_scrollY;
-                            if (tx >= leftX && tx <= (leftX + cardW) &&
-                                ty >= itemY && ty <= (itemY + 44.0f))
+                            float itemY = 74.0f + i * 56.0f - m_scrollY;
+                            if (tx >= 10 && tx <= (w - 10) && ty >= itemY && ty <= (itemY + 50.0f))
                             {
-                                m_pressedItemIndex = i;
+                                m_pressedItemIndex = (int)i;
                             }
                         }
                     }
@@ -129,7 +134,6 @@ namespace VOXA
                         m_isDragging = true;
                         m_isBackPressed = false;
                         m_isAddPressed = false;
-                        m_isSearchPressed = false;
                         m_pressedItemIndex = -1;
                     }
 
@@ -163,15 +167,6 @@ namespace VOXA
                         {
                             targetScreen = ScreenId::Home;
                         }
-                        else if (m_isAddPressed)
-                        {
-                            TextInputScreen::prepare("Enter New Task", ScreenId::Tasks, false);
-                            targetScreen = ScreenId::TextInput;
-                        }
-                        else if (m_isSearchPressed)
-                        {
-                            targetScreen = ScreenId::Search;
-                        }
                         else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)items.size())
                         {
                             DetailScreen::setItem("tasks", items[m_pressedItemIndex].id, ScreenId::Tasks);
@@ -180,7 +175,6 @@ namespace VOXA
                     }
                     m_isBackPressed = false;
                     m_isAddPressed = false;
-                    m_isSearchPressed = false;
                     m_pressedItemIndex = -1;
                 }
             }
@@ -203,75 +197,137 @@ namespace VOXA
                 m_scrollY = m_targetScrollY;
             }
 
-            // Render Layout
-            ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Tasks", true, true, Icon::Plus, w, h);
+            // Render Layout - Pure Pitch Black OLED
+            canvas.fillScreen(0x0000);
 
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-            uint16_t backColor = m_isBackPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, 22.0f, 46.0f, Icon::Back, backFill, backColor, w, h);
+            // 1. Top Status Bar (Y = 10)
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::top_left);
+            canvas.setTextColor(0xFFFF);
+            std::string timeStr = timeService.getCurrentTime();
+            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+            canvas.drawString(timeStr.c_str(), 12, 10);
 
-            uint16_t addFill = m_isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-            uint16_t addColor = m_isAddPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, w - 22.0f, 46.0f, Icon::Plus, addFill, addColor, w, h);
+            canvas.setTextDatum(textdatum_t::top_right);
+            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.drawString("TASKS", w - 20, 10);
+            // Flash bolt
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
 
-            uint16_t searchFill = m_isSearchPressed ? VoxaTheme::getPrimary() : VoxaTheme::getGlassSurface();
-            uint16_t searchColor = m_isSearchPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, w - 58.0f, 46.0f, Icon::Search, searchFill, searchColor, w, h);
+            // 2. Sub-Header (Y = 28)
+            canvas.setTextDatum(textdatum_t::middle_left);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextColor(0x94A3B8);
+            canvas.drawString("< Hub", 12, 34);
 
-            float leftX = w * 0.04f;
-            float cardW = w * 0.92f;
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextColor(0xFFFF);
+            char headerTitle[32];
+            snprintf(headerTitle, sizeof(headerTitle), "TASKS (%d)", totalCount);
+            canvas.drawString(headerTitle, 56, 33);
 
-            canvas.setClipRect(0, 70, w, h - 70 - 18);
+            // Filter/Sliders icon on right
+            uint16_t iconColor = 0xFDC0;
+            canvas.drawLine(w - 24, 28, w - 12, 28, iconColor);
+            canvas.fillRect(w - 20, 26, 3, 5, iconColor);
+            canvas.drawLine(w - 24, 34, w - 12, 34, iconColor);
+            canvas.fillRect(w - 15, 32, 3, 5, iconColor);
+            canvas.drawLine(w - 24, 40, w - 12, 40, iconColor);
+            canvas.fillRect(w - 22, 38, 3, 5, iconColor);
+
+            // 3. Segmented Filter Tabs (Y = 48..68)
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            float tabW = (w - 20.0f) / 3.0f;
+
+            // Active Tab Pill
+            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
+
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_center);
+
+            char tAll[20], tPend[20], tDone[20];
+            snprintf(tAll, sizeof(tAll), "All (%d)", totalCount);
+            snprintf(tPend, sizeof(tPend), "Pend (%d)", pendCount);
+            snprintf(tDone, sizeof(tDone), "Done (%d)", doneCount);
+
+            canvas.setTextColor(activeTab == 0 ? 0x0000 : 0x888888);
+            canvas.drawString(tAll, 10 + tabW * 0.5f, 58);
+
+            canvas.setTextColor(activeTab == 1 ? 0x0000 : 0x888888);
+            canvas.drawString(tPend, 10 + tabW * 1.5f, 58);
+
+            canvas.setTextColor(activeTab == 2 ? 0x0000 : 0x888888);
+            canvas.drawString(tDone, 10 + tabW * 2.5f, 58);
+
+            // 4. Scrollable Card List (Y = 72..264)
+            canvas.setClipRect(0, 72, w, 194);
 
             for (std::size_t i = 0; i < items.size(); ++i)
             {
-                float itemY = 72.0f + i * 52.0f - m_scrollY;
-                if (itemY + 46.0f < 70.0f || itemY > (h - 18.0f))
+                float itemY = 74.0f + i * 56.0f - m_scrollY;
+                if (itemY + 52.0f < 72.0f || itemY > 264.0f)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
 
-                // iOS 26 Glassmorphic Card Container
-                ScreenCommon::drawGlassCard(canvas, leftX, itemY, cardW, 46.0f, 12.0f, isPressed, VoxaTheme::getSystemGreen());
+                // Card container
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(34, 38, 48);
+                canvas.fillRoundRect(10, (int)itemY, w - 20, 50, 8, cardBg);
+                canvas.drawRoundRect(10, (int)itemY, w - 20, 50, 8, cardBorder);
 
-                uint16_t labelColor = isPressed ? 0xFFFF : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? 0xFFFF : VoxaTheme::getTextSecondary();
-
-                float cy = itemY + 23.0f;
-                float iconCx = leftX + 22.0f;
-
-                // iOS Checkbox Indicator
-                uint16_t iconColor = items[i].isDone ? VoxaTheme::getSystemGreen() : VoxaTheme::getGlassBorder();
-                canvas.fillCircle((int)iconCx, (int)cy, 11, items[i].isDone ? VoxaTheme::getSystemGreen() : canvas.color565(18, 20, 28));
-                canvas.drawCircle((int)iconCx, (int)cy, 11, iconColor);
+                // Checkbox on left (x = 22, y = itemY + 18)
+                int boxX = 20;
+                int boxY = (int)itemY + 12;
+                int boxS = 14;
                 if (items[i].isDone)
                 {
-                    ScreenCommon::drawIcon(canvas, Icon::Spark, iconCx - 6.0f, cy - 6.0f, 12.0f, 0xFFFF);
+                    canvas.fillRoundRect(boxX, boxY, boxS, boxS, 3, 0xFDC0);
+                    // Checkmark
+                    canvas.drawLine(boxX + 3, boxY + 7, boxX + 6, boxY + 10, 0x0000);
+                    canvas.drawLine(boxX + 6, boxY + 10, boxX + 11, boxY + 3, 0x0000);
                 }
                 else
                 {
-                    ScreenCommon::drawIcon(canvas, Icon::Note, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getPrimary());
+                    canvas.drawRoundRect(boxX, boxY, boxS, boxS, 3, canvas.color565(100, 116, 139));
                 }
 
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_left);
-                canvas.setTextColor(labelColor);
+                // Line 1: Title (Bold)
+                canvas.setFont(&fonts::Font0);
+                canvas.setTextDatum(textdatum_t::top_left);
+                canvas.setTextColor(0xFFFF);
 
                 std::string tTitle = items[i].title;
-                if (tTitle.length() > 20) tTitle = tTitle.substr(0, 18) + "...";
-                canvas.drawString(tTitle.c_str(), leftX + 40.0f, cy - 8.0f);
+                if (tTitle.length() > 24) tTitle = tTitle.substr(0, 22) + "..";
+                canvas.drawString(tTitle.c_str(), 42, (int)itemY + 8);
 
-                canvas.setFont(&fonts::Font0);
-                canvas.setTextColor(subColor);
-                std::string subStr = items[i].timestamp.empty() ? "Task" : items[i].timestamp;
-                canvas.drawString(subStr.c_str(), leftX + 40.0f, cy + 9.0f);
+                // Line 2: Content/Submemo
+                canvas.setTextColor(0x94A3B8);
+                std::string subStr = items[i].content;
+                if (subStr.empty()) subStr = "Audio summary note";
+                if (subStr.length() > 28) subStr = subStr.substr(0, 26) + "..";
+                canvas.drawString(subStr.c_str(), 42, (int)itemY + 22);
 
-                float chevX = leftX + cardW - 20.0f;
-                ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 6.0f, cy - 8.0f, 16.0f, subColor);
+                // Line 3: Timestamp · Status
+                canvas.setTextColor(0x64748B);
+                std::string metaStr = items[i].timestamp.empty() ? "Today · Synced" : (items[i].timestamp + " · Synced");
+                if (metaStr.length() > 30) metaStr = metaStr.substr(0, 28) + "..";
+                canvas.drawString(metaStr.c_str(), 42, (int)itemY + 35);
             }
 
             canvas.clearClipRect();
+
+            // 5. Bottom Action Button (Y = 272..306)
+            uint16_t btnFill = m_isAddPressed ? 0xFFE0 : 0xFDC0;
+            canvas.fillRoundRect(10, 272, w - 20, 34, 17, btnFill);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.setTextColor(0x0000);
+            canvas.drawString("+ + QUICK VOICE TASK", w * 0.5f, 289);
+
+            // Screen Slide Transition or Direct push
             if (entryFrame < 10)
             {
                 VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Tasks), entryFrame, 10);

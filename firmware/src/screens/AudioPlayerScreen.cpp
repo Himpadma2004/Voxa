@@ -22,84 +22,6 @@ namespace VOXA
         s_backRoute = backRoute;
     }
 
-    namespace
-    {
-        // Spotify Theme Color Palette
-        constexpr uint16_t SPOTIFY_BG       = 0x10A2; // #121212
-        constexpr uint16_t SPOTIFY_SURFACE  = 0x18E3; // #181818
-        constexpr uint16_t SPOTIFY_CARD     = 0x2124; // #242424
-        constexpr uint16_t SPOTIFY_GREEN    = 0x1DCB; // #1DB954
-        constexpr uint16_t SPOTIFY_GREEN_LO = 0x0BE4; // #0E682E
-        constexpr uint16_t SPOTIFY_WHITE    = 0xFFFF; // #FFFFFF
-        constexpr uint16_t SPOTIFY_GRAY     = 0xBDF7; // #B3B3B3
-        constexpr uint16_t SPOTIFY_DARK_GRAY= 0x4228; // #404040
-        constexpr uint16_t SPOTIFY_TRACK    = 0x3186; // #303030
-
-        std::string formatTime(uint32_t seconds)
-        {
-            uint32_t m = seconds / 60;
-            uint32_t s = seconds % 60;
-            char buf[16];
-            sprintf(buf, "%01u:%02u", m, s);
-            return buf;
-        }
-
-        void drawWrappedString(LGFX_Sprite& canvas, const std::string& text, float x, float& y, float maxW, uint16_t color)
-        {
-            canvas.setTextColor(color);
-            canvas.setTextDatum(textdatum_t::top_left);
-
-            std::string currentLine = "";
-            std::string word = "";
-            int linesDrawn = 0;
-            
-            for (size_t i = 0; i <= text.size(); i++)
-            {
-                char c = (i < text.size()) ? text[i] : '\0';
-                if (c == ' ' || c == '\n' || c == '\0')
-                {
-                    std::string testLine = currentLine.empty() ? word : (currentLine + " " + word);
-                    if (canvas.textWidth(testLine.c_str()) > maxW && !currentLine.empty())
-                    {
-                        if (linesDrawn >= 2)
-                        {
-                            currentLine += "...";
-                            canvas.drawString(currentLine.c_str(), x, y);
-                            y += canvas.fontHeight() + 2.0f;
-                            return;
-                        }
-                        canvas.drawString(currentLine.c_str(), x, y);
-                        y += canvas.fontHeight() + 2.0f;
-                        linesDrawn++;
-                        currentLine = word;
-                    }
-                    else
-                    {
-                        currentLine = testLine;
-                    }
-                    word = "";
-                    if (c == '\n')
-                    {
-                        canvas.drawString(currentLine.c_str(), x, y);
-                        y += canvas.fontHeight() + 2.0f;
-                        linesDrawn++;
-                        currentLine = "";
-                    }
-                }
-                else
-                {
-                    word += c;
-                }
-            }
-
-            if (!currentLine.empty() && linesDrawn < 2)
-            {
-                canvas.drawString(currentLine.c_str(), x, y);
-                y += canvas.fontHeight() + 2.0f;
-            }
-        }
-    }
-
     ScreenId AudioPlayerScreen::show(Touch& touch)
     {
         int entryFrame = 0;
@@ -120,6 +42,7 @@ namespace VOXA
 
         ScreenId targetScreen = ScreenId::AudioPlayer;
         uint32_t lastMs = millis();
+        float elapsed = 0.0f;
 
         // Retrieve Recording Details
         Recording rec;
@@ -133,33 +56,28 @@ namespace VOXA
             }
         }
 
-        // Dynamic Playback State
         bool isPlaying = false;
         float currentProgressSec = 0.0f;
         
-        // Accurate Duration: use recorded duration or dynamic fallback
         uint32_t durationSec = rec.durationSeconds;
         if (durationSec == 0)
         {
-            durationSec = 8;
+            durationSec = 180; // default 3 min
         }
         
         bool m_isBackPressed = false;
         bool m_isPlayPressed = false;
         bool m_isRewindPressed = false;
         bool m_isForwardPressed = false;
-        bool m_isDeletePressed = false;
         bool m_isScrubbing = false;
         bool m_wasTouched = false;
-
-        // Visualizer 12-band equalizer
-        float vizScales[12] = {0.2f, 0.4f, 0.6f, 0.8f, 0.5f, 0.7f, 0.9f, 0.6f, 0.4f, 0.8f, 0.5f, 0.3f};
 
         while (targetScreen == ScreenId::AudioPlayer)
         {
             uint32_t nowMs = millis();
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
+            elapsed += deltaSecs;
 
             // Track Real Audio Playback Status
             bool streamActive = AudioManager::instance().isVoiceStreamPlaying();
@@ -169,7 +87,7 @@ namespace VOXA
                 currentProgressSec = 0.0f;
             }
 
-            // Increment simulated/actual playback position
+            // Increment playback position
             if (isPlaying && !m_isScrubbing)
             {
                 currentProgressSec += deltaSecs;
@@ -180,33 +98,16 @@ namespace VOXA
                 }
             }
 
-            // Animate visualizer bars when playing
-            if (isPlaying)
-            {
-                for (int i = 0; i < 12; ++i)
-                {
-                    float angle = (nowMs * 0.008f) + (i * 0.75f);
-                    vizScales[i] = 0.25f + 0.75f * std::abs(std::sin(angle));
-                }
-            }
-            else
-            {
-                for (int i = 0; i < 12; ++i)
-                {
-                    vizScales[i] = 0.15f; // Resting low bar
-                }
-            }
-
             // ── Touch Processing ───────────────────────────────────────────
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
 
-            float sliderY = h - 88.0f;
-            float barStartX = 24.0f;
-            float barEndX = w - 24.0f;
+            float progY = 216.0f;
+            float barStartX = 16.0f;
+            float barEndX = w - 16.0f;
             float barW = barEndX - barStartX;
 
-            if (touched && entryFrame >= 10)
+            if (touched)
             {
                 if (!m_wasTouched)
                 {
@@ -215,49 +116,42 @@ namespace VOXA
                     dragStartY = ty;
                     swipeBackCandidate = (tx < 50);
 
-                    // Back button (Top Left)
-                    if (std::sqrt((tx - 24.0f)*(tx - 24.0f) + (ty - 38.0f)*(ty - 38.0f)) <= 22.0f)
+                    // Back button / Top Bar
+                    if (ty <= 40)
                     {
                         m_isBackPressed = true;
+                        AudioManager::instance().playTapSoundAsync();
                     }
 
-                    // Delete button (Top Right)
-                    if (std::sqrt((tx - (w - 24.0f))*(tx - (w - 24.0f)) + (ty - 38.0f)*(ty - 38.0f)) <= 22.0f)
-                    {
-                        m_isDeletePressed = true;
-                    }
-
-                    // Responsive Scrub Bar (Generous touch hit area +-20px)
-                    if (ty >= sliderY - 20.0f && ty <= sliderY + 20.0f && tx >= (barStartX - 10.0f) && tx <= (barEndX + 10.0f))
+                    // Progress Seek Bar (Y = 200 to 235)
+                    if (ty >= progY - 14.0f && ty <= progY + 16.0f && tx >= barStartX && tx <= barEndX)
                     {
                         m_isScrubbing = true;
                         float pct = (float)(tx - barStartX) / barW;
                         pct = std::max(0.0f, std::min(1.0f, pct));
                         currentProgressSec = pct * durationSec;
+                        AudioManager::instance().playTapSoundAsync();
                     }
 
-                    // Center Play/Pause button (Y = h - 38, radius = 28)
-                    float playCx = w * 0.5f;
-                    float playCy = h - 38.0f;
-                    if (std::sqrt((tx - playCx)*(tx - playCx) + (ty - playCy)*(ty - playCy)) <= 28.0f)
-                    {
-                        m_isPlayPressed = true;
-                    }
-
-                    // Rewind -5s button
-                    float rwdCx = w * 0.22f;
-                    float rwdCy = h - 38.0f;
-                    if (std::sqrt((tx - rwdCx)*(tx - rwdCx) + (ty - rwdCy)*(ty - rwdCy)) <= 22.0f)
+                    // Rewind button (X: 30..75, Y: 250..295)
+                    if (tx >= 30 && tx <= 75 && ty >= 250 && ty <= 295)
                     {
                         m_isRewindPressed = true;
+                        AudioManager::instance().playTapSoundAsync();
                     }
 
-                    // Forward +5s button
-                    float fwdCx = w * 0.78f;
-                    float fwdCy = h - 38.0f;
-                    if (std::sqrt((tx - fwdCx)*(tx - fwdCx) + (ty - fwdCy)*(ty - fwdCy)) <= 22.0f)
+                    // Center Play/Pause button (X: 95..145, Y: 250..295)
+                    if (tx >= 95 && tx <= 145 && ty >= 250 && ty <= 295)
+                    {
+                        m_isPlayPressed = true;
+                        AudioManager::instance().playTapSoundAsync();
+                    }
+
+                    // Forward button (X: 165..210, Y: 250..295)
+                    if (tx >= 165 && tx <= 210 && ty >= 250 && ty <= 295)
                     {
                         m_isForwardPressed = true;
+                        AudioManager::instance().playTapSoundAsync();
                     }
                 }
                 else
@@ -270,7 +164,6 @@ namespace VOXA
                         swipeBackCandidate = false;
                     }
 
-                    // Continuous Scrubbing drag
                     if (m_isScrubbing)
                     {
                         float pct = (float)(tx - barStartX) / barW;
@@ -290,47 +183,22 @@ namespace VOXA
                     {
                         targetScreen = s_backRoute;
                     }
-                    else if (m_isDeletePressed)
-                    {
-                        Serial.printf("[AudioPlayer] Deleting recording ID: %u\n", s_recordingId);
-                        recordingService.remove(s_recordingId);
-                        targetScreen = s_backRoute;
-                    }
                     else if (m_isRewindPressed)
                     {
-                        currentProgressSec = std::max(0.0f, currentProgressSec - 5.0f);
+                        currentProgressSec = std::max(0.0f, currentProgressSec - 10.0f);
                     }
                     else if (m_isForwardPressed)
                     {
-                        currentProgressSec = std::min((float)durationSec, currentProgressSec + 5.0f);
+                        currentProgressSec = std::min((float)durationSec, currentProgressSec + 10.0f);
                     }
                     else if (m_isPlayPressed)
                     {
                         isPlaying = !isPlaying;
-                        Serial.printf("[AudioPlayer] Spotify toggle play: %s (%s)\n", 
-                                      isPlaying ? "PLAYING" : "PAUSED", rec.filePath.c_str());
                         if (isPlaying)
                         {
-                            if (currentProgressSec >= (float)durationSec)
+                            if (!rec.filePath.empty())
                             {
-                                currentProgressSec = 0.0f;
-                            }
-                            std::string playUrl = rec.filePath;
-                            if (!playUrl.empty())
-                            {
-                                if (playUrl.rfind("http://", 0) != 0 && playUrl.rfind("https://", 0) != 0)
-                                {
-                                    if (playUrl.find("/api/") == std::string::npos)
-                                    {
-                                        playUrl = VOXA::apiClient.getBaseUrl() + "/api/audio/" + playUrl;
-                                    }
-                                    else
-                                    {
-                                        playUrl = VOXA::apiClient.getBaseUrl() + playUrl;
-                                    }
-                                }
-                                Serial.printf("[AudioPlayer] Streaming high-def audio: %s\n", playUrl.c_str());
-                                AudioManager::instance().playUrlAsync(playUrl);
+                                AudioManager::instance().playUrlAsync(apiClient.getBaseUrl() + rec.filePath);
                             }
                         }
                         else
@@ -340,158 +208,127 @@ namespace VOXA
                     }
 
                     m_isBackPressed = false;
-                    m_isPlayPressed = false;
                     m_isRewindPressed = false;
                     m_isForwardPressed = false;
-                    m_isDeletePressed = false;
+                    m_isPlayPressed = false;
                 }
             }
 
-            // ── Spotify Dark UI Render ─────────────────────────────────────
-            canvas.fillScreen(SPOTIFY_BG);
+            // ── RENDERING ───────────────────────────────────────────────────
+            canvas.fillScreen(0x0000); // Pure OLED pitch black
 
-            // 1. Header Bar: Chevron Back, "NOW PLAYING", Delete Icon
-            // Back button
-            canvas.fillCircle(24, 38, 16, m_isBackPressed ? SPOTIFY_CARD : SPOTIFY_SURFACE);
-            canvas.drawCircle(24, 38, 16, SPOTIFY_DARK_GRAY);
-            // Draw clean '<' back arrow
-            canvas.drawLine(26, 32, 21, 38, SPOTIFY_WHITE);
-            canvas.drawLine(21, 38, 26, 44, SPOTIFY_WHITE);
-
-            // Title: "PLAYING FROM VOXA"
-            canvas.setFont(&fonts::FreeSansBold9pt7b);
-            canvas.setTextColor(SPOTIFY_GRAY);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString("PLAYING FROM VOXA", w * 0.5f, 38);
-
-            // Delete trash button (Top Right)
-            canvas.fillCircle(w - 24, 38, 16, m_isDeletePressed ? 0xB800 : SPOTIFY_SURFACE);
-            canvas.drawCircle(w - 24, 38, 16, SPOTIFY_DARK_GRAY);
-            // Draw minimalist trash can
-            int delX = w - 24;
-            canvas.drawLine(delX - 5, 34, delX + 5, 34, SPOTIFY_GRAY);
-            canvas.drawLine(delX - 3, 34, delX - 3, 43, SPOTIFY_GRAY);
-            canvas.drawLine(delX + 3, 34, delX + 3, 43, SPOTIFY_GRAY);
-            canvas.drawLine(delX - 3, 43, delX + 3, 43, SPOTIFY_GRAY);
-
-            // 2. Spotify Album Art / Vinyl Waveform Card
-            float cardX = 24.0f;
-            float cardY = 62.0f;
-            float cardW = w - 48.0f;
-            float cardH = 96.0f;
-
-            // Glassmorphism Card
-            canvas.fillRoundRect((int)cardX, (int)cardY, (int)cardW, (int)cardH, 12, SPOTIFY_CARD);
-            canvas.drawRoundRect((int)cardX, (int)cardY, (int)cardW, (int)cardH, 12, SPOTIFY_DARK_GRAY);
-
-            // Center Equalizer Waveform Soundbar (12 neon green dynamic bars)
-            float vizSpacing = 12.0f;
-            float vizBarW = 5.0f;
-            float vizMaxH = 48.0f;
-            float totalVizW = 12 * vizSpacing;
-            float vizStartX = (w - totalVizW) * 0.5f + 2.0f;
-            float vizCenterY = cardY + cardH * 0.5f;
-
-            for (int i = 0; i < 12; ++i)
-            {
-                float barH = vizMaxH * vizScales[i];
-                float barX = vizStartX + i * vizSpacing;
-                uint16_t barColor = isPlaying ? SPOTIFY_GREEN : SPOTIFY_DARK_GRAY;
-                canvas.fillRoundRect((int)barX, (int)(vizCenterY - barH * 0.5f), (int)vizBarW, (int)barH, 2, barColor);
-            }
-
-            // Spotify Live Indicator badge in card top-left
-            canvas.fillRoundRect((int)(cardX + 10), (int)(cardY + 8), 44, 14, 7, isPlaying ? SPOTIFY_GREEN_LO : SPOTIFY_SURFACE);
-            canvas.setFont(&fonts::TomThumb);
-            canvas.setTextColor(isPlaying ? SPOTIFY_GREEN : SPOTIFY_GRAY);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString(isPlaying ? "LIVE" : "VOICE", cardX + 32, cardY + 15);
-
-            // 3. Track Title & Artist Metadata
-            float metaY = cardY + cardH + 12.0f;
-            canvas.setFont(&fonts::FreeSansBold9pt7b);
-            drawWrappedString(canvas, rec.title.empty() ? "Voice Recording" : rec.title, 24.0f, metaY, w - 48.0f, SPOTIFY_WHITE);
-
-            // Date / Status subtext
-            canvas.setFont(&fonts::FreeSans9pt7b);
-            canvas.setTextColor(SPOTIFY_GRAY);
+            // ── 1. Top Header (Y = 16) ───────────────────────────────
+            // "LOSSLESS DAC" on left
+            canvas.setFont(&fonts::Font0);
             canvas.setTextDatum(textdatum_t::top_left);
-            std::string subtext = rec.timestamp.empty() ? "Recorded on VOXA" : rec.timestamp;
-            canvas.drawString(subtext.c_str(), 24.0f, metaY + 2.0f);
+            canvas.setTextColor(canvas.color565(140, 155, 175));
+            canvas.drawString("LOSSLESS  DAC", 16.0f, 16.0f);
 
-            // 4. Spotify Progress Scrub Bar (Clean, thin, responsive)
-            float progressPct = durationSec > 0 ? ((float)currentProgressSec / durationSec) : 0.0f;
-            progressPct = std::max(0.0f, std::min(1.0f, progressPct));
-            float thumbX = barStartX + progressPct * barW;
-
-            // Inactive track line (dark gray)
-            canvas.fillRoundRect((int)barStartX, (int)(sliderY - 2.0f), (int)barW, 4, 2, SPOTIFY_TRACK);
-            // Active track line (Spotify Neon Green)
-            if (progressPct > 0.001f)
-            {
-                canvas.fillRoundRect((int)barStartX, (int)(sliderY - 2.0f), (int)(progressPct * barW), 4, 2, SPOTIFY_GREEN);
-            }
-            // Scrubber Thumb (Clean white circle with green center)
-            canvas.fillCircle((int)thumbX, (int)sliderY, m_isScrubbing ? 7 : 5, SPOTIFY_WHITE);
-            canvas.fillCircle((int)thumbX, (int)sliderY, m_isScrubbing ? 3 : 2, SPOTIFY_GREEN);
-
-            // Time Labels (Spotify style: 0:14 on left, 1:42 on right)
-            canvas.setFont(&fonts::TomThumb);
-            canvas.setTextColor(SPOTIFY_GRAY);
-            canvas.setTextDatum(textdatum_t::top_left);
-            canvas.drawString(formatTime((uint32_t)currentProgressSec).c_str(), barStartX, sliderY + 7.0f);
-
+            // "96kHz" on right in cyan/soft sky blue
             canvas.setTextDatum(textdatum_t::top_right);
-            canvas.drawString(formatTime(durationSec).c_str(), barEndX, sliderY + 7.0f);
+            canvas.setTextColor(canvas.color565(115, 185, 235));
+            canvas.drawString("96kHz", w - 16.0f, 16.0f);
 
-            // 5. Spotify Bottom Media Controls (Rewind, Play/Pause, Forward)
-            // Rewind -5s button
-            float rwdCx = w * 0.22f;
-            float rwdCy = h - 38.0f;
-            canvas.fillCircle((int)rwdCx, (int)rwdCy, 18, m_isRewindPressed ? SPOTIFY_CARD : SPOTIFY_SURFACE);
-            canvas.drawCircle((int)rwdCx, (int)rwdCy, 18, SPOTIFY_DARK_GRAY);
-            // Draw << icon
-            canvas.drawLine(rwdCx + 2, rwdCy - 5, rwdCx - 4, rwdCy, SPOTIFY_WHITE);
-            canvas.drawLine(rwdCx - 4, rwdCy, rwdCx + 2, rwdCy + 5, SPOTIFY_WHITE);
-            canvas.drawLine(rwdCx + 6, rwdCy - 5, rwdCx, rwdCy, SPOTIFY_WHITE);
-            canvas.drawLine(rwdCx, rwdCy, rwdCx + 6, rwdCy + 5, SPOTIFY_WHITE);
+            // ── 2. Center Waveform Capsule Card (Y = 88) ────────────
+            int cardW = 76;
+            int cardH = 76;
+            int cardX = (w - cardW) / 2;
+            int cardY = 88;
 
-            // Large Circular Spotify Play/Pause Button (Neon Green)
-            float playCx = w * 0.5f;
-            float playCy = h - 38.0f;
-            uint16_t playBg = m_isPlayPressed ? SPOTIFY_WHITE : SPOTIFY_GREEN;
-            canvas.fillCircle((int)playCx, (int)playCy, 24, playBg);
-            
-            // Black Play or Pause icon
+            canvas.fillRoundRect(cardX, cardY, cardW, cardH, 16, canvas.color565(26, 30, 42));
+            canvas.drawRoundRect(cardX, cardY, cardW, cardH, 16, canvas.color565(38, 44, 58));
+
+            // Symmetrical Waveform Bars centered inside the card
+            int cardCx = cardX + cardW / 2;
+            int cardCy = cardY + cardH / 2;
+
+            const float barOffsets[5] = { -16.0f, -8.0f, 0.0f, 8.0f, 16.0f };
+            const float barBaseH[5]   = { 12.0f,  20.0f,  30.0f, 20.0f, 12.0f };
+            const float barW_px       = 3.5f;
+
+            for (int i = 0; i < 5; ++i)
+            {
+                float bx = cardCx + barOffsets[i];
+                float animScale = 1.0f;
+                if (isPlaying)
+                {
+                    float waveAnim = std::sin(elapsed * 10.0f + i * 1.2f);
+                    animScale = 0.55f + 0.45f * waveAnim;
+                }
+                else
+                {
+                    animScale = 0.65f;
+                }
+
+                float bh = std::max(6.0f, barBaseH[i] * animScale);
+                float by = cardCy - bh * 0.5f;
+                canvas.fillRoundRect((int)(bx - barW_px * 0.5f), (int)by, (int)barW_px, (int)bh, 1, 0xFFFF);
+            }
+
+            // ── 3. Filename / Title (Y = 186) ────────────────────────
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.setTextColor(0xFFFF);
+
+            std::string titleStr = rec.title.empty() ? "Interview_Part1.wav" : rec.title;
+            // Append .wav if not already having an extension for authentic display
+            if (titleStr.find('.') == std::string::npos)
+            {
+                titleStr += ".wav";
+            }
+            if (titleStr.length() > 22) titleStr = titleStr.substr(0, 20) + "..";
+            canvas.drawString(titleStr.c_str(), w * 0.5f, 186.0f);
+
+            // ── 4. Progress Bar (Y = 216) ────────────────────────────
+            canvas.fillRoundRect((int)barStartX, (int)progY, (int)barW, 4, 2, canvas.color565(36, 42, 54));
+
+            float pct = (durationSec > 0) ? (currentProgressSec / durationSec) : 0.0f;
+            pct = std::max(0.0f, std::min(1.0f, pct));
+            int fillW = (int)(barW * pct);
+            if (fillW > 0)
+            {
+                canvas.fillRoundRect((int)barStartX, (int)progY, fillW, 4, 2, 0xFFFF);
+            }
+
+            // ── 5. Bottom Playback Controls (Y = 270) ────────────────
+            int ctrlY = 270;
+
+            // Previous Button (|◀) at X = 52
+            int prevX = 52;
+            uint16_t prevCol = m_isRewindPressed ? canvas.color565(160, 160, 160) : 0xFFFF;
+            // Left bar
+            canvas.fillRect(prevX - 7, ctrlY - 6, 2, 12, prevCol);
+            // Left-pointing triangle
+            canvas.fillTriangle(prevX - 4, ctrlY, prevX + 4, ctrlY - 6, prevX + 4, ctrlY + 6, prevCol);
+
+            // Center Play / Pause Button at X = 120
+            int playX = 120;
+            uint16_t playCol = m_isPlayPressed ? canvas.color565(160, 160, 160) : 0xFFFF;
             if (isPlaying)
             {
-                // Pause double bars
-                canvas.fillRect((int)(playCx - 6), (int)(playCy - 7), 4, 14, 0x0000);
-                canvas.fillRect((int)(playCx + 2), (int)(playCy - 7), 4, 14, 0x0000);
+                // Pause bars (||)
+                canvas.fillRect(playX - 4, ctrlY - 7, 3, 14, playCol);
+                canvas.fillRect(playX + 2, ctrlY - 7, 3, 14, playCol);
             }
             else
             {
-                // Play triangle
-                canvas.fillTriangle((int)(playCx - 4), (int)(playCy - 8),
-                                    (int)(playCx - 4), (int)(playCy + 8),
-                                    (int)(playCx + 7), (int)(playCy), 0x0000);
+                // Play triangle (▶ outline / solid)
+                canvas.fillTriangle(playX - 5, ctrlY - 8, playX - 5, ctrlY + 8, playX + 7, ctrlY, playCol);
+                // Subtle inner cutout if matching exact outline or clean solid
             }
 
-            // Forward +5s button
-            float fwdCx = w * 0.78f;
-            float fwdCy = h - 38.0f;
-            canvas.fillCircle((int)fwdCx, (int)fwdCy, 18, m_isForwardPressed ? SPOTIFY_CARD : SPOTIFY_SURFACE);
-            canvas.drawCircle((int)fwdCx, (int)fwdCy, 18, SPOTIFY_DARK_GRAY);
-            // Draw >> icon
-            canvas.drawLine(fwdCx - 2, fwdCy - 5, fwdCx + 4, fwdCy, SPOTIFY_WHITE);
-            canvas.drawLine(fwdCx + 4, fwdCy, fwdCx - 2, fwdCy + 5, SPOTIFY_WHITE);
-            canvas.drawLine(fwdCx - 6, fwdCy - 5, fwdCx, fwdCy, SPOTIFY_WHITE);
-            canvas.drawLine(fwdCx, fwdCy, fwdCx - 6, fwdCy + 5, SPOTIFY_WHITE);
+            // Next Button (▶|) at X = 188
+            int nextX = 188;
+            uint16_t nextCol = m_isForwardPressed ? canvas.color565(160, 160, 160) : 0xFFFF;
+            // Right-pointing triangle
+            canvas.fillTriangle(nextX - 4, ctrlY - 6, nextX - 4, ctrlY + 6, nextX + 4, ctrlY, nextCol);
+            // Right bar
+            canvas.fillRect(nextX + 5, ctrlY - 6, 2, 12, nextCol);
 
             // Screen Slide Transition
-            if (entryFrame < 10)
+            if (entryFrame < 6)
             {
-                VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::AudioPlayer), entryFrame, 10);
+                VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::AudioPlayer), entryFrame, 6);
                 entryFrame++;
             }
             else
@@ -506,7 +343,6 @@ namespace VOXA
             }
         }
 
-        AudioManager::instance().stop();
         canvas.deleteSprite();
         return targetScreen;
     }

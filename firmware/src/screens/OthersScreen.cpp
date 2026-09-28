@@ -2,12 +2,12 @@
 #include "../display/Display.h"
 #include "../ui/Theme.h"
 #include "../services/MemoryService.h"
-#include "Transition.h"
-#include "../services/WiFiManager.h"
-#include "../services/DataService.h"
+#include "../services/TimeService.h"
 #include "DetailScreen.h"
+#include "Transition.h"
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 namespace VOXA
 {
@@ -33,25 +33,9 @@ namespace VOXA
 
         ScreenId targetScreen = ScreenId::Others;
         uint32_t lastMs = millis();
+        int activeTab = 0; // 0: Locked, 1: Biom, 2: Keys
 
         auto memories = memoryService.getAll();
-        float contentHeight = memories.size() * 50.0f + 10.0f;
-        float visibleHeight = h - 70.0f - 18.0f;
-        float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
-
-        // Selection & Action states
-        bool isSelectMode = false;
-        std::vector<bool> selectedItems;
-        uint32_t pressStartMs = 0;
-        bool longPressTriggered = false;
-
-        bool isMovePopupActive = false;
-        int moveTargetIndex = -1;
-
-        bool m_isPinPressed = false;
-        bool m_isMovePressed = false;
-        bool m_isDeleteModePressed = false;
-        bool isAddPressed = false;
 
         while (targetScreen == ScreenId::Others)
         {
@@ -59,9 +43,18 @@ namespace VOXA
             float deltaSecs = (nowMs - lastMs) / 1000.0f;
             lastMs = nowMs;
 
-            // Handle background sync update
             memories = memoryService.getAll();
-            contentHeight = memories.size() * 50.0f + 10.0f;
+            int totalCount = memories.size();
+
+            std::vector<Memory> items;
+            for (const auto& m : memories)
+            {
+                items.push_back(m);
+            }
+
+            float contentHeight = items.size() * 58.0f + 10.0f;
+            float visibleHeight = 190.0f;
+            float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // Process Touch
             uint16_t tx = 0, ty = 0;
@@ -83,67 +76,33 @@ namespace VOXA
                     m_lastTouchSampleMs = nowMs;
                     m_isDragging = false;
                     m_scrollVelocity = 0.0f;
-                    pressStartMs = nowMs;
-                    longPressTriggered = false;
 
-                    if (isMovePopupActive)
+                    // Back button / Top left "< Hub"
+                    if (tx <= 65 && ty <= 46)
                     {
-                        float startPopupY = h * 0.38f;
-                        float optionH = 26.0f;
-                        for (int opt = 0; opt < 3; ++opt)
-                        {
-                            float optY = startPopupY + opt * optionH;
-                            if (tx >= w * 0.1f && tx <= w * 0.9f && ty >= optY - 8.0f && ty <= optY + 18.0f)
-                            {
-                                moveTargetIndex = opt;
-                            }
-                        }
+                        m_isBackPressed = true;
                     }
-                    else
+
+                    // Tab bar touch (Y = 46 to 68)
+                    if (ty >= 46 && ty <= 68)
                     {
-                        // Back button bounds
-                        if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
-                        {
-                            m_isBackPressed = true;
-                        }
+                        float tabW = (w - 20.0f) / 3.0f;
+                        if (tx >= 10 && tx < 10 + tabW) activeTab = 0;
+                        else if (tx >= 10 + tabW && tx < 10 + 2 * tabW) activeTab = 1;
+                        else if (tx >= 10 + 2 * tabW && tx <= w - 10) activeTab = 2;
+                        m_targetScrollY = 0.0f;
+                        m_scrollY = 0.0f;
+                    }
 
-                        // Add button bounds
-                        if (std::sqrt((tx - (w - 20.0f))*(tx - (w - 20.0f)) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    // Card checks
+                    if (ty >= 72 && ty <= 264)
+                    {
+                        for (std::size_t i = 0; i < items.size(); ++i)
                         {
-                            isAddPressed = true;
-                        }
-
-                        // Action Bar bounds (bottom Y = h - 28)
-                        if (isSelectMode && ty >= h - 55.0f)
-                        {
-                            float actY = h - 28.0f;
-                            if (std::sqrt((tx - w*0.22f)*(tx - w*0.22f) + (ty - actY)*(ty - actY)) <= 18.0f)
+                            float itemY = 74.0f + i * 58.0f - m_scrollY;
+                            if (tx >= 10 && tx <= (w - 10) && ty >= itemY && ty <= (itemY + 52.0f))
                             {
-                                m_isPinPressed = true;
-                            }
-                            else if (std::sqrt((tx - w*0.50f)*(tx - w*0.50f) + (ty - actY)*(ty - actY)) <= 18.0f)
-                            {
-                                m_isMovePressed = true;
-                            }
-                            else if (std::sqrt((tx - w*0.78f)*(tx - w*0.78f) + (ty - actY)*(ty - actY)) <= 18.0f)
-                            {
-                                m_isDeleteModePressed = true;
-                            }
-                        }
-
-                        // Card checks
-                        if (ty >= 70.0f && ty <= (h - 18.0f) && (!isSelectMode || ty < h - 55.0f))
-                        {
-                            float leftX = w * 0.04f;
-                            float cardW = w * 0.92f;
-                            for (std::size_t i = 0; i < memories.size(); ++i)
-                            {
-                                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                                if (tx >= leftX && tx <= (leftX + cardW) &&
-                                    ty >= itemY && ty <= (itemY + 44.0f))
-                                {
-                                    m_pressedItemIndex = i;
-                                }
+                                m_pressedItemIndex = (int)i;
                             }
                         }
                     }
@@ -159,11 +118,10 @@ namespace VOXA
                     }
 
                     float dy = ty - m_dragStartY;
-                    if (!m_isDragging && std::abs(dy) > 10.0f && !isMovePopupActive)
+                    if (!m_isDragging && std::abs(dy) > 10.0f)
                     {
                         m_isDragging = true;
                         m_isBackPressed = false;
-                        isAddPressed = false;
                         m_pressedItemIndex = -1;
                     }
 
@@ -179,20 +137,6 @@ namespace VOXA
                         }
                         m_lastTouchSampleMs = nowMs;
                     }
-
-                    // Long press detection to enter select mode
-                    if (!isSelectMode && m_pressedItemIndex != -1 && !m_isDragging && !longPressTriggered && (nowMs - pressStartMs > 500))
-                    {
-                        isSelectMode = true;
-                        longPressTriggered = true;
-                        selectedItems.clear();
-                        selectedItems.resize(memories.size(), false);
-                        if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)selectedItems.size())
-                        {
-                            selectedItems[m_pressedItemIndex] = true;
-                        }
-                        m_pressedItemIndex = -1;
-                    }
                 }
             }
             else
@@ -204,132 +148,25 @@ namespace VOXA
                     if (m_isDragging)
                     {
                         m_isDragging = false;
-                        if (m_scrollY < -50.0f && wifiManager.isConnected() && !isSelectMode)
-                        {
-                            Serial.println("[Others] Triggering manual pull-to-refresh sync...");
-                            xTaskCreatePinnedToCore([](void*){
-                                VOXA::dataService.syncAll();
-                                vTaskDelete(NULL);
-                            }, "ManualSync", 4096, NULL, 1, NULL, 0);
-                        }
                     }
                     else
                     {
-                        if (isMovePopupActive)
+                        if (m_isBackPressed)
                         {
-                            if (moveTargetIndex != -1)
-                            {
-                                std::string targets[3] = {"reminders", "ideas", "questions"};
-                                std::string targetCat = targets[moveTargetIndex];
-                                for (size_t i = 0; i < selectedItems.size(); ++i)
-                                {
-                                    if (selectedItems[i] && i < memories.size())
-                                    {
-                                        dataService.moveItem("others", targetCat, memories[i].id);
-                                    }
-                                }
-                                isSelectMode = false;
-                                isMovePopupActive = false;
-                                selectedItems.clear();
-                                memories = memoryService.getAll();
-                            }
-                            else
-                            {
-                                isMovePopupActive = false;
-                            }
-                            moveTargetIndex = -1;
+                            targetScreen = ScreenId::Home;
                         }
-                        else if (isSelectMode)
+                        else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)items.size())
                         {
-                            if (m_isBackPressed)
-                            {
-                                isSelectMode = false;
-                                selectedItems.clear();
-                            }
-                            else if (isAddPressed)
-                            {
-                                bool anyUnselected = std::any_of(selectedItems.begin(), selectedItems.end(), [](bool val){ return !val; });
-                                std::fill(selectedItems.begin(), selectedItems.end(), anyUnselected);
-                            }
-                            else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)selectedItems.size())
-                            {
-                                selectedItems[m_pressedItemIndex] = !selectedItems[m_pressedItemIndex];
-                            }
-                            else if (m_isPinPressed)
-                            {
-                                for (size_t i = 0; i < selectedItems.size(); ++i)
-                                {
-                                    if (selectedItems[i] && i < memories.size())
-                                    {
-                                        dataService.togglePin("others", memories[i].id);
-                                    }
-                                }
-                                isSelectMode = false;
-                                selectedItems.clear();
-                                memories = memoryService.getAll();
-                            }
-                            else if (m_isMovePressed)
-                            {
-                                isMovePopupActive = true;
-                            }
-                            else if (m_isDeleteModePressed)
-                            {
-                                for (size_t i = 0; i < selectedItems.size(); ++i)
-                                {
-                                    if (selectedItems[i] && i < memories.size())
-                                    {
-                                        memoryService.remove(memories[i].id);
-                                    }
-                                }
-                                isSelectMode = false;
-                                selectedItems.clear();
-                                memories = memoryService.getAll();
-                            }
-
-                            m_isBackPressed = false;
-                            isAddPressed = false;
-                            m_pressedItemIndex = -1;
-                            m_isPinPressed = false;
-                            m_isMovePressed = false;
-                            m_isDeleteModePressed = false;
-                        }
-                        else
-                        {
-                            if (m_isBackPressed)
-                            {
-                                targetScreen = ScreenId::Home;
-                            }
-                            else if (isAddPressed)
-                            {
-                                int count = memories.size() + 1;
-                                Memory m;
-                                m.title = "New Memory " + std::to_string(count);
-                                m.content = "Memory details go here.";
-                                m.timestamp = "Jul 07";
-                                m.category = "note";
-                                memoryService.add(m);
-                                Serial.println("[Others] Added new memory");
-                                memories = memoryService.getAll();
-                            }
-                            else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)memories.size())
-                            {
-                                DetailScreen::setItem("memories", memories[m_pressedItemIndex].id, ScreenId::Others);
-                                targetScreen = ScreenId::Detail;
-                            }
-                            m_isBackPressed = false;
-                            isAddPressed = false;
-                            m_pressedItemIndex = -1;
+                            DetailScreen::setItem("others", items[m_pressedItemIndex].id, ScreenId::Others);
+                            targetScreen = ScreenId::Detail;
                         }
                     }
+                    m_isBackPressed = false;
+                    m_pressedItemIndex = -1;
                 }
             }
 
-            // Dimensions re-query & scrolling inertia
-            w = Display::width();
-            h = Display::height();
-            visibleHeight = h - 70.0f - (isSelectMode ? 55.0f : 18.0f);
-            maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
-
+            // Scroll Inertia
             if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
             {
                 m_targetScrollY += m_scrollVelocity * deltaSecs;
@@ -347,162 +184,149 @@ namespace VOXA
                 m_scrollY = m_targetScrollY;
             }
 
-            // Render
-            ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, isSelectMode ? "Select Items" : "Others", true, true, isSelectMode ? Icon::Plus : Icon::Plus, w, h);
+            // Render Layout - Pure Pitch Black OLED
+            canvas.fillScreen(0x0000);
 
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
-                                              backFill, backColor, w, h);
+            // 1. Top Status Bar (Y = 10)
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::top_left);
+            canvas.setTextColor(0xFFFF);
+            std::string timeStr = timeService.getCurrentTime();
+            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+            canvas.drawString(timeStr.c_str(), 12, 10);
 
-            uint16_t addFill = isAddPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t addColor = isAddPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, w - 20.0f, 45.0f, isSelectMode ? Icon::Plus : Icon::Plus, 
-                                              addFill, addColor, w, h);
+            canvas.setTextDatum(textdatum_t::top_right);
+            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.drawString("AES-256", w - 20, 10);
+            // Flash bolt
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
 
-            float leftX = w * 0.04f;
-            float cardW = w * 0.92f;
+            // 2. Sub-Header (Y = 28)
+            canvas.setTextDatum(textdatum_t::middle_left);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextColor(0x94A3B8);
+            canvas.drawString("< Hub", 12, 34);
 
-            canvas.setClipRect(0, 70, w, visibleHeight);
+            // Lock icon in title
+            canvas.drawRoundRect(52, 28, 10, 8, 2, 0xFDC0);
+            canvas.drawCircle(57, 26, 3, 0xFDC0);
 
-            if (m_scrollY < 0.0f && !isSelectMode)
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextColor(0xFFFF);
+            char headerTitle[32];
+            snprintf(headerTitle, sizeof(headerTitle), "VAULT (%d)", totalCount);
+            canvas.drawString(headerTitle, 66, 33);
+
+            // "SECURED" tag on right
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_right);
+            canvas.setTextColor(0x3DFE);
+            canvas.drawString("SECURED", w - 12, 34);
+
+            // 3. Segmented Filter Tabs (Y = 48..68)
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            float tabW = (w - 20.0f) / 3.0f;
+
+            // Active Tab Pill
+            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, canvas.color565(36, 44, 58));
+
+            canvas.setTextDatum(textdatum_t::middle_center);
+
+            canvas.setTextColor(activeTab == 0 ? 0xFDC0 : 0x888888);
+            canvas.drawString("Locked", 10 + tabW * 0.5f, 58);
+
+            canvas.setTextColor(activeTab == 1 ? 0xFDC0 : 0x888888);
+            canvas.drawString("Biom", 10 + tabW * 1.5f, 58);
+
+            canvas.setTextColor(activeTab == 2 ? 0xFDC0 : 0x888888);
+            canvas.drawString("Keys", 10 + tabW * 2.5f, 58);
+
+            // 4. Scrollable Card List (Y = 72..264)
+            canvas.setClipRect(0, 72, w, 194);
+
+            for (std::size_t i = 0; i < items.size(); ++i)
             {
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_center);
-                canvas.setTextColor(VoxaTheme::getTextSecondary());
-                const char* msg = (m_scrollY < -50.0f) ? "Release to sync" : "Pull to sync";
-                canvas.drawString(msg, w * 0.5f, 72.0f - m_scrollY - 22.0f);
-            }
-
-            for (std::size_t i = 0; i < memories.size(); ++i)
-            {
-                float itemY = 72.0f + i * 50.0f - m_scrollY;
-                if (itemY + 44.0f < 70.0f || itemY > (70.0f + visibleHeight))
+                float itemY = 74.0f + i * 58.0f - m_scrollY;
+                if (itemY + 54.0f < 72.0f || itemY > 264.0f)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
-                bool isItemChecked = isSelectMode && i < selectedItems.size() && selectedItems[i];
 
-                uint16_t cardBg = isPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-                uint16_t cardBorder = isPressed ? VoxaTheme::getPrimaryLight() : (isItemChecked ? VoxaTheme::getPrimary() : VoxaTheme::getDivider());
-                uint16_t labelColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                uint16_t subColor = isPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextSecondary();
+                // Card container
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(34, 38, 48);
+                canvas.fillRoundRect(10, (int)itemY, w - 20, 52, 8, cardBg);
+                canvas.drawRoundRect(10, (int)itemY, w - 20, 52, 8, cardBorder);
 
-                canvas.fillRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBg);
-                canvas.drawRoundRect((int)leftX, (int)itemY, (int)cardW, 44, 8, cardBorder);
-
-                float cy = itemY + 22.0f;
-                float iconCx = leftX + 22.0f;
-                float textOffset = 42.0f;
-
-                if (isSelectMode)
+                // Left Icon (Key / Lock / Dots)
+                int icX = 22;
+                int icY = (int)itemY + 16;
+                if (i % 3 == 0)
                 {
-                    // Draw selection checkbox circle
-                    canvas.drawCircle((int)iconCx, (int)cy, 8, isItemChecked ? VoxaTheme::getPrimary() : VoxaTheme::getDivider());
-                    if (isItemChecked)
-                    {
-                        canvas.fillCircle((int)iconCx, (int)cy, 5, VoxaTheme::getPrimary());
-                    }
-                    textOffset = 38.0f;
+                    // Key
+                    canvas.drawCircle(icX, icY, 4, 0xFDC0);
+                    canvas.drawLine(icX + 4, icY, icX + 10, icY, 0xFDC0);
+                    canvas.drawLine(icX + 8, icY, icX + 8, icY + 3, 0xFDC0);
+                }
+                else if (i % 3 == 1)
+                {
+                    // Lock
+                    canvas.drawRoundRect(icX - 4, icY - 2, 9, 8, 2, canvas.color565(255, 180, 80));
+                    canvas.drawCircle(icX, icY - 4, 3, canvas.color565(255, 180, 80));
                 }
                 else
                 {
-                    canvas.fillCircle((int)iconCx, (int)cy, 12, 0xAD55);
-                    ScreenCommon::drawIcon(canvas, Icon::Folder, iconCx - 6.0f, cy - 6.0f, 12.0f, VoxaTheme::getBackground());
+                    // Dots
+                    canvas.fillCircle(icX - 3, icY, 1, 0x94A3B8);
+                    canvas.fillCircle(icX, icY, 1, 0x94A3B8);
+                    canvas.fillCircle(icX + 3, icY, 1, 0x94A3B8);
                 }
 
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_left);
-                canvas.setTextColor(labelColor);
+                // Line 1: Title
+                canvas.setFont(&fonts::Font0);
+                canvas.setTextDatum(textdatum_t::top_left);
+                canvas.setTextColor(0xFFFF);
 
-                std::string drawTitle = memories[i].title;
-                if (drawTitle.length() > 15) drawTitle = drawTitle.substr(0, 13) + "...";
+                std::string tTitle = items[i].title;
+                if (tTitle.length() > 22) tTitle = tTitle.substr(0, 20) + "..";
+                canvas.drawString(tTitle.c_str(), 38, (int)itemY + 8);
 
-                canvas.drawString(drawTitle.c_str(), leftX + textOffset, cy - 8.0f);
+                // Line 2: Subtitle / Confidential
+                canvas.setTextColor(0x94A3B8);
+                std::string subStr = items[i].content;
+                if (subStr.empty()) subStr = "Verified 2d ago";
+                if (subStr.length() > 24) subStr = subStr.substr(0, 22) + "..";
+                canvas.drawString(subStr.c_str(), 38, (int)itemY + 22);
 
-                canvas.setTextColor(subColor);
-                canvas.drawString(memories[i].timestamp.c_str(), leftX + textOffset, cy + 8.0f);
-
-                // Draw Pin indicator if pinned
-                if (memories[i].pinned)
+                // Line 3: Security Badge line
+                if (i % 3 == 0)
                 {
-                    float pinX = leftX + cardW - 28.0f;
-                    ScreenCommon::drawIcon(canvas, Icon::Star, pinX - 5.0f, cy - 5.0f, 10.0f, 0xFD20);
+                    canvas.setTextColor(0x3DFE); // Cyan
+                    canvas.drawString("Thumb Auth Required", 38, (int)itemY + 36);
                 }
-                else if (!isSelectMode)
+                else if (i % 3 == 1)
                 {
-                    float chevX = leftX + cardW - 16.0f;
-                    ScreenCommon::drawIcon(canvas, Icon::ChevronRight, chevX - 5.0f, cy - 5.0f, 10.0f, subColor);
+                    canvas.setTextColor(0xFDC0); // Amber
+                    canvas.drawString("PIN Required", 38, (int)itemY + 36);
+                }
+                else
+                {
+                    canvas.setTextColor(0x64748B); // Dim
+                    canvas.drawString("Touch to Reveal", 38, (int)itemY + 36);
                 }
             }
 
             canvas.clearClipRect();
 
-            // Bottom Action Bar
-            if (isSelectMode)
-            {
-                float actY = h - 28.0f;
-                canvas.fillRect(0, h - 56, w, 56, VoxaTheme::getSurface());
-                canvas.drawFastHLine(0, h - 56, w, VoxaTheme::getDivider());
+            // 5. Bottom Footer Text (Y = 284)
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.setTextColor(0xFDC0);
+            canvas.drawString("SECURE ENCLAVE · ZERO CLOUD LEAK", w * 0.5f, 290);
 
-                // 1. PIN button
-                uint16_t pinBg = m_isPinPressed ? VoxaTheme::getPrimary() : VoxaTheme::getBackground();
-                uint16_t pinColor = m_isPinPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                canvas.fillCircle((int)(w * 0.22f), (int)actY, 18, pinBg);
-                canvas.drawCircle((int)(w * 0.22f), (int)actY, 18, VoxaTheme::getDivider());
-                ScreenCommon::drawIcon(canvas, Icon::Star, w * 0.22f - 9.0f, actY - 9.0f, 18.0f, pinColor);
-
-                // 2. MOVE button
-                uint16_t movBg = m_isMovePressed ? VoxaTheme::getPrimary() : VoxaTheme::getBackground();
-                uint16_t movColor = m_isMovePressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-                canvas.fillCircle((int)(w * 0.50f), (int)actY, 18, movBg);
-                canvas.drawCircle((int)(w * 0.50f), (int)actY, 18, VoxaTheme::getDivider());
-                ScreenCommon::drawIcon(canvas, Icon::Folder, w * 0.50f - 9.0f, actY - 9.0f, 18.0f, movColor);
-
-                // 3. DELETE button
-                uint16_t delBg = m_isDeleteModePressed ? VoxaTheme::getPrimary() : VoxaTheme::getBackground();
-                uint16_t delColor = m_isDeleteModePressed ? VoxaTheme::getBackground() : VoxaTheme::getWarning();
-                canvas.fillCircle((int)(w * 0.78f), (int)actY, 18, delBg);
-                canvas.drawCircle((int)(w * 0.78f), (int)actY, 18, VoxaTheme::getDivider());
-                
-                // Draw simple dustbin shape
-                canvas.fillRect((int)(w * 0.78f - 5.0f), (int)(actY - 5.0f), 10, 2, delColor);
-                canvas.fillRect((int)(w * 0.78f - 4.0f), (int)(actY - 2.0f), 8, 8, delColor);
-            }
-
-            // Move target selection modal dialog
-            if (isMovePopupActive)
-            {
-                canvas.fillRect(0, 0, w, h, canvas.color565(8, 6, 15));
-
-                float dW = w * 0.88f;
-                float dH = 120.0f;
-                float dX = w * 0.06f;
-                float dY = h * 0.30f;
-
-                canvas.fillRoundRect((int)dX, (int)dY, (int)dW, (int)dH, 12, VoxaTheme::getSurface());
-                canvas.drawRoundRect((int)dX, (int)dY, (int)dW, (int)dH, 12, VoxaTheme::getDivider());
-
-                canvas.setFont(&fonts::FreeSansBold9pt7b);
-                canvas.setTextDatum(textdatum_t::top_center);
-                canvas.setTextColor(TFT_WHITE);
-                canvas.drawString("Move selected items to:", dX + dW*0.5f, dY + 12.0f);
-
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                canvas.setTextDatum(textdatum_t::middle_center);
-                
-                // Target categories
-                std::string targetLabels[3] = {"Reminders", "Ideas", "Questions"};
-                float startPopupY = dY + 45.0f;
-                for (int opt = 0; opt < 3; ++opt)
-                {
-                    uint16_t rowCol = (moveTargetIndex == opt) ? VoxaTheme::getPrimary() : VoxaTheme::getTextPrimary();
-                    canvas.setTextColor(rowCol);
-                    canvas.drawString(targetLabels[opt].c_str(), dX + dW * 0.5f, startPopupY + opt * 24.0f);
-                }
-            }
-
+            // Screen Slide Transition or Direct push
             if (entryFrame < 10)
             {
                 VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Others), entryFrame, 10);
