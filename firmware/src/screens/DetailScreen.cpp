@@ -8,8 +8,9 @@
 #include "../services/DataService.h"
 #include "../services/ApiClient.h"
 #include "../services/WiFiManager.h"
+#include "../services/TimeService.h"
+#include "../audio/AudioManager.h"
 #include "Transition.h"
-
 
 #include <cmath>
 #include <algorithm>
@@ -33,7 +34,7 @@ namespace
                 if (canvas.textWidth(testLine.c_str()) > maxW && !currentLine.empty())
                 {
                     canvas.drawString(currentLine.c_str(), x, y);
-                    y += canvas.fontHeight() + 2.0f;
+                    y += canvas.fontHeight() + 3.0f;
                     currentLine = word;
                 }
                 else
@@ -44,7 +45,7 @@ namespace
                 if (c == '\n')
                 {
                     canvas.drawString(currentLine.c_str(), x, y);
-                    y += canvas.fontHeight() + 2.0f;
+                    y += canvas.fontHeight() + 3.0f;
                     currentLine = "";
                 }
             }
@@ -57,7 +58,7 @@ namespace
         if (!currentLine.empty())
         {
             canvas.drawString(currentLine.c_str(), x, y);
-            y += canvas.fontHeight() + 2.0f;
+            y += canvas.fontHeight() + 3.0f;
         }
     }
 }
@@ -68,6 +69,7 @@ namespace VOXA
     extern IdeaService ideaService;
     extern QuestionService questionService;
     extern MemoryService memoryService;
+    extern TimeService timeService;
 
     std::string DetailScreen::s_category = "";
     uint32_t    DetailScreen::s_itemId = 0;
@@ -91,7 +93,6 @@ namespace VOXA
         float m_scrollY = 0.0f;
         float m_targetScrollY = 0.0f;
         float m_scrollVelocity = 0.0f;
-        float m_lastDragX = 0.0f;
         float m_lastDragY = 0.0f;
         float m_dragStartY = 0.0f;
         float m_dragStartScrollY = 0.0f;
@@ -119,10 +120,13 @@ namespace VOXA
         std::string recordedDateStr = "";
         std::string statusStr = "";
         bool isDone = false;
-        uint16_t tagColor = 0x79CF;
+        uint16_t tagColor = 0xFDC0;
+        std::string tagLabel = "NOTE";
 
         if (s_category == "reminders")
         {
+            tagLabel = "REMINDER";
+            tagColor = 0x79CF; // Cyan/blue
             auto reminders = reminderService.getAll();
             for (const auto& r : reminders)
             {
@@ -132,14 +136,15 @@ namespace VOXA
                     contentStr = r.comments.empty() ? "No description" : r.comments;
                     recordedDateStr = "Due: " + (r.dateTime.empty() ? "N/A" : DataService::formatReadableTimestamp(r.dateTime));
                     isDone = r.completed;
-                    statusStr = r.completed ? "Status: Completed" : "Status: Pending";
-                    tagColor = 0x79CF;
+                    statusStr = r.completed ? "COMPLETED" : "PENDING";
                     break;
                 }
             }
         }
         else if (s_category == "ideas")
         {
+            tagLabel = "IDEA";
+            tagColor = 0xFD20; // Warm Amber
             auto ideas = ideaService.getAll();
             for (const auto& idea : ideas)
             {
@@ -147,15 +152,16 @@ namespace VOXA
                 {
                     titleStr = idea.title;
                     contentStr = idea.content.empty() ? "No description" : idea.content;
-                    recordedDateStr = "Recorded: " + (idea.timestamp.empty() ? "N/A" : DataService::formatReadableTimestamp(idea.timestamp));
-                    statusStr = "Type: Idea";
-                    tagColor = 0xFD20;
+                    recordedDateStr = "Recorded: " + (idea.timestamp.empty() ? "Today" : DataService::formatReadableTimestamp(idea.timestamp));
+                    statusStr = "AI INSIGHT";
                     break;
                 }
             }
         }
         else if (s_category == "questions")
         {
+            tagLabel = "QUESTION";
+            tagColor = 0x3DFE; // Bright Cyan
             auto questions = questionService.getAll();
             for (const auto& q : questions)
             {
@@ -163,16 +169,17 @@ namespace VOXA
                 {
                     titleStr = q.text;
                     contentStr = q.answered ? q.answer : "Awaiting AI answer...";
-                    recordedDateStr = "Asked: " + (q.timestamp.empty() ? "N/A" : DataService::formatReadableTimestamp(q.timestamp));
+                    recordedDateStr = "Asked: " + (q.timestamp.empty() ? "Today" : DataService::formatReadableTimestamp(q.timestamp));
                     isDone = q.answered;
-                    statusStr = q.answered ? "Status: Answered" : "Status: Pending";
-                    tagColor = 0x067F;
+                    statusStr = q.answered ? "ANSWERED" : "PROCESSING";
                     break;
                 }
             }
         }
         else if (s_category == "tasks")
         {
+            tagLabel = "TASK";
+            tagColor = 0xFDC0; // Yellow/Amber
             auto tasks = dataService.getTasks();
             for (const auto& t : tasks)
             {
@@ -180,16 +187,17 @@ namespace VOXA
                 {
                     titleStr = t.title;
                     contentStr = t.content.empty() ? "No description" : t.content;
-                    recordedDateStr = "Recorded: " + (t.timestamp.empty() ? "N/A" : DataService::formatReadableTimestamp(t.timestamp));
+                    recordedDateStr = "Recorded: " + (t.timestamp.empty() ? "Today" : DataService::formatReadableTimestamp(t.timestamp));
                     isDone = t.isDone;
-                    statusStr = t.isDone ? "Status: Completed" : "Status: Pending";
-                    tagColor = 0xFA20;
+                    statusStr = t.isDone ? "COMPLETED" : "PENDING";
                     break;
                 }
             }
         }
         else if (s_category == "memories" || s_category == "others")
         {
+            tagLabel = "MEMORY";
+            tagColor = 0xA27A; // Soft Purple
             auto memories = memoryService.getAll();
             for (const auto& mem : memories)
             {
@@ -197,15 +205,15 @@ namespace VOXA
                 {
                     titleStr = mem.title;
                     contentStr = mem.content.empty() ? "No description" : mem.content;
-                    recordedDateStr = "Recorded: " + (mem.timestamp.empty() ? "N/A" : DataService::formatReadableTimestamp(mem.timestamp));
-                    statusStr = "Category: Other";
-                    tagColor = 0xA27A;
+                    recordedDateStr = "Recorded: " + (mem.timestamp.empty() ? "Today" : DataService::formatReadableTimestamp(mem.timestamp));
+                    statusStr = "ARCHIVED";
                     break;
                 }
             }
         }
 
-        float totalContentHeight = h;
+        bool hasCompleteAction = (s_category == "tasks" || s_category == "reminders");
+        float totalContentHeight = 220.0f;
 
         while (targetScreen == ScreenId::Detail)
         {
@@ -216,13 +224,14 @@ namespace VOXA
             uint16_t tx = 0, ty = 0;
             bool touched = touch.getPoint(tx, ty);
 
-            float compCx = w * 0.28f;
-            float delCx = w * 0.72f;
-            float btnCy = h - 35.0f;
+            float btnY = h - 44.0f;
+            float btnH = 34.0f;
+            float btnW = (w - 28.0f) * 0.5f;
+            float btn1X = 10.0f;
+            float btn2X = 10.0f + btnW + 8.0f;
 
-            if (touched && entryFrame >= 10)
+            if (touched && entryFrame >= 5)
             {
-                m_lastDragX = tx;
                 m_lastDragY = ty;
                 if (!m_wasTouched)
                 {
@@ -236,50 +245,40 @@ namespace VOXA
                     m_isDragging = false;
                     m_scrollVelocity = 0.0f;
 
-                    if (std::sqrt((tx - 20.0f)*(tx - 20.0f) + (ty - 45.0f)*(ty - 45.0f)) <= 18.0f)
+                    // Header Back button touch
+                    if (tx <= 60 && ty >= 16 && ty <= 46)
                     {
                         m_isBackPressed = true;
                     }
 
-                    if (tx >= compCx - 52.0f && tx <= compCx + 52.0f &&
-                        ty >= btnCy - 14.0f && ty <= btnCy + 14.0f)
+                    // Bottom Complete / Left button touch
+                    if (tx >= btn1X && tx <= btn1X + btnW && ty >= btnY - 2.0f && ty <= btnY + btnH + 4.0f)
                     {
                         m_isCompletePressed = true;
                     }
 
-                    if (tx >= delCx - 52.0f && tx <= delCx + 52.0f &&
-                        ty >= btnCy - 14.0f && ty <= btnCy + 14.0f)
+                    // Bottom Delete button touch
+                    if (tx >= btn2X && tx <= btn2X + btnW && ty >= btnY - 2.0f && ty <= btnY + btnH + 4.0f)
                     {
                         m_isDeletePressed = true;
                     }
                 }
                 else
                 {
-                    float dx = tx - dragStartX;
-                    float dy = ty - dragStartY;
-                    
-                    if (swipeBackCandidate && dx > 60 && std::abs(dy) < 40)
-                    {
-                        targetScreen = s_backRoute;
-                        swipeBackCandidate = false;
-                    }
-
-                    if (!m_isDragging && std::abs(dy) > 8.0f && !m_isBackPressed && !m_isDeletePressed && !m_isCompletePressed)
+                    float totalDeltaY = ty - m_dragStartY;
+                    if (!m_isDragging && std::abs(totalDeltaY) > 8.0f)
                     {
                         m_isDragging = true;
-                        dragStartY = ty;
-                        m_dragStartScrollY = m_targetScrollY;
                     }
-
                     if (m_isDragging)
                     {
-                        m_targetScrollY = m_dragStartScrollY - dy;
+                        m_targetScrollY = m_dragStartScrollY - totalDeltaY;
                         uint32_t dt = nowMs - m_lastTouchSampleMs;
-                        if (dt > 0)
+                        if (dt > 10)
                         {
-                            m_scrollVelocity = -dy / (dt / 1000.0f);
+                            m_scrollVelocity = -((float)(ty - m_lastDragY) / (float)dt) * 1000.0f;
+                            m_lastTouchSampleMs = nowMs;
                         }
-                        m_lastTouchSampleMs = nowMs;
                     }
                 }
             }
@@ -288,83 +287,70 @@ namespace VOXA
                 if (m_wasTouched)
                 {
                     m_wasTouched = false;
-                    if (m_isDragging)
+
+                    // Swipe right to go back
+                    if (swipeBackCandidate && (tx - dragStartX) > 40.0f && std::abs(ty - dragStartY) < 40.0f)
                     {
-                        m_isDragging = false;
+                        AudioManager::instance().playTapSoundAsync();
+                        targetScreen = s_backRoute;
                     }
-                    else
+                    else if (!m_isDragging)
                     {
                         if (m_isBackPressed)
                         {
+                            AudioManager::instance().playTapSoundAsync();
                             targetScreen = s_backRoute;
                         }
                         else if (m_isCompletePressed)
                         {
+                            AudioManager::instance().playTapSoundAsync();
                             if (s_category == "tasks")
                             {
                                 dataService.toggleTaskDone(s_itemId);
+                                isDone = !isDone;
+                                statusStr = isDone ? "COMPLETED" : "PENDING";
+
+                                auto tasks = dataService.getTasks();
                                 std::string sourceId = "";
-                                std::string mongoId  = "";
-                                for (const auto& t : dataService.getTasks())
+                                std::string mongoId = "";
+                                for (const auto& t : tasks)
                                 {
                                     if (t.id == s_itemId)
                                     {
-                                        isDone = t.isDone;
-                                        statusStr = t.isDone ? "Status: Completed" : "Status: Pending";
                                         sourceId = t.sourceId;
                                         mongoId  = t.mongoId;
                                         break;
                                     }
                                 }
 
-                                // Instant reflection to MongoDB database
                                 if (wifiManager.isConnected())
                                 {
-                                    // ID priority: audio_id UUID > mongoId ObjectId > sequential ID
-                                    std::string idStr;
-                                    if (!sourceId.empty())       idStr = sourceId;  // audio UUID (best)
-                                    else if (!mongoId.empty())   idStr = mongoId;   // ObjectId hex (reliable fallback)
-                                    else                         idStr = std::to_string(s_itemId); // last resort
-
+                                    std::string idStr = !sourceId.empty() ? sourceId : (!mongoId.empty() ? mongoId : std::to_string(s_itemId));
                                     std::string ep = "/api/notes/" + idStr + "/toggle?category=tasks";
-                                    Serial.printf("[MongoDB] Task toggle -> %s\n", ep.c_str());
-                                    ApiResult res = apiClient.post(ep, "{}");
-                                    if (res.success)
-                                    {
-                                        Serial.printf("[MongoDB] Toggle OK: %s\n", res.body.c_str());
-                                    }
-                                    else
-                                    {
-                                        Serial.printf("[MongoDB] Toggle FAILED: HTTP %d | %s\n", res.httpCode, res.error.c_str());
-                                    }
-                                }
-                                else
-                                {
-                                    Serial.println("[MongoDB] Toggle skipped: Wi-Fi not connected");
+                                    apiClient.post(ep, "{}");
                                 }
                             }
                             else if (s_category == "reminders")
                             {
                                 reminderService.markComplete(s_itemId);
                                 isDone = true;
-                                statusStr = "Status: Completed";
+                                statusStr = "COMPLETED";
 
-                                // Instant reflection to MongoDB database for reminders
                                 if (wifiManager.isConnected())
                                 {
                                     std::string ep = "/api/notes/" + std::to_string(s_itemId) + "/toggle?category=reminders";
-                                    Serial.printf("[MongoDB] Reminder toggle -> %s\n", ep.c_str());
-                                    ApiResult res = apiClient.post(ep, "{}");
-                                    if (!res.success)
-                                    {
-                                        Serial.printf("[MongoDB] Reminder toggle FAILED: HTTP %d | %s\n", res.httpCode, res.error.c_str());
-                                    }
+                                    apiClient.post(ep, "{}");
                                 }
                             }
+                            else
+                            {
+                                // For ideas/questions/memories: Left button acts as "Back"
+                                targetScreen = s_backRoute;
+                            }
                         }
-
                         else if (m_isDeletePressed)
                         {
+                            AudioManager::instance().playTapSoundAsync();
                             if (s_category == "reminders")
                             {
                                 reminderService.remove(s_itemId);
@@ -397,6 +383,7 @@ namespace VOXA
             w = Display::width();
             h = Display::height();
 
+            // Scroll Inertia calculations
             if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
             {
                 m_targetScrollY += m_scrollVelocity * deltaSecs;
@@ -407,7 +394,7 @@ namespace VOXA
                 }
             }
 
-            float visibleHeight = h - 70.0f - 55.0f;
+            float visibleHeight = h - 52.0f - 52.0f;
             float maxScrollY = std::max(0.0f, totalContentHeight - visibleHeight);
             m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
             m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
@@ -416,74 +403,216 @@ namespace VOXA
                 m_scrollY = m_targetScrollY;
             }
 
-            ScreenCommon::renderSurface(canvas, w, h);
-            ScreenCommon::renderHeader(canvas, "Detail View", true, false, Icon::Plus, w, h);
+            // ═════════════════════════════════════════════════════════════════
+            // RENDER LAYOUT — Pure Pitch Black OLED Matching All Other Pages
+            // ═════════════════════════════════════════════════════════════════
+            canvas.fillScreen(0x0000);
 
-            uint16_t backFill = m_isBackPressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t backColor = m_isBackPressed ? VoxaTheme::getBackground() : VoxaTheme::getTextPrimary();
-            ScreenCommon::renderCircularButton(canvas, 20.0f, 45.0f, Icon::Back, 
-                                              backFill, backColor, w, h);
+            // 1. Top Status Bar (Y = 10)
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextDatum(textdatum_t::top_left);
+            canvas.setTextColor(0xFFFF);
+            std::string timeStr = timeService.getCurrentTime();
+            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+            canvas.drawString(timeStr.c_str(), 12, 10);
 
-            canvas.setClipRect(0, 70, w, h - 70 - 55);
+            // Category status tag on top right
+            canvas.setTextDatum(textdatum_t::top_right);
+            canvas.setTextColor(tagColor);
+            canvas.drawString(tagLabel.c_str(), w - 20, 10);
 
-            float currentY = 76.0f - m_scrollY;
-            float maxW = w * 0.92f;
-            float startX = w * 0.04f;
+            // Flash bolt icon
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, tagColor);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, tagColor);
 
-            std::string tagText = s_category;
-            std::transform(tagText.begin(), tagText.end(), tagText.begin(), ::toupper);
-            if (!tagText.empty() && tagText.back() == 'S') tagText.pop_back();
+            // 2. Sub-Header (Y = 28..42)
+            canvas.setTextDatum(textdatum_t::middle_left);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextColor(m_isBackPressed ? tagColor : 0x94A3B8);
+            canvas.drawString("< Back", 12, 34);
 
-            canvas.setFont(&fonts::FreeSans9pt7b);
-            float tw = canvas.textWidth(tagText.c_str());
-            canvas.fillRoundRect((int)startX, (int)currentY, (int)(tw + 12.0f), 20, 4, tagColor);
-            canvas.setTextColor(VoxaTheme::getBackground());
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString(tagText.c_str(), startX + tw * 0.5f + 6.0f, currentY + 10.0f);
-            
-            currentY += 28.0f;
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextColor(0xFFFF);
+            canvas.drawString("DETAIL VIEW", 56, 33);
 
-            canvas.setFont(&fonts::FreeSansBold12pt7b);
-            drawWrappedString(canvas, titleStr, startX, currentY, maxW, VoxaTheme::getTextPrimary());
-            currentY += 8.0f;
-
-            if (!recordedDateStr.empty())
+            // Category Icon on header right (Y ~ 28..40)
+            if (s_category == "tasks")
             {
-                canvas.setFont(&fonts::FreeSans9pt7b);
-                drawWrappedString(canvas, recordedDateStr, startX, currentY, maxW, VoxaTheme::getPrimaryLight());
-                currentY += 8.0f;
+                // Checkbox icon
+                int bx = w - 24, by = 28;
+                canvas.drawRoundRect(bx, by, 12, 12, 2, tagColor);
+                canvas.drawLine(bx + 3, by + 6, bx + 5, by + 9, tagColor);
+                canvas.drawLine(bx + 5, by + 9, bx + 9, by + 3, tagColor);
+            }
+            else if (s_category == "reminders")
+            {
+                // Bell icon
+                canvas.fillCircle(w - 18, 30, 4, tagColor);
+                canvas.fillTriangle(w - 23, 36, w - 13, 36, w - 18, 28, tagColor);
+                canvas.fillRect(w - 24, 35, 12, 2, tagColor);
+                canvas.fillCircle(w - 18, 38, 2, tagColor);
+            }
+            else if (s_category == "ideas")
+            {
+                // Lightbulb / spark icon
+                canvas.fillCircle(w - 18, 30, 4, tagColor);
+                canvas.fillRect(w - 20, 34, 4, 3, tagColor);
+                canvas.drawLine(w - 19, 38, w - 17, 38, tagColor);
+            }
+            else if (s_category == "questions")
+            {
+                // Question mark icon
+                canvas.drawCircle(w - 18, 30, 4, tagColor);
+                canvas.fillRect(w - 19, 34, 2, 2, tagColor);
+                canvas.fillCircle(w - 18, 38, 1, tagColor);
+            }
+            else
+            {
+                // Memory / bookmark icon
+                canvas.drawRect(w - 22, 27, 9, 13, tagColor);
+                canvas.drawLine(w - 20, 31, w - 15, 31, tagColor);
+                canvas.drawLine(w - 20, 35, w - 16, 35, tagColor);
             }
 
-            canvas.setFont(&fonts::FreeSans9pt7b);
-            drawWrappedString(canvas, contentStr, startX, currentY, maxW, VoxaTheme::getTextSecondary());
-            currentY += 8.0f;
+            // Header separator line
+            canvas.drawFastHLine(0, 48, w, canvas.color565(26, 30, 38));
 
-            uint16_t statusColor = isDone ? 0x07E0 : VoxaTheme::getPrimary();
-            drawWrappedString(canvas, statusStr, startX, currentY, maxW, statusColor);
-            
-            totalContentHeight = (currentY + m_scrollY) - 70.0f + 10.0f;
+            // 3. Scrollable Detail Container Card (Y = 52..h - 52)
+            canvas.setClipRect(0, 50, w, (int)(h - 50 - 50));
+
+            float cardX = 10.0f;
+            float cardY = 54.0f - m_scrollY;
+            float cardW = w - 20.0f;
+            float innerPad = 12.0f;
+            float contentW = cardW - innerPad * 2.0f;
+            float curY = cardY + 12.0f;
+
+            // Render Card Base Background
+            uint16_t cardBg = canvas.color565(18, 20, 26);
+            uint16_t cardBorder = canvas.color565(34, 38, 48);
+
+            // Compute total height first so we can draw card background properly
+            float tempY = curY + 24.0f; // after tags
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            // Title height estimation
+            // Draw title text later, for now we will draw the card frame around full height
+            float renderedCardH = std::max(195.0f, totalContentHeight + 10.0f);
+            canvas.fillRoundRect((int)cardX, (int)cardY, (int)cardW, (int)renderedCardH, 8, cardBg);
+            canvas.drawRoundRect((int)cardX, (int)cardY, (int)cardW, (int)renderedCardH, 8, cardBorder);
+
+            // A. Category Tag Pill
+            canvas.setFont(&fonts::Font0);
+            float tagTextW = canvas.textWidth(tagLabel.c_str());
+            float pillW = tagTextW + 12.0f;
+            canvas.fillRoundRect((int)(cardX + innerPad), (int)curY, (int)pillW, 16, 4, tagColor);
+            canvas.setTextColor(0x0000);
+            canvas.setTextDatum(textdatum_t::middle_center);
+            canvas.drawString(tagLabel.c_str(), cardX + innerPad + pillW * 0.5f, curY + 8.0f);
+
+            // B. Status Pill (Next to category pill)
+            if (!statusStr.empty())
+            {
+                float statTextW = canvas.textWidth(statusStr.c_str());
+                float statPillW = statTextW + 12.0f;
+                float statX = cardX + innerPad + pillW + 6.0f;
+
+                uint16_t statBg = isDone ? canvas.color565(16, 44, 28) : canvas.color565(36, 32, 20);
+                uint16_t statBorder = isDone ? 0x07E0 : 0xFDC0;
+                uint16_t statTxt = isDone ? 0x07E0 : 0xFDC0;
+
+                canvas.fillRoundRect((int)statX, (int)curY, (int)statPillW, 16, 4, statBg);
+                canvas.drawRoundRect((int)statX, (int)curY, (int)statPillW, 16, 4, statBorder);
+                canvas.setTextColor(statTxt);
+                canvas.drawString(statusStr.c_str(), statX + statPillW * 0.5f, curY + 8.0f);
+            }
+
+            curY += 24.0f;
+
+            // C. Title (Bold White)
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            drawWrappedString(canvas, titleStr, cardX + innerPad, curY, contentW, 0xFFFF);
+            curY += 6.0f;
+
+            // D. Subtle Divider Line
+            canvas.drawFastHLine((int)(cardX + innerPad), (int)curY, (int)contentW, canvas.color565(30, 34, 44));
+            curY += 8.0f;
+
+            // E. Recorded / Due Timestamp (Slate-400)
+            if (!recordedDateStr.empty())
+            {
+                canvas.setFont(&fonts::Font0);
+                canvas.setTextDatum(textdatum_t::top_left);
+                canvas.setTextColor(0x94A3B8);
+                // Draw small dot icon
+                canvas.fillCircle((int)(cardX + innerPad + 3), (int)(curY + 4), 2, tagColor);
+                canvas.drawString(recordedDateStr.c_str(), cardX + innerPad + 10, curY);
+                curY += 16.0f;
+            }
+
+            // F. Body Content String (Light Slate-200)
+            if (!contentStr.empty())
+            {
+                canvas.setFont(&fonts::FreeSans9pt7b);
+                drawWrappedString(canvas, contentStr, cardX + innerPad, curY, contentW, canvas.color565(226, 232, 240));
+                curY += 8.0f;
+            }
+
+            totalContentHeight = (curY + m_scrollY) - 54.0f + 16.0f;
             canvas.clearClipRect();
 
-            uint16_t compBg = m_isCompletePressed ? 0x05E0 : (isDone ? 0x03E0 : VoxaTheme::getSurface());
-            uint16_t compBorder = isDone ? 0x07E0 : VoxaTheme::getDivider();
-            uint16_t compText = isDone ? VoxaTheme::getBackground() : 0x07E0;
+            // 4. Bottom Action Buttons Bar (Y = h - 48..h)
+            // Backdrop to cover scrolling content cleanly
+            canvas.fillRect(0, h - 50, w, 50, 0x0000);
+            canvas.drawFastHLine(0, h - 50, w, canvas.color565(26, 30, 38));
 
-            canvas.fillRoundRect((int)(compCx - 52.0f), (int)(btnCy - 13.0f), 104, 26, 6, compBg);
-            canvas.drawRoundRect((int)(compCx - 52.0f), (int)(btnCy - 13.0f), 104, 26, 6, compBorder);
-            canvas.setFont(&fonts::FreeSans9pt7b);
-            canvas.setTextColor(compText);
+            // Left Button: Complete / Back
+            uint16_t btn1Bg, btn1Border, btn1Text;
+            const char* btn1Label;
+
+            if (hasCompleteAction)
+            {
+                if (isDone)
+                {
+                    btn1Bg = m_isCompletePressed ? 0x05E0 : canvas.color565(16, 44, 28);
+                    btn1Border = 0x07E0;
+                    btn1Text = m_isCompletePressed ? 0x0000 : 0x07E0;
+                    btn1Label = "[x] Completed";
+                }
+                else
+                {
+                    btn1Bg = m_isCompletePressed ? canvas.color565(36, 42, 54) : canvas.color565(24, 28, 36);
+                    btn1Border = m_isCompletePressed ? 0x07E0 : canvas.color565(48, 54, 68);
+                    btn1Text = 0xFFFF;
+                    btn1Label = "[ ] Mark Done";
+                }
+            }
+            else
+            {
+                btn1Bg = m_isCompletePressed ? canvas.color565(36, 42, 54) : canvas.color565(24, 28, 36);
+                btn1Border = m_isCompletePressed ? tagColor : canvas.color565(48, 54, 68);
+                btn1Text = 0xFFFF;
+                btn1Label = "< Back";
+            }
+
+            canvas.fillRoundRect((int)btn1X, (int)btnY, (int)btnW, (int)btnH, 6, btn1Bg);
+            canvas.drawRoundRect((int)btn1X, (int)btnY, (int)btnW, (int)btnH, 6, btn1Border);
+            canvas.setFont(&fonts::Font0);
+            canvas.setTextColor(btn1Text);
             canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString(isDone ? "Completed" : "Complete", compCx, btnCy);
+            canvas.drawString(btn1Label, btn1X + btnW * 0.5f, btnY + btnH * 0.5f);
 
-            uint16_t delBg = m_isDeletePressed ? VoxaTheme::getPrimary() : VoxaTheme::getSurface();
-            uint16_t delBorder = m_isDeletePressed ? VoxaTheme::getPrimaryLight() : VoxaTheme::getDivider();
-            uint16_t delText = m_isDeletePressed ? VoxaTheme::getBackground() : VoxaTheme::getWarning();
+            // Right Button: Delete
+            uint16_t btn2Bg = m_isDeletePressed ? 0xFA20 : canvas.color565(44, 16, 20);
+            uint16_t btn2Border = m_isDeletePressed ? 0xFFFF : canvas.color565(100, 24, 30);
+            uint16_t btn2Text = m_isDeletePressed ? 0x0000 : 0xF87171;
 
-            canvas.fillRoundRect((int)(delCx - 52.0f), (int)(btnCy - 13.0f), 104, 26, 6, delBg);
-            canvas.drawRoundRect((int)(delCx - 52.0f), (int)(btnCy - 13.0f), 104, 26, 6, delBorder);
-            canvas.setTextColor(delText);
-            canvas.drawString("Delete", delCx, btnCy);
+            canvas.fillRoundRect((int)btn2X, (int)btnY, (int)btnW, (int)btnH, 6, btn2Bg);
+            canvas.drawRoundRect((int)btn2X, (int)btnY, (int)btnW, (int)btnH, 6, btn2Border);
+            canvas.setTextColor(btn2Text);
+            canvas.drawString("Delete", btn2X + btnW * 0.5f, btnY + btnH * 0.5f);
 
+            // Transition: Slide In
             if (entryFrame < 10)
             {
                 VOXA::playSlideInFrame(canvas, VOXA::getTransitionType(VOXA::g_lastScreenId, ScreenId::Detail), entryFrame, 10);

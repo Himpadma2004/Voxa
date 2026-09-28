@@ -39,7 +39,7 @@ namespace VOXA
             return TransitionType::SlideUp;
         if (from == ScreenId::Detail || from == ScreenId::TextInput)
             return TransitionType::SlideDown;
- 
+
         // SyncStatus and WiFiSettings are sub-pages of Settings → slide left
         if (to == ScreenId::SyncStatus || to == ScreenId::WiFiSettings)
             return TransitionType::SlideLeft;
@@ -68,7 +68,7 @@ namespace VOXA
 
         uint16_t w = Display::width();
         uint16_t h = Display::height();
-        
+
         // Progress from 0.0 to 1.0
         float rawT = (float)frame / (float)maxFrames;
         float t = easeIOSSpring(rawT);
@@ -143,6 +143,52 @@ namespace VOXA
             canvas.pushSprite(0, 0);
             break;
         }
+        Display::lcd.endWrite();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Zoom Bloom: smooth scale-from-icon using pushRotateZoom
+    // ─────────────────────────────────────────────────────────────
+    //  • Sprite is pre-rendered once, then scaled each frame
+    //  • pushRotateZoom scales the sprite centered at (cx, cy) on LCD
+    //  • Destination center slides: icon origin → screen center
+    //  • Quartic ease-out + 1.02× micro-overshoot at tail
+    //  • No setClipRect, no full fillScreen per-frame → zero tearing
+    // ─────────────────────────────────────────────────────────────
+
+    void playZoomBloomFrame(LGFX_Sprite& canvas, int frame, int maxFrames,
+                            int originCx, int originCy, bool isOpen)
+    {
+        uint16_t w = Display::width();
+        uint16_t h = Display::height();
+
+        float rawT = (float)frame / (float)(maxFrames - 1);
+        rawT = std::max(0.0f, std::min(1.0f, rawT));
+
+        // Reverse for collapse animation
+        float t = isOpen ? rawT : (1.0f - rawT);
+
+        // Quartic ease-out: explosive start, buttery deceleration
+        float easedT = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t) * (1.0f - t);
+
+        // Scale: grows from 0.05 → 1.0
+        float scale = 0.05f + easedT * 0.95f;
+
+        // Tiny 1.02× overshoot ping at the tail (last 12% of animation)
+        if (t > 0.88f)
+        {
+            float ot = (t - 0.88f) / 0.12f;           // 0..1 within overshoot window
+            scale += 0.02f * std::sin(ot * 3.14159f);  // +2% ping then settle
+        }
+
+        // Destination centre: interpolates from icon pos → screen centre
+        float cx = (float)originCx + (w * 0.5f - (float)originCx) * easedT;
+        float cy = (float)originCy + (h * 0.5f - (float)originCy) * easedT;
+
+        // Black fill then scaled sprite — pushRotateZoom handles the alpha border
+        Display::lcd.startWrite();
+        Display::lcd.fillRect(0, 0, w, h, 0x0000);
+        canvas.pushRotateZoom(&Display::lcd, cx, cy, 0.0f, scale, scale);
         Display::lcd.endWrite();
     }
 

@@ -248,14 +248,15 @@ namespace VOXA
 
         canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnFullW, 42, 8, isRecPressed ? canvas.color565(210, 215, 225) : 0xFFFF);
 
-        // Studio Mic Icon (Black)
+        // Clean mic capsule body (Black on White button)
         float micCx = btnX + btnFullW * 0.5f - 46.0f;
         float micCy = btnY + 21.0f;
-        canvas.fillRoundRect((int)(micCx - 3.0f), (int)(micCy - 7.0f), 6, 10, 3, 0x0000);
-        canvas.drawCircle((int)micCx, (int)(micCy + 1.0f), 5, 0x0000);
-        canvas.fillRect((int)(micCx - 5.0f), (int)(micCy - 7.0f), 10, 6, isRecPressed ? canvas.color565(210, 215, 225) : 0xFFFF);
-        canvas.drawLine((int)micCx, (int)(micCy + 6.0f), (int)micCx, (int)(micCy + 9.0f), 0x0000);
-        canvas.drawLine((int)(micCx - 3.0f), (int)(micCy + 9.0f), (int)(micCx + 3.0f), (int)(micCy + 9.0f), 0x0000);
+        canvas.fillRoundRect((int)(micCx - 3.0f), (int)(micCy - 9.0f), 7, 13, 3, 0x0000);
+        // U-cradle arc around lower half
+        canvas.drawArc((int)micCx, (int)(micCy - 3.0f), 7, 6, 180, 360, 0x0000);
+        // Stem + base
+        canvas.drawLine((int)micCx, (int)(micCy + 4.0f), (int)micCx, (int)(micCy + 8.0f), 0x0000);
+        canvas.drawLine((int)(micCx - 4.0f), (int)(micCy + 8.0f), (int)(micCx + 4.0f), (int)(micCy + 8.0f), 0x0000);
 
         // Text: Record Voice
         canvas.setFont(&fonts::FreeSansBold9pt7b);
@@ -270,8 +271,9 @@ namespace VOXA
         canvas.drawString("VOXA: We take care your momemts", w * 0.5f + offsetX, 296.0f);
     }
 
-    void HomeScreen::renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h, 
-                                 int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX)
+    void HomeScreen::renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h,
+                                 int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX,
+                                 float animT)
     {
         // 1. Top Status Bar: Small crisp Font0 (Time, GRID, Battery)
         std::time_t tNow = std::time(nullptr);
@@ -358,7 +360,21 @@ namespace VOXA
             int col = i % 3;
             int row = i / 3;
             float cx = colCenters[col] + offsetX;
-            float cy = rowCenters[row];
+
+            // Staggered slide-in from bottom: item i starts after i*55ms, 320ms quartic ease-out
+            const float STAGGER = 0.055f;
+            const float DUR     = 0.32f;
+            float itemT = std::max(0.0f, std::min(1.0f, (animT - i * STAGGER) / DUR));
+            float ease  = 1.0f - (1.0f - itemT) * (1.0f - itemT) * (1.0f - itemT) * (1.0f - itemT);
+            // Tiny landing bounce in the last 15% of travel
+            float bounce = 0.0f;
+            if (itemT > 0.85f) {
+                float bt = (itemT - 0.85f) / 0.15f;
+                bounce = -5.0f * std::sin(bt * 3.14159f) * (1.0f - bt);
+            }
+            float slideY = (float)h * (1.0f - ease) + bounce;
+            float cy = rowCenters[row] + slideY;
+            if (cy > (float)h + 30.0f) continue;  // still offscreen, skip
 
             bool isPressed = (m_pressedItemIndex == i);
 
@@ -661,7 +677,7 @@ namespace VOXA
                                 case 2: m_visitedIdeas     = true; targetScreen = ScreenId::Ideas;             break;
                                 case 3: m_visitedQuestions = true; targetScreen = ScreenId::Questions;         break;
                                 case 4: targetScreen = ScreenId::Music;                                         break;
-                                case 5: targetScreen = ScreenId::RecordingsLibrary;                               break;
+                                case 5: targetScreen = ScreenId::RecordingsLibrary;                             break;
                                 case 6: targetScreen = ScreenId::Search;                                        break;
                                 case 7: m_visitedOthers    = true; targetScreen = ScreenId::Others;            break;
                                 case 8: targetScreen = ScreenId::Settings;                                      break;
@@ -709,6 +725,7 @@ namespace VOXA
         ScreenId targetScreen = ScreenId::Home;
         uint32_t lastMs = millis();
         int entryFrame = 0;
+        m_gridAnimElapsed = 0.0f;   // reset on HomeScreen entry
 
         while (targetScreen == ScreenId::Home)
         {
@@ -788,6 +805,14 @@ namespace VOXA
                 }
             }
 
+            // Grid stagger-in: advance timer while on page1, reset on page switch
+            if (m_page == 1)
+            {
+                if (m_lastPage != 1) { m_gridAnimElapsed = 0.0f; }  // just switched to page1
+                m_gridAnimElapsed += deltaSecs;
+            }
+            m_lastPage = m_page;
+
             // Fill pure black background
             target.fillScreen(TFT_BLACK);
 
@@ -803,7 +828,7 @@ namespace VOXA
                 }
                 else
                 {
-                    renderPage1(target, w, h, remCount, ideaCount, qCount, taskCount, memCount, drawX);
+                    renderPage1(target, w, h, remCount, ideaCount, qCount, taskCount, memCount, drawX, m_gridAnimElapsed);
                 }
             }
 
@@ -812,6 +837,11 @@ namespace VOXA
             if (qpNav != ScreenId::Home)
             {
                 targetScreen = qpNav;
+            }
+
+            if (targetScreen != ScreenId::Home)
+            {
+                break;
             }
 
             // Push render buffer sprite to screen
@@ -827,6 +857,7 @@ namespace VOXA
                     canvas.pushSprite(0, 0);
                 }
             }
+
 
             uint32_t frameMs = millis() - nowMs;
             if (frameMs < 16)

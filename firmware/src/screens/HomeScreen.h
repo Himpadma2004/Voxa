@@ -24,7 +24,8 @@ namespace VOXA
                          int remCount, int ideaCount, int qCount, int taskCount, int memCount);
 
         void renderPage1(LovyanGFX& canvas, uint16_t w, uint16_t h,
-                         int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX);
+                         int remCount, int ideaCount, int qCount, int taskCount, int memCount, float offsetX,
+                         float animT = 9999.0f);
 
         void processTouch(Touch& touch, uint16_t w, uint16_t h,
                           int remCount, int ideaCount, int qCount, int taskCount, int memCount,
@@ -67,6 +68,11 @@ namespace VOXA
         bool m_isLaunchPressed   { false };
         bool m_isBackPressed     { false };
         bool m_wasTouched        { false };
+
+
+        // ── Grid stagger-in animation ─────────────────────────────────────
+        float    m_gridAnimElapsed { 0.0f };   // seconds since page1 became active
+        int      m_lastPage        { 0 };      // previous page to detect switch
     };
 }
 

@@ -4,200 +4,257 @@
 #include <cmath>
 #include <algorithm>
 
-BootScreen::BootScreen()
-{
-}
+BootScreen::BootScreen() {}
 
+// ─── Utility ──────────────────────────────────────────────────────────────────
+static inline float clamp01(float t) { return t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t); }
+static inline float easeOut3(float t) { float f = 1.0f - t; return 1.0f - f * f * f; }
 
-void BootScreen::drawBackground(LGFX_Sprite& canvas, uint16_t w, uint16_t h)
+// ─── Draw ⊙ Icon ──────────────────────────────────────────────────────────────
+static void drawIcon(LGFX_Sprite& canvas, float cx, float cy, float alpha)
 {
-    // Render a clean obsidian black to dark charcoal vertical gradient
-    for (int y = 0; y < h; ++y)
+    if (alpha <= 0.01f) return;
+
+    // Soft halo bloom around outer ring (r=14..18)
+    for (int r = 18; r >= 13; --r)
     {
-        float t = (float)y / (h - 1);
-        uint8_t r = (uint8_t)((1.0f - t) * 4 + t * 14);
-        uint8_t g = (uint8_t)((1.0f - t) * 4 + t * 10);
-        uint8_t b = (uint8_t)((1.0f - t) * 6 + t * 16);
-        uint16_t color = canvas.color565(r, g, b);
-        canvas.drawFastHLine(0, y, w, color);
-    }
-}
-
-void BootScreen::drawGlowCircle(LGFX_Sprite& canvas, float cx, float cy, float radius, 
-                                uint8_t r, uint8_t g, uint8_t b, uint8_t a, 
-                                int layers, uint16_t h)
-{
-    // Draw concentric orange glow layers from outer to inner
-    for (int i = layers; i >= 1; --i)
-    {
-        float r_curr = radius + i * 2.3f;
-        uint8_t a_curr = std::max(4, (int)a / (i * 2));
-        float alpha_f = a_curr / 255.0f;
-        
-        float t_bg = cy / (h - 1);
-        t_bg = std::max(0.0f, std::min(1.0f, t_bg));
-        float bg_r = (1.0f - t_bg) * 4.0f + t_bg * 14.0f;
-        float bg_g = (1.0f - t_bg) * 4.0f + t_bg * 10.0f;
-        float bg_b = (1.0f - t_bg) * 6.0f + t_bg * 16.0f;
-        
-        uint8_t r_blend = (uint8_t)((1.0f - alpha_f) * bg_r + alpha_f * r);
-        uint8_t g_blend = (uint8_t)((1.0f - alpha_f) * bg_g + alpha_f * g);
-        uint8_t b_blend = (uint8_t)((1.0f - alpha_f) * bg_b + alpha_f * b);
-        
-        canvas.fillCircle((int)cx, (int)cy, (int)r_curr, canvas.color565(r_blend, g_blend, b_blend));
-    }
-}
-
-void BootScreen::drawWaves(LGFX_Sprite& canvas, float elapsed, uint16_t w, uint16_t h)
-{
-    // Render 5 waves in Electric Orange tint
-    for (int i = 0; i < 5; ++i)
-    {
-        const float alpha_f = (48 - i * 7) / 255.0f;
-        const float r_wave = 253;
-        const float g_wave = 100 + i * 15;
-        const float b_wave = 0;
-        const float offset = elapsed * 42.0f + static_cast<float>(i) * 18.0f;
-        
-        for (int x = 0; x < w; ++x)
+        float t = (float)(18 - r) / 5.0f;
+        uint8_t haloVal = (uint8_t)(32.0f * t * alpha);
+        if (haloVal > 0)
         {
-            const float xf = static_cast<float>(x);
-            const float y = h * 0.8f + std::sin((xf + offset) * 0.03f) * 10.0f + std::sin((xf - offset) * 0.02f) * 6.0f + i * 2.0f;
-            
-            float t_bg = y / (h - 1);
-            t_bg = std::max(0.0f, std::min(1.0f, t_bg));
-            float bg_r = (1.0f - t_bg) * 4.0f + t_bg * 14.0f;
-            float bg_g = (1.0f - t_bg) * 4.0f + t_bg * 10.0f;
-            float bg_b = (1.0f - t_bg) * 6.0f + t_bg * 16.0f;
-            
-            uint8_t r = (uint8_t)((1.0f - alpha_f) * bg_r + alpha_f * r_wave);
-            uint8_t g = (uint8_t)((1.0f - alpha_f) * bg_g + alpha_f * g_wave);
-            uint8_t b = (uint8_t)((1.0f - alpha_f) * bg_b + alpha_f * b_wave);
-            
-            float radius = 0.8f + i * 0.2f;
-            int r_int = (int)(radius + 0.5f);
-            uint16_t color = canvas.color565(r, g, b);
-            
-            if (r_int <= 0)
+            uint16_t haloCol = canvas.color565(haloVal, haloVal, haloVal);
+            canvas.drawCircle((int)cx, (int)cy, r, haloCol);
+        }
+    }
+
+    uint8_t a = (uint8_t)(255 * alpha);
+    uint16_t ringCol = canvas.color565(a, a, a);
+
+    // Thick outer ring: diameter ~24px (radii 10, 11, 12)
+    canvas.drawCircle((int)cx, (int)cy, 10, ringCol);
+    canvas.drawCircle((int)cx, (int)cy, 11, ringCol);
+    canvas.drawCircle((int)cx, (int)cy, 12, ringCol);
+
+    // Filled center dot: radius 3px
+    canvas.fillCircle((int)cx, (int)cy, 3, ringCol);
+}
+
+// ─── Draw "voxa" Text ─────────────────────────────────────────────────────────
+static void drawLogoText(LGFX_Sprite& canvas, float textX, float cy, float alpha)
+{
+    if (alpha <= 0.01f) return;
+
+    uint8_t a = (uint8_t)(255 * alpha);
+    uint16_t textCol = canvas.color565(a, a, a);
+
+    canvas.setFont(&fonts::FreeSansBold18pt7b);
+    canvas.setTextDatum(textdatum_t::middle_left);
+    canvas.setTextColor(textCol);
+    canvas.drawString("voxa", (int)textX, (int)cy);
+}
+
+// ─── Draw "SILICON MICROKERNEL" Subtitle ───────────────────────────────────────
+static void drawSubtitle(LGFX_Sprite& canvas, float cx, float cy, float alpha)
+{
+    if (alpha <= 0.01f) return;
+
+    // Warm champagne/gold tint: RGB(175, 158, 135)
+    uint8_t r = (uint8_t)(175 * alpha);
+    uint8_t g = (uint8_t)(158 * alpha);
+    uint8_t b = (uint8_t)(135 * alpha);
+    uint16_t subCol = canvas.color565(r, g, b);
+
+    canvas.setFont(&fonts::FreeSans9pt7b);
+    canvas.setTextDatum(textdatum_t::middle_center);
+    canvas.setTextColor(subCol);
+    canvas.drawString("New Tomorrow", (int)cx, (int)cy);
+}
+
+// ─── Draw Horizontal Lens Flare ──────────────────────────────────────────────
+static void drawLensFlare(LGFX_Sprite& canvas, float cx, float cy, float intensity, uint16_t w, uint16_t h)
+{
+    if (intensity <= 0.01f) return;
+
+    // 1. Subtle horizon reflection glow below flare line
+    int startY = (int)cy + 2;
+    int endY = std::min((int)h, (int)cy + 45);
+    for (int y = startY; y < endY; ++y)
+    {
+        float dy = (float)(y - cy);
+        float alphaY = (1.0f - dy / 45.0f);
+        alphaY = alphaY * alphaY;
+        uint8_t baseB = (uint8_t)(22.0f * alphaY * intensity);
+        if (baseB < 1) continue;
+
+        uint16_t gradCol = canvas.color565(baseB, (baseB * 9) / 10, (baseB * 8) / 10);
+        int span = (int)(w * 0.40f * alphaY);
+        canvas.drawFastHLine((int)cx - span, y, span * 2, gradCol);
+    }
+
+    // 2. Horizontal streak beam across nearly the full screen width
+    int maxDx = (int)(w * 0.47f * intensity);
+    for (int dx = 1; dx <= maxDx; ++dx)
+    {
+        float t = (float)dx / (float)maxDx;
+        float falloff = (1.0f - t);
+        falloff = falloff * std::sqrt(falloff); // 1.5 power smooth falloff
+        uint8_t bright = (uint8_t)(255.0f * falloff * intensity);
+        if (bright < 3) break;
+
+        uint16_t coreCol = canvas.color565(bright, bright, bright);
+        int pxL = (int)cx - dx;
+        int pxR = (int)cx + dx;
+        int py = (int)cy;
+
+        if (pxL >= 0) canvas.drawPixel(pxL, py, coreCol);
+        if (pxR < w)  canvas.drawPixel(pxR, py, coreCol);
+
+        // +-1px vertical blur
+        uint8_t b1 = (uint8_t)(bright * 0.45f);
+        if (b1 > 2)
+        {
+            uint16_t col1 = canvas.color565(b1, b1, b1);
+            if (pxL >= 0) { canvas.drawPixel(pxL, py - 1, col1); canvas.drawPixel(pxL, py + 1, col1); }
+            if (pxR < w)  { canvas.drawPixel(pxR, py - 1, col1); canvas.drawPixel(pxR, py + 1, col1); }
+        }
+
+        // +-2px faint vertical blur
+        uint8_t b2 = (uint8_t)(bright * 0.18f);
+        if (b2 > 2)
+        {
+            uint16_t col2 = canvas.color565(b2, b2, b2);
+            if (pxL >= 0) { canvas.drawPixel(pxL, py - 2, col2); canvas.drawPixel(pxL, py + 2, col2); }
+            if (pxR < w)  { canvas.drawPixel(pxR, py - 2, col2); canvas.drawPixel(pxR, py + 2, col2); }
+        }
+    }
+
+    // 3. Central flare bloom star / orb
+    for (int dy = -12; dy <= 12; ++dy)
+    {
+        int y = (int)cy + dy;
+        if (y < 0 || y >= h) continue;
+        float ny = (float)dy / 12.0f;
+
+        for (int dx = -24; dx <= 24; ++dx)
+        {
+            int x = (int)cx + dx;
+            if (x < 0 || x >= w) continue;
+            float nx = (float)dx / 24.0f;
+
+            float dist = std::sqrt(nx * nx + ny * ny);
+            if (dist <= 1.0f)
             {
-                canvas.drawPixel((int)xf, (int)y, color);
-            }
-            else
-            {
-                canvas.fillCircle((int)xf, (int)y, r_int, color);
+                float f = (1.0f - dist);
+                f = f * f;
+                uint8_t b = (uint8_t)(255.0f * f * intensity);
+                if (b > 3)
+                {
+                    uint16_t col = canvas.color565(b, (b * 98) / 100, (b * 95) / 100);
+                    canvas.drawPixel(x, y, col);
+                }
             }
         }
     }
+
+    // 4. Intense white center hot core
+    uint8_t coreB = (uint8_t)(255 * intensity);
+    uint16_t white = canvas.color565(coreB, coreB, coreB);
+    canvas.fillCircle((int)cx, (int)cy, 3, white);
+    canvas.drawPixel((int)cx - 4, (int)cy, white);
+    canvas.drawPixel((int)cx + 4, (int)cy, white);
 }
 
-void BootScreen::drawProgressBar(LGFX_Sprite& canvas, float progress, uint16_t w, uint16_t h)
-{
-    float barW = w * 0.55f;
-    float barH = 8.0f;
-    float barX = (w - barW) * 0.5f;
-    float barY = h * 0.72f;
-
-    // 1. Frosted Glass Capsule Track
-    canvas.fillRoundRect((int)barX, (int)barY, (int)barW, (int)barH, 4, canvas.color565(18, 20, 28));
-    canvas.drawRoundRect((int)barX, (int)barY, (int)barW, (int)barH, 4, VoxaTheme::getGlassBorder());
-    canvas.drawFastHLine((int)barX + 4, (int)barY + 1, (int)barW - 8, VoxaTheme::getGlassHighlight());
-
-    // 2. Filled Glowing Active Capsule
-    float fillW = barW * progress;
-    if (fillW >= barH)
-    {
-        canvas.fillRoundRect((int)barX, (int)barY, (int)fillW, (int)barH, 4, VoxaTheme::getPrimary());
-        // Leading edge specular gleam
-        canvas.drawFastHLine((int)barX + 2, (int)barY + 1, (int)fillW - 4, 0xFFFF);
-    }
-    else if (fillW > 0)
-    {
-        canvas.fillRoundRect((int)barX, (int)barY, (int)barH, (int)barH, 4, VoxaTheme::getPrimary());
-    }
-}
-
+// ─── Main show() ──────────────────────────────────────────────────────────────
 void BootScreen::show()
 {
     uint16_t w = Display::width();
     uint16_t h = Display::height();
 
-    // Initialize double-buffering canvas sprite
     LGFX_Sprite canvas(&Display::lcd);
     canvas.setPsram(true);
     canvas.setColorDepth(16);
     if (!canvas.createSprite(w, h))
     {
-        Serial.println("[BootScreen] Error creating sprite double-buffer!");
+        Serial.println("[BootScreen] Sprite alloc failed!");
         return;
     }
-    canvas.fillScreen(TFT_BLACK);
 
     uint32_t startMs = millis();
+    constexpr float TOTAL = 4.5f;
 
-    constexpr float durationSecs = 1.8f; // Fast, responsive boot animation
+    // Centered layout calculations:
+    // Screen is 240 x 320
+    float cx = w * 0.5f;
+    float logoY = h * 0.38f;      // ~122
+    float subY  = h * 0.48f;      // ~154
+    float flareY = h * 0.60f;     // ~192
+
+    // Icon + "voxa" text centering:
+    // Icon diameter ~24px (r=12), gap ~10px, "voxa" ~79px -> total width ~113px
+    // Centered around cx=120:
+    float iconCx = cx - 44.0f;    // ~76
+    float textX  = cx - 22.0f;    // ~98
 
     while (true)
     {
         uint32_t nowMs = millis();
-        float elapsed = (nowMs - startMs) / 1000.0f;
-        if (elapsed >= durationSecs)
+        float elapsed  = std::min((float)(nowMs - startMs) / 1000.0f, TOTAL);
+
+        // Fill pure black background
+        canvas.fillScreen(0x0000);
+
+        // Global fade-out in final 0.5s
+        float globalAlpha = 1.0f;
+        if (elapsed > 4.0f)
         {
-            elapsed = durationSecs;
+            globalAlpha = clamp01((TOTAL - elapsed) / 0.5f);
         }
 
-        // 1. Draw vertical background gradient
-        drawBackground(canvas, w, h);
+        // Phase 1 (0 – 0.6s): Flare blooms open from center
+        float flareIntensity = clamp01(elapsed / 0.55f);
+        flareIntensity = easeOut3(flareIntensity);
 
-        // 2. Draw Electric Orange glow circles
-        drawGlowCircle(canvas, w * 0.84f, h * 0.7f,  40.0f, 253, 64, 0, 24, 6, h);
-        drawGlowCircle(canvas, w * 0.12f, h * 0.72f, 30.0f, 253, 90, 0, 16, 5, h);
-        drawGlowCircle(canvas, w * 0.5f,  h * 0.22f, 50.0f, 253, 64, 0, 15, 5, h);
+        // Subtle gentle breathing shimmer during hold
+        if (elapsed > 1.2f && elapsed <= 4.0f)
+        {
+            flareIntensity *= (1.0f + 0.03f * std::sin((elapsed - 1.2f) * 3.5f));
+        }
 
-        // 3. Draw animated waves
-        drawWaves(canvas, elapsed, w, h);
+        // Phase 2 (0.45s – 1.4s): Logo & Subtitle fade in smoothly
+        float textAlpha = clamp01((elapsed - 0.45f) / 0.90f);
+        textAlpha = easeOut3(textAlpha);
 
-        // 4. Draw texts with smooth anti-aliased fonts (like HomeScreen)
-        float fadeAlpha = elapsed * 2.0f;
-        if (fadeAlpha > 1.0f) fadeAlpha = 1.0f;
+        // Apply global fade-out to all elements
+        float effectiveFlare = flareIntensity * globalAlpha;
+        float effectiveLogo  = textAlpha * globalAlpha;
 
-        canvas.setTextDatum(textdatum_t::middle_center);
-        
-        // VOXA Title using FreeSansBold18pt7b for crisp modern typography
-        canvas.setFont(&fonts::FreeSansBold18pt7b);
-        canvas.setTextSize(1);
-        canvas.setTextColor(VoxaTheme::getPrimary()); // Electric Orange
-        canvas.drawString("VOXA", w * 0.5f, h * 0.28f);
+        // Draw Flare line & glow
+        drawLensFlare(canvas, cx, flareY, effectiveFlare, w, h);
 
-        // Tagline using FreeSans9pt7b
-        canvas.setFont(&fonts::FreeSans9pt7b);
-        canvas.setTextColor(VoxaTheme::getTextSecondary());
-        canvas.drawString("Take care of your moments", w * 0.5f, h * 0.46f);
+        // // Draw ⊙ Icon
+        // drawIcon(canvas, iconCx, logoY, effectiveLogo);
 
-        // Initializing Status text using FreeSans9pt7b
-        canvas.setFont(&fonts::FreeSans9pt7b);
-        canvas.setTextColor(VoxaTheme::getPrimaryLight());
-        canvas.drawString("Initializing...", w * 0.5f, h * 0.60f);
+        // Draw "voxa" text (large bold FreeSansBold18pt7b)
+        drawLogoText(canvas, textX, logoY, effectiveLogo);
 
-        // 5. Draw progress bar
-        float progress = elapsed / durationSecs;
-        drawProgressBar(canvas, progress, w, h);
+        // Draw "SILICON MICROKERNEL" subtitle (spaced FreeSans9pt7b)
+        drawSubtitle(canvas, cx, subY, effectiveLogo);
 
-        // Push render buffer to screen
+        // Push frame to LCD
         canvas.pushSprite(0, 0);
 
-        // Frame rate limiter (60 FPS)
         uint32_t frameMs = millis() - nowMs;
-        if (frameMs < 16)
-        {
-            delay(16 - frameMs);
-        }
-
-        if (elapsed >= durationSecs)
-        {
-            break;
-        }
+        if (frameMs < 16) delay(16 - frameMs);
+        if (elapsed >= TOTAL) break;
     }
 
-    // Clean up buffer without artificial delays so screen transitions immediately
     canvas.deleteSprite();
 }
+
+// Legacy stubs
+void BootScreen::drawBackground(LGFX_Sprite& canvas, uint16_t w, uint16_t h) {}
+void BootScreen::drawGlowCircle(LGFX_Sprite& canvas, float cx, float cy, float radius,
+                                uint8_t r, uint8_t g, uint8_t b, uint8_t a,
+                                int layers, uint16_t h_) {}
+void BootScreen::drawWaves(LGFX_Sprite& canvas, float elapsed, uint16_t w, uint16_t h) {}
+void BootScreen::drawProgressBar(LGFX_Sprite& canvas, float progress, uint16_t w, uint16_t h) {}
