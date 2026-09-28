@@ -3,6 +3,7 @@
 #include "../ui/Theme.h"
 #include "../services/RecordingService.h"
 #include "../services/ApiClient.h"
+#include "../services/TimeService.h"
 #include "../audio/AudioManager.h"
 #include "Transition.h"
 #include <cmath>
@@ -12,6 +13,7 @@ namespace VOXA
 {
     extern RecordingService recordingService;
     extern ApiClient apiClient;
+    extern TimeService timeService;
 
     uint32_t AudioPlayerScreen::s_recordingId = 0;
     ScreenId AudioPlayerScreen::s_backRoute = ScreenId::RecordingsLibrary;
@@ -217,19 +219,34 @@ namespace VOXA
             // ── RENDERING ───────────────────────────────────────────────────
             canvas.fillScreen(0x0000); // Pure OLED pitch black
 
-            // ── 1. Top Header (Y = 16) ───────────────────────────────
-            // "LOSSLESS DAC" on left
-            canvas.setFont(&fonts::Font0);
+            // ── 1. Top Status Bar (Y = 10) ───────────────────────────
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(canvas.color565(140, 155, 175));
-            canvas.drawString("LOSSLESS  DAC", 16.0f, 16.0f);
+            canvas.setTextColor(0xFDC0); // Amber clock
+            std::string timeStr = timeService.getCurrentTime();
+            if (timeStr.empty()) timeStr = "14:41";
+            if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
+            canvas.drawString(timeStr.c_str(), 12, 10);
 
-            // "96kHz" on right in cyan/soft sky blue
             canvas.setTextDatum(textdatum_t::top_right);
-            canvas.setTextColor(canvas.color565(115, 185, 235));
-            canvas.drawString("96kHz", w - 16.0f, 16.0f);
+            canvas.setTextColor(0x3DFE); // Cyan tag
+            canvas.drawString("LOSSLESS DAC", w - 20, 10);
+            // Flash bolt
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
 
-            // ── 2. Center Waveform Capsule Card (Y = 88) ────────────
+            // ── 2. Sub-Header (Y = 28) ───────────────────────────────
+            canvas.setTextDatum(textdatum_t::middle_left);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < BACK
+            canvas.drawString("<  BACK", 12, 34);
+
+            canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
+            canvas.setTextColor(0xFFFF);
+            canvas.drawString("NOW PLAYING", w - 14, 33);
+
+            // ── 3. Center Waveform Capsule Card (Y = 88) ────────────
             int cardW = 76;
             int cardH = 76;
             int cardX = (w - cardW) / 2;

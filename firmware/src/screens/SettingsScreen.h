@@ -24,6 +24,20 @@ namespace VOXA
         bool  m_isBackPressed { false };
         bool  m_wasTouched { false };
 
+        enum class ViewMode {
+            Main,
+            Network,
+            Storage,
+            About,
+            Zeroize
+        };
+        ViewMode m_viewMode { ViewMode::Main };
+
+        bool  m_torProxyEnabled { false };
+        bool  m_isSyncPressed { false };
+        bool  m_isCancelZeroizePressed { false };
+        bool  m_isConfirmZeroizePressed { false };
+
         float m_lastDragX { 0.0f };
     };
 }

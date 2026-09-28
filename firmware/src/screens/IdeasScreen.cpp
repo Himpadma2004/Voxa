@@ -54,7 +54,7 @@ namespace VOXA
             }
 
             float contentHeight = items.size() * 56.0f + 10.0f;
-            float visibleHeight = 190.0f;
+            float visibleHeight = (float)h - 72.0f - 8.0f;
             float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // Process Touch
@@ -97,7 +97,7 @@ namespace VOXA
 
 
                     // Card checks
-                    if (ty >= 72 && ty <= 264)
+                    if (ty >= 72 && ty <= h - 8)
                     {
                         for (std::size_t i = 0; i < items.size(); ++i)
                         {
@@ -192,16 +192,16 @@ namespace VOXA
             canvas.fillScreen(0x0000);
 
             // 1. Top Status Bar (Y = 10)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(0xFFFF);
+            canvas.setTextColor(0xFDC0); // Amber clock
             std::string timeStr = timeService.getCurrentTime();
-            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.empty()) timeStr = "14:41";
             if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
             canvas.drawString(timeStr.c_str(), 12, 10);
 
             canvas.setTextDatum(textdatum_t::top_right);
-            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.setTextColor(0x3DFE); // Cyan tag
             canvas.drawString("NPU READY", w - 20, 10);
             // Flash bolt
             canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
@@ -209,15 +209,16 @@ namespace VOXA
 
             // 2. Sub-Header (Y = 28)
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextColor(0x94A3B8);
-            canvas.drawString("< Hub", 12, 34);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < HUB
+            canvas.drawString("<  HUB", 12, 34);
 
             canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
             canvas.setTextColor(0xFFFF);
             char headerTitle[32];
             snprintf(headerTitle, sizeof(headerTitle), "IDEAS (%d)", totalCount);
-            canvas.drawString(headerTitle, 56, 33);
+            canvas.drawString(headerTitle, w - 34, 33);
 
             // Spark / Lightbulb icon on right
             uint16_t icColor = 0xFDC0;
@@ -226,13 +227,14 @@ namespace VOXA
             canvas.drawLine(w - 19, 38, w - 17, 38, icColor);
 
             // 3. Segmented Filter Tabs (Y = 48..68)
-            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(18, 21, 28));
+            canvas.drawRoundRect(10, 48, w - 20, 20, 5, canvas.color565(32, 38, 50));
             float tabW = (w - 20.0f) / 3.0f;
 
             // Active Tab Pill
             canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
 
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
 
             canvas.setTextColor(activeTab == 0 ? 0x0000 : 0x888888);
@@ -244,58 +246,55 @@ namespace VOXA
             canvas.setTextColor(activeTab == 2 ? 0x0000 : 0x888888);
             canvas.drawString("AI Synth", 10 + tabW * 2.5f, 58);
 
-            // 4. Scrollable Card List (Y = 72..264)
-            canvas.setClipRect(0, 72, w, 194);
+            // 4. Scrollable Card List
+            canvas.setClipRect(0, 72, w, h - 72 - 4);
 
             for (std::size_t i = 0; i < items.size(); ++i)
             {
                 float itemY = 74.0f + i * 56.0f - m_scrollY;
-                if (itemY + 52.0f < 72.0f || itemY > 264.0f)
+                if (itemY + 52.0f < 72.0f || itemY > (float)h)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
 
                 // Card container
-                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
-                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(34, 38, 48);
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 21, 28);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(32, 38, 50);
                 canvas.fillRoundRect(10, (int)itemY, w - 20, 50, 8, cardBg);
                 canvas.drawRoundRect(10, (int)itemY, w - 20, 50, 8, cardBorder);
 
+                // Bulb / Idea icon on left
+                int icX = 24;
+                int icY = (int)itemY + 25;
+                canvas.fillCircle(icX, icY - 2, 5, 0xFDC0);
+                canvas.fillRect(icX - 2, icY + 3, 5, 3, 0xFDC0);
+
                 // Line 1: Title
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(0xFFFF);
 
                 std::string tTitle = items[i].title;
                 if (tTitle.length() > 22) tTitle = tTitle.substr(0, 20) + "..";
-                canvas.drawString(tTitle.c_str(), 18, (int)itemY + 10);
+                canvas.drawString(tTitle.c_str(), 40, (int)itemY + 10);
 
-                // Line 2: Content / Summary
-                canvas.setTextColor(0x94A3B8);
+                // Line 2: Content / Summary (Muted Gold)
+                canvas.setTextColor(canvas.color565(194, 155, 80));
                 std::string subStr = items[i].content;
                 if (subStr.empty()) subStr = "Synthesized idea note";
-                if (subStr.length() > 28) subStr = subStr.substr(0, 26) + "..";
-                canvas.drawString(subStr.c_str(), 18, (int)itemY + 26);
+                if (subStr.length() > 24) subStr = subStr.substr(0, 22) + "..";
+                canvas.drawString(subStr.c_str(), 40, (int)itemY + 26);
 
                 // Right Badge Pill (e.g. 43s Note, In AI, Idea)
-                canvas.fillRoundRect(w - 58, (int)itemY + 14, 42, 18, 4, canvas.color565(26, 30, 38));
-                canvas.drawRoundRect(w - 58, (int)itemY + 14, 42, 18, 4, canvas.color565(44, 50, 64));
+                canvas.fillRoundRect(w - 60, (int)itemY + 15, 46, 20, 4, canvas.color565(26, 30, 38));
+                canvas.drawRoundRect(w - 60, (int)itemY + 15, 46, 20, 4, canvas.color565(44, 50, 64));
                 canvas.setTextDatum(textdatum_t::middle_center);
                 canvas.setTextColor(0xCBD5E1);
                 const char* badgeLabels[] = { "43s Note", "In AI", "Idea", "Spark" };
-                canvas.drawString(badgeLabels[i % 4], w - 37, (int)itemY + 23);
+                canvas.drawString(badgeLabels[i % 4], w - 37, (int)itemY + 25);
             }
 
             canvas.clearClipRect();
-
-            // 5. Bottom Action Button (Y = 272..306)
-            uint16_t btnBg = m_isAddPressed ? 0xFFE0 : 0xFDC0;
-            canvas.fillRoundRect(10, 272, w - 20, 34, 17, btnBg);
-
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.setTextColor(0x0000);
-            canvas.drawString("+ VOICE SPARK", w * 0.5f, 289);
 
             // Screen Slide Transition or Direct push
             if (entryFrame < 10)

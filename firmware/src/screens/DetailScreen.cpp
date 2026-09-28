@@ -380,8 +380,16 @@ namespace VOXA
                 }
             }
 
-            w = Display::width();
-            h = Display::height();
+            uint16_t curW = Display::width();
+            uint16_t curH = Display::height();
+            if (curW != w || curH != h)
+            {
+                w = curW;
+                h = curH;
+                canvas.deleteSprite();
+                canvas.createSprite(w, h);
+                Display::lcd.fillScreen(0x0000);
+            }
 
             // Scroll Inertia calculations
             if (!m_wasTouched && std::abs(m_scrollVelocity) > 0.0f)
@@ -394,7 +402,8 @@ namespace VOXA
                 }
             }
 
-            float visibleHeight = h - 52.0f - 52.0f;
+            bool isLandscape = (w > h);
+            float visibleHeight = h - 50.0f - 48.0f;
             float maxScrollY = std::max(0.0f, totalContentHeight - visibleHeight);
             m_targetScrollY = std::max(0.0f, std::min(maxScrollY, m_targetScrollY));
             m_scrollY += (m_targetScrollY - m_scrollY) * 15.0f * deltaSecs;
@@ -409,11 +418,11 @@ namespace VOXA
             canvas.fillScreen(0x0000);
 
             // 1. Top Status Bar (Y = 10)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(0xFFFF);
+            canvas.setTextColor(0xFDC0); // Amber clock
             std::string timeStr = timeService.getCurrentTime();
-            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.empty()) timeStr = "14:41";
             if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
             canvas.drawString(timeStr.c_str(), 12, 10);
 
@@ -423,18 +432,19 @@ namespace VOXA
             canvas.drawString(tagLabel.c_str(), w - 20, 10);
 
             // Flash bolt icon
-            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, tagColor);
-            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, tagColor);
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
 
             // 2. Sub-Header (Y = 28..42)
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextColor(m_isBackPressed ? tagColor : 0x94A3B8);
-            canvas.drawString("< Back", 12, 34);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < BACK
+            canvas.drawString("<  BACK", 12, 34);
 
             canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
             canvas.setTextColor(0xFFFF);
-            canvas.drawString("DETAIL VIEW", 56, 33);
+            canvas.drawString("DETAIL VIEW", w - 34, 33);
 
             // Category Icon on header right (Y ~ 28..40)
             if (s_category == "tasks")
@@ -476,10 +486,10 @@ namespace VOXA
             }
 
             // Header separator line
-            canvas.drawFastHLine(0, 48, w, canvas.color565(26, 30, 38));
+            canvas.drawFastHLine(0, 48, w, canvas.color565(32, 38, 50));
 
-            // 3. Scrollable Detail Container Card (Y = 52..h - 52)
-            canvas.setClipRect(0, 50, w, (int)(h - 50 - 50));
+            // 3. Scrollable Detail Container Card
+            canvas.setClipRect(0, 50, w, (int)(h - 50 - 48));
 
             float cardX = 10.0f;
             float cardY = 54.0f - m_scrollY;
@@ -489,45 +499,42 @@ namespace VOXA
             float curY = cardY + 12.0f;
 
             // Render Card Base Background
-            uint16_t cardBg = canvas.color565(18, 20, 26);
-            uint16_t cardBorder = canvas.color565(34, 38, 48);
+            uint16_t cardBg = canvas.color565(18, 21, 28);
+            uint16_t cardBorder = canvas.color565(32, 38, 50);
 
             // Compute total height first so we can draw card background properly
-            float tempY = curY + 24.0f; // after tags
-            canvas.setFont(&fonts::FreeSansBold9pt7b);
-            // Title height estimation
-            // Draw title text later, for now we will draw the card frame around full height
-            float renderedCardH = std::max(195.0f, totalContentHeight + 10.0f);
+            float minCardH = isLandscape ? 115.0f : 185.0f;
+            float renderedCardH = std::max(minCardH, totalContentHeight + 10.0f);
             canvas.fillRoundRect((int)cardX, (int)cardY, (int)cardW, (int)renderedCardH, 8, cardBg);
             canvas.drawRoundRect((int)cardX, (int)cardY, (int)cardW, (int)renderedCardH, 8, cardBorder);
 
             // A. Category Tag Pill
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             float tagTextW = canvas.textWidth(tagLabel.c_str());
-            float pillW = tagTextW + 12.0f;
-            canvas.fillRoundRect((int)(cardX + innerPad), (int)curY, (int)pillW, 16, 4, tagColor);
+            float pillW = tagTextW + 14.0f;
+            canvas.fillRoundRect((int)(cardX + innerPad), (int)curY, (int)pillW, 18, 4, tagColor);
             canvas.setTextColor(0x0000);
             canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.drawString(tagLabel.c_str(), cardX + innerPad + pillW * 0.5f, curY + 8.0f);
+            canvas.drawString(tagLabel.c_str(), cardX + innerPad + pillW * 0.5f, curY + 9.0f);
 
             // B. Status Pill (Next to category pill)
             if (!statusStr.empty())
             {
                 float statTextW = canvas.textWidth(statusStr.c_str());
-                float statPillW = statTextW + 12.0f;
+                float statPillW = statTextW + 14.0f;
                 float statX = cardX + innerPad + pillW + 6.0f;
 
                 uint16_t statBg = isDone ? canvas.color565(16, 44, 28) : canvas.color565(36, 32, 20);
                 uint16_t statBorder = isDone ? 0x07E0 : 0xFDC0;
                 uint16_t statTxt = isDone ? 0x07E0 : 0xFDC0;
 
-                canvas.fillRoundRect((int)statX, (int)curY, (int)statPillW, 16, 4, statBg);
-                canvas.drawRoundRect((int)statX, (int)curY, (int)statPillW, 16, 4, statBorder);
+                canvas.fillRoundRect((int)statX, (int)curY, (int)statPillW, 18, 4, statBg);
+                canvas.drawRoundRect((int)statX, (int)curY, (int)statPillW, 18, 4, statBorder);
                 canvas.setTextColor(statTxt);
-                canvas.drawString(statusStr.c_str(), statX + statPillW * 0.5f, curY + 8.0f);
+                canvas.drawString(statusStr.c_str(), statX + statPillW * 0.5f, curY + 9.0f);
             }
 
-            curY += 24.0f;
+            curY += 26.0f;
 
             // C. Title (Bold White)
             canvas.setFont(&fonts::FreeSansBold9pt7b);
@@ -535,19 +542,19 @@ namespace VOXA
             curY += 6.0f;
 
             // D. Subtle Divider Line
-            canvas.drawFastHLine((int)(cardX + innerPad), (int)curY, (int)contentW, canvas.color565(30, 34, 44));
+            canvas.drawFastHLine((int)(cardX + innerPad), (int)curY, (int)contentW, canvas.color565(32, 38, 50));
             curY += 8.0f;
 
-            // E. Recorded / Due Timestamp (Slate-400)
+            // E. Recorded / Due Timestamp (Muted Gold)
             if (!recordedDateStr.empty())
             {
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
-                canvas.setTextColor(0x94A3B8);
+                canvas.setTextColor(canvas.color565(194, 155, 80));
                 // Draw small dot icon
-                canvas.fillCircle((int)(cardX + innerPad + 3), (int)(curY + 4), 2, tagColor);
+                canvas.fillCircle((int)(cardX + innerPad + 3), (int)(curY + 5), 2, tagColor);
                 canvas.drawString(recordedDateStr.c_str(), cardX + innerPad + 10, curY);
-                curY += 16.0f;
+                curY += 18.0f;
             }
 
             // F. Body Content String (Light Slate-200)
@@ -564,7 +571,7 @@ namespace VOXA
             // 4. Bottom Action Buttons Bar (Y = h - 48..h)
             // Backdrop to cover scrolling content cleanly
             canvas.fillRect(0, h - 50, w, 50, 0x0000);
-            canvas.drawFastHLine(0, h - 50, w, canvas.color565(26, 30, 38));
+            canvas.drawFastHLine(0, h - 50, w, canvas.color565(32, 38, 50));
 
             // Left Button: Complete / Back
             uint16_t btn1Bg, btn1Border, btn1Text;
@@ -597,7 +604,7 @@ namespace VOXA
 
             canvas.fillRoundRect((int)btn1X, (int)btnY, (int)btnW, (int)btnH, 6, btn1Bg);
             canvas.drawRoundRect((int)btn1X, (int)btnY, (int)btnW, (int)btnH, 6, btn1Border);
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextColor(btn1Text);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.drawString(btn1Label, btn1X + btnW * 0.5f, btnY + btnH * 0.5f);

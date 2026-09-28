@@ -188,16 +188,16 @@ namespace VOXA
             canvas.fillScreen(0x0000);
 
             // 1. Top Status Bar (Y = 10)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(0xFFFF);
+            canvas.setTextColor(0xFDC0); // Amber clock
             std::string timeStr = timeService.getCurrentTime();
-            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.empty()) timeStr = "14:41";
             if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
             canvas.drawString(timeStr.c_str(), 12, 10);
 
             canvas.setTextDatum(textdatum_t::top_right);
-            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.setTextColor(0x3DFE); // Cyan tag
             canvas.drawString("AES-256", w - 20, 10);
             // Flash bolt
             canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
@@ -205,42 +205,35 @@ namespace VOXA
 
             // 2. Sub-Header (Y = 28)
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextColor(0x94A3B8);
-            canvas.drawString("< Hub", 12, 34);
-
-            // Lock icon in title
-            canvas.drawRoundRect(52, 28, 10, 8, 2, 0xFDC0);
-            canvas.drawCircle(57, 26, 3, 0xFDC0);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < HUB
+            canvas.drawString("<  HUB", 12, 34);
 
             canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
             canvas.setTextColor(0xFFFF);
             char headerTitle[32];
-            snprintf(headerTitle, sizeof(headerTitle), "VAULT (%d)", totalCount);
-            canvas.drawString(headerTitle, 66, 33);
-
-            // "SECURED" tag on right
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextDatum(textdatum_t::middle_right);
-            canvas.setTextColor(0x3DFE);
-            canvas.drawString("SECURED", w - 12, 34);
+            snprintf(headerTitle, sizeof(headerTitle), "OTHERS (%d)", totalCount);
+            canvas.drawString(headerTitle, w - 14, 33);
 
             // 3. Segmented Filter Tabs (Y = 48..68)
-            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(18, 21, 28));
+            canvas.drawRoundRect(10, 48, w - 20, 20, 5, canvas.color565(32, 38, 50));
             float tabW = (w - 20.0f) / 3.0f;
 
             // Active Tab Pill
-            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, canvas.color565(36, 44, 58));
+            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
 
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
 
-            canvas.setTextColor(activeTab == 0 ? 0xFDC0 : 0x888888);
+            canvas.setTextColor(activeTab == 0 ? 0x0000 : 0x888888);
             canvas.drawString("Locked", 10 + tabW * 0.5f, 58);
 
-            canvas.setTextColor(activeTab == 1 ? 0xFDC0 : 0x888888);
+            canvas.setTextColor(activeTab == 1 ? 0x0000 : 0x888888);
             canvas.drawString("Biom", 10 + tabW * 1.5f, 58);
 
-            canvas.setTextColor(activeTab == 2 ? 0xFDC0 : 0x888888);
+            canvas.setTextColor(activeTab == 2 ? 0x0000 : 0x888888);
             canvas.drawString("Keys", 10 + tabW * 2.5f, 58);
 
             // 4. Scrollable Card List (Y = 72..264)
@@ -255,76 +248,76 @@ namespace VOXA
                 bool isPressed = (m_pressedItemIndex == (int)i);
 
                 // Card container
-                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
-                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(34, 38, 48);
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 21, 28);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(32, 38, 50);
                 canvas.fillRoundRect(10, (int)itemY, w - 20, 52, 8, cardBg);
                 canvas.drawRoundRect(10, (int)itemY, w - 20, 52, 8, cardBorder);
 
                 // Left Icon (Key / Lock / Dots)
-                int icX = 22;
-                int icY = (int)itemY + 16;
+                int icX = 24;
+                int icY = (int)itemY + 26;
                 if (i % 3 == 0)
                 {
                     // Key
-                    canvas.drawCircle(icX, icY, 4, 0xFDC0);
-                    canvas.drawLine(icX + 4, icY, icX + 10, icY, 0xFDC0);
-                    canvas.drawLine(icX + 8, icY, icX + 8, icY + 3, 0xFDC0);
+                    canvas.drawCircle(icX - 3, icY, 4, 0xFDC0);
+                    canvas.drawLine(icX + 1, icY, icX + 7, icY, 0xFDC0);
+                    canvas.drawLine(icX + 5, icY, icX + 5, icY + 3, 0xFDC0);
                 }
                 else if (i % 3 == 1)
                 {
                     // Lock
-                    canvas.drawRoundRect(icX - 4, icY - 2, 9, 8, 2, canvas.color565(255, 180, 80));
-                    canvas.drawCircle(icX, icY - 4, 3, canvas.color565(255, 180, 80));
+                    canvas.drawRoundRect(icX - 4, icY - 2, 9, 8, 2, 0xFDC0);
+                    canvas.drawCircle(icX, icY - 4, 3, 0xFDC0);
                 }
                 else
                 {
                     // Dots
-                    canvas.fillCircle(icX - 3, icY, 1, 0x94A3B8);
-                    canvas.fillCircle(icX, icY, 1, 0x94A3B8);
-                    canvas.fillCircle(icX + 3, icY, 1, 0x94A3B8);
+                    canvas.fillCircle(icX - 3, icY, 2, 0x3DFE);
+                    canvas.fillCircle(icX, icY, 2, 0x3DFE);
+                    canvas.fillCircle(icX + 3, icY, 2, 0x3DFE);
                 }
 
                 // Line 1: Title
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(0xFFFF);
 
                 std::string tTitle = items[i].title;
                 if (tTitle.length() > 22) tTitle = tTitle.substr(0, 20) + "..";
-                canvas.drawString(tTitle.c_str(), 38, (int)itemY + 8);
+                canvas.drawString(tTitle.c_str(), 40, (int)itemY + 8);
 
                 // Line 2: Subtitle / Confidential
-                canvas.setTextColor(0x94A3B8);
+                canvas.setTextColor(canvas.color565(194, 155, 80));
                 std::string subStr = items[i].content;
                 if (subStr.empty()) subStr = "Verified 2d ago";
                 if (subStr.length() > 24) subStr = subStr.substr(0, 22) + "..";
-                canvas.drawString(subStr.c_str(), 38, (int)itemY + 22);
+                canvas.drawString(subStr.c_str(), 40, (int)itemY + 22);
 
                 // Line 3: Security Badge line
                 if (i % 3 == 0)
                 {
                     canvas.setTextColor(0x3DFE); // Cyan
-                    canvas.drawString("Thumb Auth Required", 38, (int)itemY + 36);
+                    canvas.drawString("Thumb Auth Required", 40, (int)itemY + 36);
                 }
                 else if (i % 3 == 1)
                 {
                     canvas.setTextColor(0xFDC0); // Amber
-                    canvas.drawString("PIN Required", 38, (int)itemY + 36);
+                    canvas.drawString("PIN Required", 40, (int)itemY + 36);
                 }
                 else
                 {
-                    canvas.setTextColor(0x64748B); // Dim
-                    canvas.drawString("Touch to Reveal", 38, (int)itemY + 36);
+                    canvas.setTextColor(0x94A3B8); // Muted
+                    canvas.drawString("Touch to Reveal", 40, (int)itemY + 36);
                 }
             }
 
             canvas.clearClipRect();
 
             // 5. Bottom Footer Text (Y = 284)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setTextColor(0xFDC0);
-            canvas.drawString("SECURE ENCLAVE · ZERO CLOUD LEAK", w * 0.5f, 290);
+            canvas.drawString("OTHERS ENCLAVE · LOCAL STORAGE", w * 0.5f, 290);
 
             // Screen Slide Transition or Direct push
             if (entryFrame < 10)

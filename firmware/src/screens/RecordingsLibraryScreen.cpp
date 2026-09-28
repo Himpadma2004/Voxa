@@ -60,7 +60,7 @@ namespace VOXA
             }
 
             float contentHeight = items.size() * 56.0f + 10.0f;
-            float visibleHeight = 190.0f;
+            float visibleHeight = (float)h - 72.0f - 8.0f;
             float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // Process Touch
@@ -102,14 +102,8 @@ namespace VOXA
                         m_scrollY = 0.0f;
                     }
 
-                    // Bottom Action Button touch (Y >= 268) -> Record Screen
-                    if (ty >= 268 && ty <= 310 && tx >= 10 && tx <= w - 10)
-                    {
-                        isRecTriggerPressed = true;
-                    }
-
                     // Card checks
-                    if (ty >= 72 && ty <= 264)
+                    if (ty >= 72 && ty <= h - 8)
                     {
                         for (std::size_t i = 0; i < items.size(); ++i)
                         {
@@ -170,10 +164,6 @@ namespace VOXA
                         {
                             targetScreen = ScreenId::Home;
                         }
-                        else if (isRecTriggerPressed)
-                        {
-                            targetScreen = ScreenId::Record;
-                        }
                         else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)items.size())
                         {
                             AudioPlayerScreen::setRecording(items[m_pressedItemIndex].id, ScreenId::RecordingsLibrary);
@@ -208,16 +198,16 @@ namespace VOXA
             canvas.fillScreen(0x0000);
 
             // 1. Top Status Bar (Y = 10)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(0xFFFF);
+            canvas.setTextColor(0xFDC0); // Amber clock
             std::string timeStr = timeService.getCurrentTime();
-            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.empty()) timeStr = "14:41";
             if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
             canvas.drawString(timeStr.c_str(), 12, 10);
 
             canvas.setTextDatum(textdatum_t::top_right);
-            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.setTextColor(0x3DFE); // Cyan tag
             canvas.drawString("SD: 12.4GB", w - 20, 10);
             // Flash bolt
             canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
@@ -225,15 +215,16 @@ namespace VOXA
 
             // 2. Sub-Header (Y = 28)
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextColor(0x94A3B8);
-            canvas.drawString("< Hub", 12, 34);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < HUB
+            canvas.drawString("<  HUB", 12, 34);
 
             canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
             canvas.setTextColor(0xFFFF);
             char headerTitle[32];
             snprintf(headerTitle, sizeof(headerTitle), "RECS (%d)", totalCount);
-            canvas.drawString(headerTitle, 56, 33);
+            canvas.drawString(headerTitle, w - 34, 33);
 
             // Sliders / list icon on right
             uint16_t iconColor = 0xFDC0;
@@ -242,13 +233,14 @@ namespace VOXA
             canvas.drawLine(w - 24, 40, w - 18, 40, iconColor);
 
             // 3. Segmented Filter Tabs (Y = 48..68)
-            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(18, 21, 28));
+            canvas.drawRoundRect(10, 48, w - 20, 20, 5, canvas.color565(32, 38, 50));
             float tabW = (w - 20.0f) / 4.0f;
 
             // Active Tab Pill
             canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
 
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
 
             const char* tabNames[] = { "All", "Star", "Meet", "Memo" };
@@ -258,60 +250,57 @@ namespace VOXA
                 canvas.drawString(tabNames[t], 10 + tabW * (t + 0.5f), 58);
             }
 
-            // 4. Scrollable Card List (Y = 72..264)
-            canvas.setClipRect(0, 72, w, 194);
+            // 4. Scrollable Card List
+            canvas.setClipRect(0, 72, w, h - 72 - 4);
 
             for (std::size_t i = 0; i < items.size(); ++i)
             {
                 float itemY = 74.0f + i * 56.0f - m_scrollY;
-                if (itemY + 52.0f < 72.0f || itemY > 264.0f)
+                if (itemY + 52.0f < 72.0f || itemY > (float)h)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
 
                 // Card container
-                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
-                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(34, 38, 48);
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 21, 28);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(32, 38, 50);
                 canvas.fillRoundRect(10, (int)itemY, w - 20, 50, 8, cardBg);
                 canvas.drawRoundRect(10, (int)itemY, w - 20, 50, 8, cardBorder);
 
+                // Waveform / Mic icon on left
+                int icX = 24;
+                int icY = (int)itemY + 25;
+                canvas.drawFastVLine(icX - 4, icY - 3, 6, 0xFDC0);
+                canvas.drawFastVLine(icX - 2, icY - 6, 12, 0xFDC0);
+                canvas.drawFastVLine(icX, icY - 8, 16, 0xFDC0);
+                canvas.drawFastVLine(icX + 2, icY - 5, 10, 0xFDC0);
+                canvas.drawFastVLine(icX + 4, icY - 2, 4, 0xFDC0);
+
                 // Line 1: Filename / Title
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(0xFFFF);
 
                 std::string tTitle = items[i].title;
                 if (tTitle.find('.') == std::string::npos) tTitle += ".wav";
                 if (tTitle.length() > 22) tTitle = tTitle.substr(0, 20) + "..";
-                canvas.drawString(tTitle.c_str(), 18, (int)itemY + 10);
+                canvas.drawString(tTitle.c_str(), 40, (int)itemY + 10);
 
-                // Line 2: Meta / Duration / Status
-                canvas.setTextColor(0x94A3B8);
+                // Line 2: Meta / Duration / Status (Muted Gold)
+                canvas.setTextColor(canvas.color565(194, 155, 80));
                 char metaBuf[48];
                 uint32_t dur = items[i].durationSeconds;
                 snprintf(metaBuf, sizeof(metaBuf), "%02d:%02d · 18.4MB · Today", dur / 60, dur % 60);
-                canvas.drawString(metaBuf, 18, (int)itemY + 26);
+                canvas.drawString(metaBuf, 40, (int)itemY + 26);
 
                 // Right Play Button Circle (Amber / Dark)
                 int playCx = w - 30;
                 int playCy = (int)itemY + 25;
-                canvas.drawCircle(playCx, playCy, 9, 0xFDC0);
+                canvas.drawCircle(playCx, playCy, 10, 0xFDC0);
                 canvas.fillTriangle(playCx - 2, playCy - 4, playCx + 4, playCy, playCx - 2, playCy + 4, 0xFDC0);
             }
 
             canvas.clearClipRect();
-
-            // 5. Bottom Action Button (Y = 272..306)
-            uint16_t btnBg = isRecTriggerPressed ? 0xFFE0 : 0xFDC0;
-            canvas.fillRoundRect(10, 272, w - 20, 34, 17, btnBg);
-
-            // Black dot + + REC TRIGGER
-            canvas.fillCircle(w * 0.5f - 46, 289, 4, 0x0000);
-
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.setTextColor(0x0000);
-            canvas.drawString("+ REC TRIGGER", w * 0.5f + 6, 289);
 
             // Screen Slide Transition or Direct push
             if (entryFrame < 10)

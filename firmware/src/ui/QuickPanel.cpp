@@ -229,9 +229,9 @@ namespace VOXA
         target.drawString("Control", 10, (int)(currentPanelY + 12.0f));
 
         // Cyan Time "10:42"
-        target.setFont(&fonts::Font0);
+        target.setFont(&fonts::DejaVu9);
         std::string timeStr = timeService.getCurrentTime();
-        if (timeStr.empty()) timeStr = "10:42";
+        if (timeStr.empty()) timeStr = "14:41";
         if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
         target.setTextColor(0x3DFE); // Bright Cyan
         target.drawString(timeStr.c_str(), 72, (int)(currentPanelY + 14.0f));
@@ -269,7 +269,7 @@ namespace VOXA
         target.fillCircle(wCx, wCy, 2, wifiCol);
         target.fillRect((int)b0X, wCy + 1, (int)btnW, 12, target.color565(18, 20, 26)); // clip bottom half of arcs
 
-        target.setFont(&fonts::Font0);
+        target.setFont(&fonts::DejaVu9);
         target.setTextDatum(textdatum_t::top_center);
         target.setTextColor(0xFFFF);
         target.drawString("Wi-Fi", wCx, (int)(toggleY + 28.0f));
@@ -381,7 +381,7 @@ namespace VOXA
         }
 
         // Top Right: Percentage Text (e.g. 52%)
-        target.setFont(&fonts::Font0);
+        target.setFont(&fonts::DejaVu9);
         target.setTextDatum(textdatum_t::top_right);
         target.setTextColor(0xFDC0);
         char bBuf[16];
@@ -428,7 +428,7 @@ namespace VOXA
         target.drawCircle(vCx + 6, vCy, 4, 0x3DFE);
 
         // Top Right: Percentage Text (e.g. 85%)
-        target.setFont(&fonts::Font0);
+        target.setFont(&fonts::DejaVu9);
         target.setTextDatum(textdatum_t::top_right);
         target.setTextColor(0x3DFE);
         char vBuf[16];

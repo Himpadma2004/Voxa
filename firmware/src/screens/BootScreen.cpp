@@ -10,12 +10,11 @@ BootScreen::BootScreen() {}
 static inline float clamp01(float t) { return t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t); }
 static inline float easeOut3(float t) { float f = 1.0f - t; return 1.0f - f * f * f; }
 
-// ─── Draw ⊙ Icon ──────────────────────────────────────────────────────────────
+// ─── Draw ⊙ Icon (Optional) ───────────────────────────────────────────────────
 static void drawIcon(LGFX_Sprite& canvas, float cx, float cy, float alpha)
 {
     if (alpha <= 0.01f) return;
 
-    // Soft halo bloom around outer ring (r=14..18)
     for (int r = 18; r >= 13; --r)
     {
         float t = (float)(18 - r) / 5.0f;
@@ -30,17 +29,14 @@ static void drawIcon(LGFX_Sprite& canvas, float cx, float cy, float alpha)
     uint8_t a = (uint8_t)(255 * alpha);
     uint16_t ringCol = canvas.color565(a, a, a);
 
-    // Thick outer ring: diameter ~24px (radii 10, 11, 12)
     canvas.drawCircle((int)cx, (int)cy, 10, ringCol);
     canvas.drawCircle((int)cx, (int)cy, 11, ringCol);
     canvas.drawCircle((int)cx, (int)cy, 12, ringCol);
-
-    // Filled center dot: radius 3px
     canvas.fillCircle((int)cx, (int)cy, 3, ringCol);
 }
 
-// ─── Draw "voxa" Text ─────────────────────────────────────────────────────────
-static void drawLogoText(LGFX_Sprite& canvas, float textX, float cy, float alpha)
+// ─── Draw "voxa" Text (Centered) ──────────────────────────────────────────────
+static void drawLogoText(LGFX_Sprite& canvas, float cx, float cy, float alpha)
 {
     if (alpha <= 0.01f) return;
 
@@ -48,12 +44,12 @@ static void drawLogoText(LGFX_Sprite& canvas, float textX, float cy, float alpha
     uint16_t textCol = canvas.color565(a, a, a);
 
     canvas.setFont(&fonts::FreeSansBold18pt7b);
-    canvas.setTextDatum(textdatum_t::middle_left);
+    canvas.setTextDatum(textdatum_t::middle_center);
     canvas.setTextColor(textCol);
-    canvas.drawString("voxa", (int)textX, (int)cy);
+    canvas.drawString("voxa", (int)cx, (int)cy);
 }
 
-// ─── Draw "SILICON MICROKERNEL" Subtitle ───────────────────────────────────────
+// ─── Draw Subtitle (Centered) ─────────────────────────────────────────────────
 static void drawSubtitle(LGFX_Sprite& canvas, float cx, float cy, float alpha)
 {
     if (alpha <= 0.01f) return;
@@ -71,23 +67,24 @@ static void drawSubtitle(LGFX_Sprite& canvas, float cx, float cy, float alpha)
 }
 
 // ─── Draw Horizontal Lens Flare ──────────────────────────────────────────────
-static void drawLensFlare(LGFX_Sprite& canvas, float cx, float cy, float intensity, uint16_t w, uint16_t h)
+static void drawLensFlare(LGFX_Sprite& canvas, float cx, float cy, float intensity, uint16_t w, uint16_t h, bool isLandscape)
 {
     if (intensity <= 0.01f) return;
 
     // 1. Subtle horizon reflection glow below flare line
     int startY = (int)cy + 2;
-    int endY = std::min((int)h, (int)cy + 45);
+    int horizonH = isLandscape ? 30 : 45;
+    int endY = std::min((int)h, (int)cy + horizonH);
     for (int y = startY; y < endY; ++y)
     {
         float dy = (float)(y - cy);
-        float alphaY = (1.0f - dy / 45.0f);
+        float alphaY = (1.0f - dy / (float)horizonH);
         alphaY = alphaY * alphaY;
         uint8_t baseB = (uint8_t)(22.0f * alphaY * intensity);
         if (baseB < 1) continue;
 
         uint16_t gradCol = canvas.color565(baseB, (baseB * 9) / 10, (baseB * 8) / 10);
-        int span = (int)(w * 0.40f * alphaY);
+        int span = (int)(w * 0.42f * alphaY);
         canvas.drawFastHLine((int)cx - span, y, span * 2, gradCol);
     }
 
@@ -169,6 +166,7 @@ void BootScreen::show()
 {
     uint16_t w = Display::width();
     uint16_t h = Display::height();
+    bool isLandscape = (w > h);
 
     LGFX_Sprite canvas(&Display::lcd);
     canvas.setPsram(true);
@@ -182,18 +180,12 @@ void BootScreen::show()
     uint32_t startMs = millis();
     constexpr float TOTAL = 4.5f;
 
-    // Centered layout calculations:
-    // Screen is 240 x 320
+    // Responsive layout calculations:
+    // Portrait (240x320 default) vs Landscape (320x240)
     float cx = w * 0.5f;
-    float logoY = h * 0.38f;      // ~122
-    float subY  = h * 0.48f;      // ~154
-    float flareY = h * 0.60f;     // ~192
-
-    // Icon + "voxa" text centering:
-    // Icon diameter ~24px (r=12), gap ~10px, "voxa" ~79px -> total width ~113px
-    // Centered around cx=120:
-    float iconCx = cx - 44.0f;    // ~76
-    float textX  = cx - 22.0f;    // ~98
+    float logoY  = isLandscape ? (h * 0.30f) : (h * 0.38f);
+    float subY   = isLandscape ? (logoY + 28.0f) : (logoY + 34.0f);
+    float flareY = isLandscape ? (subY + 34.0f) : (subY + 40.0f);
 
     while (true)
     {
@@ -228,16 +220,13 @@ void BootScreen::show()
         float effectiveFlare = flareIntensity * globalAlpha;
         float effectiveLogo  = textAlpha * globalAlpha;
 
-        // Draw Flare line & glow
-        drawLensFlare(canvas, cx, flareY, effectiveFlare, w, h);
+        // Draw Flare line & glow (responsive width and horizon)
+        drawLensFlare(canvas, cx, flareY, effectiveFlare, w, h, isLandscape);
 
-        // // Draw ⊙ Icon
-        // drawIcon(canvas, iconCx, logoY, effectiveLogo);
+        // Draw "voxa" text (centered bold FreeSansBold18pt7b)
+        drawLogoText(canvas, cx, logoY, effectiveLogo);
 
-        // Draw "voxa" text (large bold FreeSansBold18pt7b)
-        drawLogoText(canvas, textX, logoY, effectiveLogo);
-
-        // Draw "SILICON MICROKERNEL" subtitle (spaced FreeSans9pt7b)
+        // Draw "New Tomorrow" subtitle (centered FreeSans9pt7b)
         drawSubtitle(canvas, cx, subY, effectiveLogo);
 
         // Push frame to LCD

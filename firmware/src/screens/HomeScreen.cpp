@@ -70,9 +70,9 @@ namespace VOXA
         }
 
         // 1. Top Status Bar: Time (Left), WiFi + Battery + Flash (Right)
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::top_left);
-        canvas.setTextColor(0xFFFF);
+        canvas.setTextColor(0xFDC0);
         canvas.drawString(timeBuf, 14.0f + offsetX, 10.0f);
 
         float statRight = w - 14.0f + offsetX;
@@ -91,7 +91,7 @@ namespace VOXA
         char batBuf[16];
         snprintf(batBuf, sizeof(batBuf), "%d%%", batPct);
 
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::middle_left);
         canvas.setTextColor(0xFFFF);
         canvas.drawString(batBuf, statRight - 36.0f, 15.0f);
@@ -111,7 +111,7 @@ namespace VOXA
         else greeting = "GOOD NIGHT";
 
         // Greeting Text
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::top_left);
         canvas.setTextColor(0x94A3B8);
         canvas.drawString(greeting, 14.0f + offsetX, 32.0f);
@@ -137,7 +137,7 @@ namespace VOXA
             snprintf(dateBuf, sizeof(dateBuf), "Thursday, Oct 24");
         }
 
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::top_left);
         canvas.setTextColor(0xCBD5E1);
         canvas.drawString(dateBuf, 14.0f + offsetX, 92.0f);
@@ -169,7 +169,7 @@ namespace VOXA
         canvas.drawLine((int)(t0X + 10.0f), (int)(t0Y + 14.0f), (int)(t0X + 12.0f), (int)(t0Y + 16.0f), 0x3DFE);
         canvas.drawLine((int)(t0X + 12.0f), (int)(t0Y + 16.0f), (int)(t0X + 15.0f), (int)(t0Y + 11.0f), 0x3DFE);
 
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::middle_left);
         canvas.setTextColor(0xCBD5E1);
         canvas.drawString("TASKS", t0X + 22.0f, t0Y + 14.0f);
@@ -221,24 +221,24 @@ namespace VOXA
         snprintf(cBuf, sizeof(cBuf), "%d", memCount > 0 ? memCount : 42);
         canvas.drawString(cBuf, t2X + tileW - 8.0f, t2Y + 14.0f);
 
-        // Tile 3: VAULT (Bottom-Right)
+        // Tile 3: OTHERS (Bottom-Right)
         float t3X = 122.0f + offsetX;
         float t3Y = 178.0f;
         bool isT3Pressed = (m_pressedCardIndex == 13);
         canvas.fillRoundRect((int)t3X, (int)t3Y, (int)tileW, (int)tileH, 6, isT3Pressed ? canvas.color565(32, 36, 48) : canvas.color565(18, 20, 26));
         canvas.drawRoundRect((int)t3X, (int)t3Y, (int)tileW, (int)tileH, 6, isT3Pressed ? 0xFDC0 : canvas.color565(34, 38, 48));
 
-        // Lock
-        canvas.drawRoundRect((int)(t3X + 9.0f), (int)(t3Y + 12.0f), 6, 6, 1, 0xFDC0);
-        canvas.drawCircle((int)(t3X + 12.0f), (int)(t3Y + 11.0f), 2, 0xFDC0);
+        // Folder outline icon
+        canvas.drawRoundRect((int)(t3X + 8.0f), (int)(t3Y + 11.0f), 8, 7, 1, 0xFDC0);
+        canvas.drawFastHLine((int)(t3X + 9.0f), (int)(t3Y + 10.0f), 4, 0xFDC0);
 
         canvas.setTextDatum(textdatum_t::middle_left);
         canvas.setTextColor(0xCBD5E1);
-        canvas.drawString("VAULT", t3X + 22.0f, t3Y + 14.0f);
+        canvas.drawString("OTHERS", t3X + 19.0f, t3Y + 14.0f);
 
         canvas.setTextDatum(textdatum_t::middle_right);
         canvas.setTextColor(0x3DFE);
-        canvas.drawString("ENC", t3X + tileW - 8.0f, t3Y + 14.0f);
+        canvas.drawString("ALL", t3X + tileW - 8.0f, t3Y + 14.0f);
 
         // 5. Bottom Solid White Button: "Record Voice" (Y = 222, H = 42)
         float btnX = 12.0f + offsetX;
@@ -248,24 +248,33 @@ namespace VOXA
 
         canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnFullW, 42, 8, isRecPressed ? canvas.color565(210, 215, 225) : 0xFFFF);
 
-        // Clean mic capsule body (Black on White button)
-        float micCx = btnX + btnFullW * 0.5f - 46.0f;
+        // Calculate unified centering for icon + text
+        canvas.setFont(&fonts::FreeSansBold9pt7b);
+        int textW = canvas.textWidth("Record Voice");
+        float totalW = 13.0f + 10.0f + (float)textW; // 13px mic + 10px gap + text
+        float startX = btnX + (btnFullW - totalW) * 0.5f;
+        float micCx = startX + 6.0f;
         float micCy = btnY + 21.0f;
-        canvas.fillRoundRect((int)(micCx - 3.0f), (int)(micCy - 9.0f), 7, 13, 3, 0x0000);
+
+        // Clean studio mic capsule body (Black on White button)
+        canvas.fillRoundRect((int)micCx - 3, (int)micCy - 8, 7, 13, 3, 0x0000);
+        // Studio mic horizontal grille slit
+        canvas.drawFastHLine((int)micCx - 2, (int)micCy - 2, 5, 0xFFFF);
         // U-cradle arc around lower half
-        canvas.drawArc((int)micCx, (int)(micCy - 3.0f), 7, 6, 180, 360, 0x0000);
-        // Stem + base
-        canvas.drawLine((int)micCx, (int)(micCy + 4.0f), (int)micCx, (int)(micCy + 8.0f), 0x0000);
-        canvas.drawLine((int)(micCx - 4.0f), (int)(micCy + 8.0f), (int)(micCx + 4.0f), (int)(micCy + 8.0f), 0x0000);
+        canvas.drawArc((int)micCx, (int)micCy, 6, 6, 0.0f, 180.0f, 0x0000);
+        canvas.drawFastVLine((int)micCx - 6, (int)micCy - 4, 5, 0x0000);
+        canvas.drawFastVLine((int)micCx + 6, (int)micCy - 4, 5, 0x0000);
+        // Stem + base foot
+        canvas.drawFastVLine((int)micCx, (int)micCy + 6, 4, 0x0000);
+        canvas.drawFastHLine((int)micCx - 4, (int)micCy + 10, 9, 0x0000);
 
         // Text: Record Voice
-        canvas.setFont(&fonts::FreeSansBold9pt7b);
         canvas.setTextDatum(textdatum_t::middle_left);
         canvas.setTextColor(0x0000);
-        canvas.drawString("Record Voice", micCx + 10.0f, micCy);
+        canvas.drawString("Record Voice", micCx + 17.0f, micCy);
 
         // 6. Footer: "VOXA: We take care your momemts" (Y = 296)
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::middle_center);
         canvas.setTextColor(0x64748B);
         canvas.drawString("VOXA: We take care your momemts", w * 0.5f + offsetX, 296.0f);
@@ -295,9 +304,9 @@ namespace VOXA
         }
 
         // Left Time
-        canvas.setFont(&fonts::Font0);
+        canvas.setFont(&fonts::DejaVu9);
         canvas.setTextDatum(textdatum_t::top_left);
-        canvas.setTextColor(0xFFFF);
+        canvas.setTextColor(0xFDC0);
         canvas.drawString(timeBuf, 18.0f + offsetX, 12.0f);
 
         // Center Title: GRID in clean subtle white
@@ -322,8 +331,13 @@ namespace VOXA
         canvas.drawString("Quick Apps", 18.0f + offsetX, 38.0f);
 
         // 3. Grid Coordinates (3 columns x 3 rows evenly spaced)
-        const float colCenters[3] = { 48.0f, 120.0f, 192.0f };
-        const float rowCenters[3] = { 96.0f, 172.0f, 246.0f };
+        bool isLandscape = (w > h);
+        float colCenters[3] = { w * 0.20f, w * 0.50f, w * 0.80f };
+        float rowCenters[3] = {
+            isLandscape ? 72.0f : 96.0f,
+            isLandscape ? 130.0f : 172.0f,
+            isLandscape ? 188.0f : 246.0f
+        };
 
         // Subtitle counts
         char taskSub[16]; snprintf(taskSub, sizeof(taskSub), "%d", (taskCount > 0 ? taskCount : 12));
@@ -351,7 +365,7 @@ namespace VOXA
             { "Record",   recSub,   canvas.color565(255, 170, 120), canvas.color565(255, 170, 120) },
             // Row 2
             { "Search",   "",       canvas.color565(90, 185, 255),  0xFFFF },
-            { "Vault",    "",       canvas.color565(110, 210, 255), 0xFFFF },
+            { "Others",   "",       canvas.color565(110, 210, 255), 0xFFFF },
             { "Config",   "",       0xFFFF,                         0xFFFF }
         };
 
@@ -445,18 +459,20 @@ namespace VOXA
                     canvas.fillRoundRect((int)(cx + 8.0f), (int)(cy - 17.0f), 2, 6,  1, col565);
                     break;
                 }
-                case 5: // Record: Microphone Outline (Fixed crisp capsule & cradle)
+                case 5: // Record: Studio Microphone Outline
                 {
                     // Center solid capsule
-                    canvas.fillRoundRect((int)(cx - 3.0f), (int)(cy - 24.0f), 6, 11, 3, col565);
+                    canvas.fillRoundRect((int)cx - 3, (int)cy - 26, 7, 13, 3, col565);
+                    // Studio mic horizontal grille slit
+                    canvas.drawFastHLine((int)cx - 2, (int)cy - 20, 5, 0x0000);
                     // U-shaped Cradle arc around lower half of capsule
-                    canvas.drawCircle((int)cx, (int)(cy - 19.0f), 6, col565);
-                    // Mask only outside top quadrants without touching capsule
-                    canvas.fillRect((int)(cx - 8.0f), (int)(cy - 26.0f), 5, 8, 0x0000);
-                    canvas.fillRect((int)(cx + 4.0f), (int)(cy - 26.0f), 5, 8, 0x0000);
-                    // Stem & base
-                    canvas.drawLine((int)cx, (int)(cy - 13.0f), (int)cx, (int)(cy - 9.0f), col565);
-                    canvas.drawLine((int)(cx - 4.0f), (int)(cy - 9.0f), (int)(cx + 4.0f), (int)(cy - 9.0f), col565);
+                    canvas.drawArc((int)cx, (int)cy - 18, 6, 6, 0.0f, 180.0f, col565);
+                    // Cradle vertical arms
+                    canvas.drawFastVLine((int)cx - 6, (int)cy - 22, 5, col565);
+                    canvas.drawFastVLine((int)cx + 6, (int)cy - 22, 5, col565);
+                    // Stem & base foot
+                    canvas.drawFastVLine((int)cx, (int)cy - 12, 4, col565);
+                    canvas.drawFastHLine((int)cx - 4, (int)cy - 8, 9, col565);
                     break;
                 }
                 case 6: // Search: Magnifying Glass
@@ -466,7 +482,7 @@ namespace VOXA
                     canvas.drawLine((int)(cx + 4.0f), (int)(cy - 14.0f), (int)(cx + 9.0f), (int)(cy - 9.0f), col565);
                     break;
                 }
-                case 7: // Vault: Folder Outline
+                case 7: // Others: Folder Outline
                 {
                     // Tab top
                     canvas.drawLine((int)(cx - 9.0f), (int)(cy - 21.0f), (int)(cx - 9.0f), (int)(cy - 24.0f), col565);
@@ -493,17 +509,17 @@ namespace VOXA
                 }
             }
 
-            // Small, razor-sharp App Label using Font0
-            canvas.setFont(&fonts::Font0);
+            // Clean vector App Label using DejaVu9
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setTextColor(0xFFFF);
-            canvas.drawString(items[i].label, cx, cy + 5.0f);
+            canvas.drawString(items[i].label, cx, cy + 6.0f);
 
-            // Small, razor-sharp Badge / Count using Font0
+            // Clean vector Badge / Count using DejaVu9
             if (items[i].sub && items[i].sub[0] != '\0')
             {
                 canvas.setTextColor(items[i].subColor);
-                canvas.drawString(items[i].sub, cx, cy + 16.0f);
+                canvas.drawString(items[i].sub, cx, cy + 18.0f);
             }
         }
 
@@ -545,7 +561,7 @@ namespace VOXA
                     else if (ty >= 176.0f && ty <= 212.0f)
                     {
                         if (tx >= 10.0f && tx <= 118.0f) m_pressedCardIndex = 12; // MEMOS
-                        else if (tx >= 120.0f && tx <= 230.0f) m_pressedCardIndex = 13; // VAULT
+                        else if (tx >= 120.0f && tx <= 230.0f) m_pressedCardIndex = 13; // OTHERS
                     }
                     // Bottom Action Button: Record Voice (Y = 218 to 275)
                     else if (ty >= 218.0f && ty <= 275.0f)
@@ -560,16 +576,25 @@ namespace VOXA
                 }
                 else if (m_page == 1)
                 {
-                    // 3x3 Tactile Grid Hitboxes (68x58px per cell)
-                    int col = -1;
-                    if (tx >= 10 && tx <= 82) col = 0;
-                    else if (tx >= 84 && tx <= 156) col = 1;
-                    else if (tx >= 158 && tx <= 230) col = 2;
+                    // 3x3 Tactile Grid Hitboxes (dynamically responsive)
+                    bool isLandscape = (w > h);
+                    float colW = w / 3.0f;
+                    int col = (int)(tx / colW);
+                    if (col < 0 || col > 2) col = -1;
 
                     int row = -1;
-                    if (ty >= 64 && ty <= 132) row = 0;
-                    else if (ty >= 136 && ty <= 208) row = 1;
-                    else if (ty >= 212 && ty <= 284) row = 2;
+                    if (!isLandscape)
+                    {
+                        if (ty >= 64 && ty <= 132) row = 0;
+                        else if (ty >= 136 && ty <= 208) row = 1;
+                        else if (ty >= 212 && ty <= 284) row = 2;
+                    }
+                    else
+                    {
+                        if (ty >= 44 && ty <= 100) row = 0;
+                        else if (ty >= 102 && ty <= 158) row = 1;
+                        else if (ty >= 160 && ty <= 218) row = 2;
+                    }
 
                     if (col >= 0 && row >= 0)
                     {

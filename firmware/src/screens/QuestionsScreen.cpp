@@ -61,7 +61,7 @@ namespace VOXA
             }
 
             float contentHeight = items.size() * 56.0f + 10.0f;
-            float visibleHeight = 190.0f;
+            float visibleHeight = (float)h - 72.0f - 8.0f;
             float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // Process Touch
@@ -102,14 +102,8 @@ namespace VOXA
                         m_scrollY = 0.0f;
                     }
 
-                    // Bottom Action Button touch (Y >= 268)
-                    if (ty >= 268 && ty <= 310 && tx >= 10 && tx <= w - 10)
-                    {
-                        m_isAddPressed = true;
-                    }
-
                     // Card checks
-                    if (ty >= 72 && ty <= 264)
+                    if (ty >= 72 && ty <= h - 8)
                     {
                         for (std::size_t i = 0; i < items.size(); ++i)
                         {
@@ -170,11 +164,6 @@ namespace VOXA
                         {
                             targetScreen = ScreenId::Home;
                         }
-                        else if (m_isAddPressed)
-                        {
-                            TextInputScreen::prepare("Ask Voxa AI", ScreenId::Questions, false);
-                            targetScreen = ScreenId::TextInput;
-                        }
                         else if (m_pressedItemIndex >= 0 && m_pressedItemIndex < (int)items.size())
                         {
                             DetailScreen::setItem("questions", items[m_pressedItemIndex].id, ScreenId::Questions);
@@ -209,11 +198,11 @@ namespace VOXA
             canvas.fillScreen(0x0000);
 
             // 1. Top Status Bar (Y = 10)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(0xFFFF);
+            canvas.setTextColor(0xFDC0); // Amber clock
             std::string timeStr = timeService.getCurrentTime();
-            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.empty()) timeStr = "14:41";
             if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
             canvas.drawString(timeStr.c_str(), 12, 10);
 
@@ -221,20 +210,21 @@ namespace VOXA
             canvas.setTextColor(0x3DFE); // Cyan tag
             canvas.drawString("AI ENGINE", w - 20, 10);
             // Flash bolt
-            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0x3DFE);
-            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0x3DFE);
+            canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
+            canvas.fillTriangle(w - 15, 15, w - 10, 15, w - 14, 21, 0xFDC0);
 
             // 2. Sub-Header (Y = 28)
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextColor(0x94A3B8);
-            canvas.drawString("< Hub", 12, 34);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < HUB
+            canvas.drawString("<  HUB", 12, 34);
 
             canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
             canvas.setTextColor(0xFFFF);
             char headerTitle[32];
             snprintf(headerTitle, sizeof(headerTitle), "QUESTIONS (%d)", totalCount);
-            canvas.drawString(headerTitle, 56, 33);
+            canvas.drawString(headerTitle, w - 34, 33);
 
             // Spark icon on right (Cyan)
             uint16_t icColor = 0x3DFE;
@@ -242,74 +232,74 @@ namespace VOXA
             canvas.fillRect(w - 20, 34, 4, 3, icColor);
 
             // 3. Segmented Filter Tabs (Y = 48..68)
-            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(20, 22, 28));
+            canvas.fillRoundRect(10, 48, w - 20, 20, 5, canvas.color565(18, 21, 28));
+            canvas.drawRoundRect(10, 48, w - 20, 20, 5, canvas.color565(32, 38, 50));
             float tabW = (w - 20.0f) / 3.0f;
 
             // Active Tab Pill
-            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, canvas.color565(36, 44, 58));
+            canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
 
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
 
-            canvas.setTextColor(activeTab == 0 ? 0x3DFE : 0x888888);
+            canvas.setTextColor(activeTab == 0 ? 0x0000 : 0x888888);
             canvas.drawString("All", 10 + tabW * 0.5f, 58);
 
-            canvas.setTextColor(activeTab == 1 ? 0x3DFE : 0x888888);
+            canvas.setTextColor(activeTab == 1 ? 0x0000 : 0x888888);
             canvas.drawString("Recent", 10 + tabW * 1.5f, 58);
 
-            canvas.setTextColor(activeTab == 2 ? 0x3DFE : 0x888888);
+            canvas.setTextColor(activeTab == 2 ? 0x0000 : 0x888888);
             canvas.drawString("AI Solved", 10 + tabW * 2.5f, 58);
 
-            // 4. Scrollable Card List (Y = 72..264)
-            canvas.setClipRect(0, 72, w, 194);
+            // 4. Scrollable Card List
+            canvas.setClipRect(0, 72, w, h - 72 - 4);
 
             for (std::size_t i = 0; i < items.size(); ++i)
             {
                 float itemY = 74.0f + i * 56.0f - m_scrollY;
-                if (itemY + 52.0f < 72.0f || itemY > 264.0f)
+                if (itemY + 52.0f < 72.0f || itemY > (float)h)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
 
                 // Card container
-                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 20, 26);
-                uint16_t cardBorder = isPressed ? 0x3DFE : canvas.color565(34, 38, 48);
+                uint16_t cardBg = isPressed ? canvas.color565(28, 32, 42) : canvas.color565(18, 21, 28);
+                uint16_t cardBorder = isPressed ? 0xFDC0 : canvas.color565(32, 38, 50);
                 canvas.fillRoundRect(10, (int)itemY, w - 20, 50, 8, cardBg);
                 canvas.drawRoundRect(10, (int)itemY, w - 20, 50, 8, cardBorder);
 
+                // Question mark icon on left
+                int icX = 24;
+                int icY = (int)itemY + 25;
+                canvas.drawCircle(icX, icY - 3, 5, 0x3DFE);
+                canvas.drawLine(icX, icY + 1, icX, icY + 3, 0x3DFE);
+                canvas.drawPixel(icX, icY + 6, 0x3DFE);
+
                 // Line 1: Question
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(0xFFFF);
 
                 std::string tTitle = items[i].text;
                 if (tTitle.length() > 22) tTitle = tTitle.substr(0, 20) + "..";
-                canvas.drawString(tTitle.c_str(), 18, (int)itemY + 10);
+                canvas.drawString(tTitle.c_str(), 40, (int)itemY + 10);
 
                 // Line 2: Answer preview / AI synthesized
-                canvas.setTextColor(0x94A3B8);
+                canvas.setTextColor(canvas.color565(194, 155, 80));
                 std::string subStr = items[i].answer;
                 if (subStr.empty()) subStr = "Whisper AI Synthesized";
-                if (subStr.length() > 28) subStr = subStr.substr(0, 26) + "..";
-                canvas.drawString(subStr.c_str(), 18, (int)itemY + 26);
+                if (subStr.length() > 24) subStr = subStr.substr(0, 22) + "..";
+                canvas.drawString(subStr.c_str(), 40, (int)itemY + 26);
 
                 // Right Badge Pill
-                canvas.fillRoundRect(w - 56, (int)itemY + 14, 40, 18, 4, canvas.color565(26, 32, 44));
+                canvas.fillRoundRect(w - 60, (int)itemY + 15, 46, 20, 4, canvas.color565(26, 32, 44));
+                canvas.drawRoundRect(w - 60, (int)itemY + 15, 46, 20, 4, canvas.color565(48, 56, 72));
                 canvas.setTextDatum(textdatum_t::middle_center);
                 canvas.setTextColor(items[i].answered ? 0x3DFE : 0xFDC0);
-                canvas.drawString(items[i].answered ? "Solved" : "Pending", w - 36, (int)itemY + 23);
+                canvas.drawString(items[i].answered ? "Solved" : "Pending", w - 37, (int)itemY + 25);
             }
 
             canvas.clearClipRect();
-
-            // 5. Bottom Action Button (Y = 272..306)
-            uint16_t btnBg = m_isAddPressed ? 0x7FFF : 0x3DFE;
-            canvas.fillRoundRect(10, 272, w - 20, 34, 17, btnBg);
-
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.setTextColor(0x0000);
-            canvas.drawString("+ ASK VOXA", w * 0.5f, 289);
 
             // Screen Slide Transition or Direct push
             if (entryFrame < 10)

@@ -315,7 +315,7 @@ namespace VOXA
             if (isPaused)
             {
                 canvas.fillCircle(18, (int)(topY + 5.0f), 3, canvas.color565(140, 100, 30));
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(canvas.color565(180, 140, 60));
                 canvas.drawString("PAUSED", 26.0f, topY);
@@ -329,14 +329,14 @@ namespace VOXA
                 uint16_t dotCol = canvas.color565(r, g, b);
 
                 canvas.fillCircle(18, (int)(topY + 5.0f), 3, dotCol);
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(amberColor);
                 canvas.drawString("RECORDING", 26.0f, topY);
             }
 
             // Right: RAW in subtle muted gray
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_right);
             canvas.setTextColor(canvas.color565(120, 130, 145));
             canvas.drawString("RAW", w - 18.0f, topY);
@@ -390,17 +390,17 @@ namespace VOXA
             // ── Uploading / Saving Feedback (if any) ─────────────────
             if (uiState == UIState::Uploading)
             {
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::middle_center);
                 canvas.setTextColor(canvas.color565(160, 175, 195));
                 canvas.drawString("SAVING & SYNCING...", w * 0.5f, 218.0f);
             }
             else if (uiState == UIState::Result)
             {
-                canvas.setFont(&fonts::Font0);
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::middle_center);
                 canvas.setTextColor(canvas.color565(52, 211, 153));
-                canvas.drawString("SAVED TO VAULT", w * 0.5f, 218.0f);
+                canvas.drawString("RECORDING SAVED", w * 0.5f, 218.0f);
             }
 
             // ── Bottom Action Button: STOP & SAVE ────────────────────
@@ -414,7 +414,7 @@ namespace VOXA
 
             canvas.fillRoundRect((int)btnX, (int)btnY, (int)btnW, (int)btnH, 4, btnBg);
 
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
             canvas.setTextColor(canvas.color565(40, 45, 55)); // Crisp dark uppercase
             canvas.drawString("STOP & SAVE", w * 0.5f, btnY + btnH * 0.5f);

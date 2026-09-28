@@ -63,7 +63,7 @@ namespace VOXA
             }
 
             float contentHeight = items.size() * 56.0f + 10.0f;
-            float visibleHeight = 190.0f; // from y=72 to y=262
+            float visibleHeight = (float)h - 72.0f - 8.0f;
             float maxScrollY = std::max(0.0f, contentHeight - visibleHeight);
 
             // Process Touch
@@ -106,7 +106,7 @@ namespace VOXA
 
 
                     // Card checks
-                    if (ty >= 72 && ty <= 264)
+                    if (ty >= 72 && ty <= h - 8)
                     {
                         for (std::size_t i = 0; i < items.size(); ++i)
                         {
@@ -201,16 +201,16 @@ namespace VOXA
             canvas.fillScreen(0x0000);
 
             // 1. Top Status Bar (Y = 10)
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::top_left);
-            canvas.setTextColor(0xFFFF);
+            canvas.setTextColor(0xFDC0); // Amber clock
             std::string timeStr = timeService.getCurrentTime();
-            if (timeStr.empty()) timeStr = "10:42";
+            if (timeStr.empty()) timeStr = "14:41";
             if (timeStr.length() > 5) timeStr = timeStr.substr(0, 5);
             canvas.drawString(timeStr.c_str(), 12, 10);
 
             canvas.setTextDatum(textdatum_t::top_right);
-            canvas.setTextColor(0xFDC0); // Amber tag
+            canvas.setTextColor(0x3DFE); // Cyan tag
             canvas.drawString("TASKS", w - 20, 10);
             // Flash bolt
             canvas.fillTriangle(w - 14, 10, w - 18, 16, w - 13, 16, 0xFDC0);
@@ -218,15 +218,16 @@ namespace VOXA
 
             // 2. Sub-Header (Y = 28)
             canvas.setTextDatum(textdatum_t::middle_left);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextColor(0x94A3B8);
-            canvas.drawString("< Hub", 12, 34);
+            canvas.setFont(&fonts::DejaVu9);
+            canvas.setTextColor(0xFDC0); // Amber < HUB
+            canvas.drawString("<  HUB", 12, 34);
 
             canvas.setFont(&fonts::FreeSansBold9pt7b);
+            canvas.setTextDatum(textdatum_t::middle_right);
             canvas.setTextColor(0xFFFF);
             char headerTitle[32];
             snprintf(headerTitle, sizeof(headerTitle), "TASKS (%d)", totalCount);
-            canvas.drawString(headerTitle, 56, 33);
+            canvas.drawString(headerTitle, w - 34, 33);
 
             // Filter/Sliders icon on right
             uint16_t iconColor = 0xFDC0;
@@ -244,7 +245,7 @@ namespace VOXA
             // Active Tab Pill
             canvas.fillRoundRect(10 + activeTab * tabW, 49, tabW, 18, 4, 0xFDC0);
 
-            canvas.setFont(&fonts::Font0);
+            canvas.setFont(&fonts::DejaVu9);
             canvas.setTextDatum(textdatum_t::middle_center);
 
             char tAll[20], tPend[20], tDone[20];
@@ -261,13 +262,13 @@ namespace VOXA
             canvas.setTextColor(activeTab == 2 ? 0x0000 : 0x888888);
             canvas.drawString(tDone, 10 + tabW * 2.5f, 58);
 
-            // 4. Scrollable Card List (Y = 72..264)
-            canvas.setClipRect(0, 72, w, 194);
+            // 4. Scrollable Card List
+            canvas.setClipRect(0, 72, w, h - 72 - 4);
 
             for (std::size_t i = 0; i < items.size(); ++i)
             {
                 float itemY = 74.0f + i * 56.0f - m_scrollY;
-                if (itemY + 52.0f < 72.0f || itemY > 264.0f)
+                if (itemY + 52.0f < 72.0f || itemY > (float)h)
                     continue;
 
                 bool isPressed = (m_pressedItemIndex == (int)i);
@@ -294,8 +295,8 @@ namespace VOXA
                     canvas.drawRoundRect(boxX, boxY, boxS, boxS, 3, canvas.color565(100, 116, 139));
                 }
 
-                // Line 1: Title (Bold)
-                canvas.setFont(&fonts::Font0);
+                // Line 1: Title (Bold Sans)
+                canvas.setFont(&fonts::DejaVu9);
                 canvas.setTextDatum(textdatum_t::top_left);
                 canvas.setTextColor(0xFFFF);
 
@@ -303,29 +304,21 @@ namespace VOXA
                 if (tTitle.length() > 24) tTitle = tTitle.substr(0, 22) + "..";
                 canvas.drawString(tTitle.c_str(), 42, (int)itemY + 8);
 
-                // Line 2: Content/Submemo
+                // Line 2: Content/Submemo (Clean Muted)
                 canvas.setTextColor(0x94A3B8);
                 std::string subStr = items[i].content;
                 if (subStr.empty()) subStr = "Audio summary note";
                 if (subStr.length() > 28) subStr = subStr.substr(0, 26) + "..";
                 canvas.drawString(subStr.c_str(), 42, (int)itemY + 22);
 
-                // Line 3: Timestamp · Status
-                canvas.setTextColor(0x64748B);
+                // Line 3: Timestamp · Status (Muted Gold)
+                canvas.setTextColor(canvas.color565(194, 155, 80));
                 std::string metaStr = items[i].timestamp.empty() ? "Today · Synced" : (items[i].timestamp + " · Synced");
                 if (metaStr.length() > 30) metaStr = metaStr.substr(0, 28) + "..";
                 canvas.drawString(metaStr.c_str(), 42, (int)itemY + 35);
             }
 
             canvas.clearClipRect();
-
-            // 5. Bottom Action Button (Y = 272..306)
-            uint16_t btnFill = m_isAddPressed ? 0xFFE0 : 0xFDC0;
-            canvas.fillRoundRect(10, 272, w - 20, 34, 17, btnFill);
-            canvas.setFont(&fonts::Font0);
-            canvas.setTextDatum(textdatum_t::middle_center);
-            canvas.setTextColor(0x0000);
-            canvas.drawString("+ + QUICK VOICE TASK", w * 0.5f, 289);
 
             // Screen Slide Transition or Direct push
             if (entryFrame < 10)
